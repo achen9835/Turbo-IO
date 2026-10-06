@@ -1,0 +1,134 @@
+name: iOS Merge Build
+
+# 在 GitHub 免费的 macOS runner 上完成 Windows 做不了的两步：
+#   1. official-addon/build.sh 编译 TurboIOPrivateAddon.dylib（需要 Xcode iOS SDK）
+#   2. 嵌入原厂砸壳 IPA 并打包（需要 plutil/codesign 等 macOS 工具）
+#
+# 两种签名模式：
+#   adhoc   —— 产出合并后的 ad-hoc 签名 IPA，回 Windows 用 Sideloadly
+#              以自己的 Apple ID（免费或付费）重签安装。推荐先用这个。
+#   devcert —— 在 CI 上用开发者证书完整签名（需付费账号 + 3 个 Secrets），
+#              产出可直接安装的 TurboIO-local-only.ipa。
+#
+# 注意：输入的 bundle_id 必须全局唯一（例如 com.你的名字.turboio105），
+# 不要用 com.rayneo.venus.pub——官方 ID 被雷鸟团队占用，你的账号注册不了。
+# 且最终安装时的 Bundle ID 必须与这里完全一致，否则扩展会拒绝加载。
+
+on:
+  workflow_dispatch:
+    inputs:
+      bundle_id:
+        description: '目标 Bundle ID（全局唯一，如 com.你的名字.turboio105）'
+        required: true
+        default: 'io.turboio.change-me.rayneo'
+      signing_mode:
+        description: '签名模式'
+        type: choice
+        default: 'adhoc'
+        options:
+          - 'adhoc'
+          - 'devcert'
+      device_udid:
+        description: 'iPhone UDID（仅 devcert 模式需要，小写）'
+        required: false
+        default: ''
+
+permissions:
+  contents: read
+
+env:
+  # 项目 Release 公开的原厂砸壳输入；打包前严格校验哈希
+  UPSTREAM_IPA_URL: https://github.com/Turbo1123/Turbo-IO/releases/download/rayneo-ios-1.0.5-201/RayNeo_AI_1.0.5_201_decrypted_original.ipa
+  EXPECTED_IPA_SHA256: 39d12aff8f2b312dc3b40ce784a444e52c536e61378434005255177548df966a
+
+jobs:
+  merge:
+    runs-on: macos-15
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: 编译 TurboIO 扩展 dylib
+        run: |
+          bash official-addon/build.sh embedded "${{ inputs.bundle_id }}"
+
+      - name: 下载并校验原厂砸壳 IPA
+        run: |
+          curl -L --fail -o original.ipa "$UPSTREAM_IPA_URL"
+          echo "$EXPECTED_IPA_SHA256  original.ipa" | shasum -a 256 -c -
+          rm -rf input && mkdir input
+          unzip -q original.ipa -d input
+          test -d input/Payload/Runner.app
+
+      # ---------- 模式一：合并 + ad-hoc 签名，回本机用 Sideloadly 重签 ----------
+      - name: 合并并打包（ad-hoc）
+        if: inputs.signing_mode == 'adhoc'
+        run: |
+          rm -rf merged && mkdir -p merged
+          node official-addon/macho-embed.mjs \
+            "$PWD/input/Payload/Runner.app" \
+            "$PWD/merged/Payload/Runner.app" \
+            "$PWD/official-addon/build/embedded/TurboIOPrivateAddon.dylib" \
+            "${{ inputs.bundle_id }}"
+          # ad-hoc 签名仅为让包结构完整；最终签名由 Sideloadly 在本机完成
+          find merged/Payload/Runner.app/Frameworks -name '*.framework' -type d | while read -r fw; do
+            codesign -f -s - "$fw"
+          done
+          find merged/Payload/Runner.app/Frameworks -name '*.dylib' -type f | while read -r lib; do
+            codesign -f -s - "$lib"
+          done
+          codesign -f -s - --generate-entitlement-der merged/Payload/Runner.app
+          ditto -c -k --norsrc --keepParent merged/Payload merged/TurboIO-merged-adhoc.ipa
+
+      - name: 上传合并产物（ad-hoc）
+        if: inputs.signing_mode == 'adhoc'
+        uses: actions/upload-artifact@v4
+        with:
+          name: TurboIO-merged-adhoc-ipa
+          path: merged/TurboIO-merged-adhoc.ipa
+          if-no-files-found: error
+
+      # ---------- 模式二：开发者证书完整签名 ----------
+      - name: 合并并用开发者证书签名
+        if: inputs.signing_mode == 'devcert'
+        env:
+          P12_BASE64: ${{ secrets.IOS_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.IOS_P12_PASSWORD }}
+          PROVISION_BASE64: ${{ secrets.IOS_PROVISION_BASE64 }}
+        run: |
+          test -n "$P12_BASE64"      || { echo '缺少 Secret: IOS_P12_BASE64'; exit 1; }
+          test -n "$P12_PASSWORD"    || { echo '缺少 Secret: IOS_P12_PASSWORD'; exit 1; }
+          test -n "$PROVISION_BASE64" || { echo '缺少 Secret: IOS_PROVISION_BASE64'; exit 1; }
+          test -n "${{ inputs.device_udid }}" || { echo '缺少输入: device_udid'; exit 1; }
+          printf '%s' "$P12_BASE64" | python3 -c 'import base64,sys;open("dev.p12","wb").write(base64.b64decode(sys.stdin.read()))'
+          printf '%s' "$PROVISION_BASE64" | python3 -c 'import base64,sys;open("dev.mobileprovision","wb").write(base64.b64decode(sys.stdin.read()))'
+          security create-keychain -p "" build.keychain-db
+          security default-keychain -s build.keychain-db
+          security unlock-keychain -p "" build.keychain-db
+          security import dev.p12 -k build.keychain-db -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security set-key-partition-list -S apple-tool:,apple: -s -k "" build.keychain-db
+          IDENTITY=$(security find-identity -v -p codesigning build.keychain-db | grep -oE '[A-F0-9]{40}' | head -n1)
+          test -n "$IDENTITY" || { security find-identity -v -p codesigning; echo '未找到可用的 codesigning 证书'; exit 1; }
+          rm -rf signed && mkdir signed
+          node official-addon/package.mjs \
+            --app "$PWD/input/Payload/Runner.app" \
+            --addon "$PWD/official-addon/build/embedded/TurboIOPrivateAddon.dylib" \
+            --profile "$PWD/dev.mobileprovision" \
+            --identity "$IDENTITY" \
+            --device "${{ inputs.device_udid }}" \
+            --bundle "${{ inputs.bundle_id }}" \
+            --out "$PWD/signed"
+
+      - name: 上传签名产物（devcert）
+        if: inputs.signing_mode == 'devcert'
+        uses: actions/upload-artifact@v4
+        with:
+          name: TurboIO-signed
+          path: |
+            signed/TurboIO-local-only.ipa
+            signed/report.json
+          if-no-files-found: error
