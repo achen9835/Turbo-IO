@@ -10,17 +10,19 @@ name: iOS Merge Build
 #   devcert —— 在 CI 上用开发者证书完整签名（需付费账号 + 3 个 Secrets），
 #              产出可直接安装的 TurboIO-local-only.ipa。
 #
-# 注意：输入的 bundle_id 必须全局唯一（例如 com.你的名字.turboio105），
-# 不要用 com.rayneo.venus.pub——官方 ID 被雷鸟团队占用，你的账号注册不了。
-# 且最终安装时的 Bundle ID 必须与这里完全一致，否则扩展会拒绝加载。
+# 注意：bundle_id 必须与签名描述文件覆盖的 ID 一致，且与最终安装值一致，
+# 否则扩展拒绝加载。当前默认值 = 本机 Ad Hoc 描述文件写死的 ID：
+#   app.aurora7070.potato6444（Apple Distribution · 团队 2KUJ26BT63
+#   · 有效期至 2027-10-03 · 描述文件仅含一台设备）
+# 不要用官方 com.rayneo.venus.pub——被雷鸟团队占用，无法签名安装。
 
 on:
   workflow_dispatch:
     inputs:
       bundle_id:
-        description: '目标 Bundle ID（全局唯一，如 com.你的名字.turboio105）'
+        description: 'Bundle ID：默认=你的描述文件写死的 ID，一般不用改；改其它值需换能覆盖它的描述文件'
         required: true
-        default: 'io.turboio.change-me.rayneo'
+        default: 'app.aurora7070.potato6444'
       signing_mode:
         description: '签名模式'
         type: choice
@@ -29,9 +31,9 @@ on:
           - 'adhoc'
           - 'devcert'
       device_udid:
-        description: 'iPhone UDID（仅 devcert 模式需要，小写）'
+        description: 'iPhone UDID（已按描述文件登记的设备预填；仅 devcert 模式使用）'
         required: false
-        default: ''
+        default: '00008150-000E021C1E0B401C'
 
 permissions:
   contents: read
@@ -46,11 +48,25 @@ jobs:
     runs-on: macos-15
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v5
         with:
           node-version: '22'
+
+      # 有实际行为的校验：必错的输入直接失败，不浪费 10 分钟构建
+      - name: 校验 Bundle ID 输入
+        run: |
+          BUNDLE='${{ inputs.bundle_id }}'
+          if [[ "$BUNDLE" == "io.turboio.change-me.rayneo" ]]; then
+            echo "::error::填了旧占位 Bundle ID。默认值已是证书配套的 app.aurora7070.potato6444，恢复默认即可"
+            exit 1
+          fi
+          if [[ "$BUNDLE" == "com.rayneo.venus.pub" ]]; then
+            echo "::error::官方 Bundle ID 被雷鸟团队占用，无法签名安装。请用默认的 app.aurora7070.potato6444"
+            exit 1
+          fi
+          echo "Bundle ID 校验通过：$BUNDLE（签名描述文件覆盖的 ID 为 app.aurora7070.potato6444）"
 
       - name: 编译 TurboIO 扩展 dylib
         run: |
@@ -86,11 +102,28 @@ jobs:
 
       - name: 上传合并产物（ad-hoc）
         if: inputs.signing_mode == 'adhoc'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: TurboIO-merged-adhoc-ipa
           path: merged/TurboIO-merged-adhoc.ipa
           if-no-files-found: error
+
+      # 签名对账信息：Bundle ID 不一致 = 扩展不加载 / 装不上
+      - name: 签名提示（安装前必读）
+        if: inputs.signing_mode == 'adhoc'
+        run: |
+          echo "=============================================="
+          echo "IPA 已生成。本包 Bundle ID（已按你的描述文件生成）："
+          echo "  ${{ inputs.bundle_id }}"
+          echo ""
+          echo "爱思助手操作要点："
+          echo "  1. 签名方式选「导入证书」，用你的 证书文件.p12 + 描述文件.mobileprovision"
+          echo "  2. Bundle ID 保持包内原值，不要修改"
+          echo "  3. 目标设备：${{ inputs.device_udid }}（描述文件仅含此一台）"
+          echo "  4. 安装后：设置→通用→VPN与设备管理→信任"
+          echo "=============================================="
+          echo "IPA SHA-256："
+          shasum -a 256 merged/TurboIO-merged-adhoc.ipa
 
       # ---------- 模式二：开发者证书完整签名 ----------
       - name: 合并并用开发者证书签名
@@ -125,7 +158,7 @@ jobs:
 
       - name: 上传签名产物（devcert）
         if: inputs.signing_mode == 'devcert'
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: TurboIO-signed
           path: |
