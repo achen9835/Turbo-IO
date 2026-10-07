@@ -38,6 +38,11 @@ on:
         description: 'iPhone 机型标识（已按你这台 17 Pro Max 实测的产品类型预填）'
         required: false
         default: 'iPhone18,2'
+      enable_amap:
+        description: '构建带高德SDK的导航版（联网下载固定版本SDK；入口在 App 的 TurboIO→资料→导航）'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -72,9 +77,22 @@ jobs:
           fi
           echo "Bundle ID 校验通过：$BUNDLE（签名描述文件覆盖的 ID 为 app.aurora7070.potato6444）"
 
+      - name: 下载高德导航 SDK（固定版本，官方源，校验哈希）
+        if: inputs.enable_amap
+        run: |
+          node official-addon/setup-amap.mjs --accept-sdk-terms
+
       - name: 编译 TurboIO 扩展 dylib
         run: |
+          if [[ "${{ inputs.enable_amap }}" == 'true' ]]; then export TIO_AMAP_ENABLED=1; fi
           bash official-addon/build.sh embedded "${{ inputs.bundle_id }}"
+          # 导航版产物在 build/navigation，普通版在 build/embedded
+          if [[ -f official-addon/build/navigation/TurboIOPrivateAddon.dylib ]]; then
+            echo "ADDON=official-addon/build/navigation/TurboIOPrivateAddon.dylib" >> "$GITHUB_ENV"
+          else
+            echo "ADDON=official-addon/build/embedded/TurboIOPrivateAddon.dylib" >> "$GITHUB_ENV"
+          fi
+          echo "使用扩展：$ADDON"
 
       - name: 下载并校验原厂砸壳 IPA
         run: |
@@ -92,8 +110,19 @@ jobs:
           node official-addon/macho-embed.mjs \
             "$PWD/input/Payload/Runner.app" \
             "$PWD/merged/Payload/Runner.app" \
-            "$PWD/official-addon/build/embedded/TurboIOPrivateAddon.dylib" \
+            "$PWD/$ADDON" \
             "${{ inputs.bundle_id }}"
+          # 导航版：复制高德资源 bundle 并补定位用途说明（等价 package.mjs --amap-sdk-root）
+          if [[ "${{ inputs.enable_amap }}" == 'true' ]]; then
+            node --input-type=module -e "
+              import {amapResources,copyAMapResources} from './official-addon/amap-resources.mjs';
+              copyAMapResources(amapResources(process.argv[1]), process.argv[2]);
+            " "$PWD/official-addon/build/amap-sdk" "$PWD/merged/Payload/Runner.app"
+            PLIST="merged/Payload/Runner.app/Info.plist"
+            plutil -convert json -o - "$PLIST" | grep -q NSLocationWhenInUseUsageDescription || \
+              plutil -insert NSLocationWhenInUseUsageDescription -string '用于用户主动选择的地图定位和前台步行导航。' "$PLIST"
+            echo "高德资源已复制（AMap/AMapNavi/AMapSearch.bundle）"
+          fi
           # 原厂砸壳包被商店按机型裁剪（列表只到 iPhone16,2），新机型会报
           # DeviceNotSupportedByThinning；把目标机型补进 UISupportedDevices
           PLIST="merged/Payload/Runner.app/Info.plist"
@@ -135,6 +164,11 @@ jobs:
           echo "  2. Bundle ID 保持包内原值，不要修改"
           echo "  3. 目标设备：${{ inputs.device_udid }}（描述文件仅含此一台）"
           echo "  4. 安装后：设置→通用→VPN与设备管理→信任"
+          if [[ "${{ inputs.enable_amap }}" == 'true' ]]; then
+            echo "  5. 导航版：高德控制台建 iOS 平台 Key 时，绑定 Bundle ID"
+            echo "     ${{ inputs.bundle_id }}（不是官方 com.rayneo.venus.pub！）"
+            echo "     App内 TurboIO→资料→导航→右上角更多→高德Key设置 填入"
+          fi
           echo "=============================================="
           echo "IPA SHA-256："
           shasum -a 256 merged/TurboIO-merged-adhoc.ipa
@@ -161,14 +195,19 @@ jobs:
           IDENTITY=$(security find-identity -v -p codesigning build.keychain-db | grep -oE '[A-F0-9]{40}' | head -n1)
           test -n "$IDENTITY" || { security find-identity -v -p codesigning; echo '未找到可用的 codesigning 证书'; exit 1; }
           rm -rf signed && mkdir signed
+          AMAP_ARGS=()
+          if [[ "${{ inputs.enable_amap }}" == 'true' ]]; then
+            AMAP_ARGS+=(--amap-sdk-root "$PWD/official-addon/build/amap-sdk")
+          fi
           node official-addon/package.mjs \
             --app "$PWD/input/Payload/Runner.app" \
-            --addon "$PWD/official-addon/build/embedded/TurboIOPrivateAddon.dylib" \
+            --addon "$PWD/$ADDON" \
             --profile "$PWD/dev.mobileprovision" \
             --identity "$IDENTITY" \
             --device "${{ inputs.device_udid }}" \
             --bundle "${{ inputs.bundle_id }}" \
             --product "${{ inputs.product }}" \
+            "${AMAP_ARGS[@]}" \
             --out "$PWD/signed"
 
       - name: 上传签名产物（devcert）
