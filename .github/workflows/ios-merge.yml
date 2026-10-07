@@ -34,6 +34,10 @@ on:
         description: 'iPhone UDID（已按描述文件登记的设备预填；仅 devcert 模式使用）'
         required: false
         default: '00008150-000E021C1E0B401C'
+      product:
+        description: 'iPhone 机型标识（已按你这台 17 Pro Max 实测的产品类型预填）'
+        required: false
+        default: 'iPhone18,2'
 
 permissions:
   contents: read
@@ -90,6 +94,16 @@ jobs:
             "$PWD/merged/Payload/Runner.app" \
             "$PWD/official-addon/build/embedded/TurboIOPrivateAddon.dylib" \
             "${{ inputs.bundle_id }}"
+          # 原厂砸壳包被商店按机型裁剪（列表只到 iPhone16,2），新机型会报
+          # DeviceNotSupportedByThinning；把目标机型补进 UISupportedDevices
+          PLIST="merged/Payload/Runner.app/Info.plist"
+          if plutil -convert json -o - "$PLIST" | grep -q UISupportedDevices \
+             && ! plutil -convert json -o - "$PLIST" | grep -q "\"${{ inputs.product }}\""; then
+            plutil -insert UISupportedDevices.0 -string "${{ inputs.product }}" "$PLIST"
+            echo "已把 ${{ inputs.product }} 加入 UISupportedDevices"
+          else
+            echo "机型列表已包含 ${{ inputs.product }} 或未裁剪，无需修改"
+          fi
           # ad-hoc 签名仅为让包结构完整；最终签名由 Sideloadly 在本机完成
           find merged/Payload/Runner.app/Frameworks -name '*.framework' -type d | while read -r fw; do
             codesign -f -s - "$fw"
@@ -154,6 +168,7 @@ jobs:
             --identity "$IDENTITY" \
             --device "${{ inputs.device_udid }}" \
             --bundle "${{ inputs.bundle_id }}" \
+            --product "${{ inputs.product }}" \
             --out "$PWD/signed"
 
       - name: 上传签名产物（devcert）
