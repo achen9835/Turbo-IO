@@ -44,12 +44,7 @@ on:
         required: false
         default: false
       enable_focus:
-        description: 'FOCUS-04 集成版（仅adhoc）。刷机门禁要求宿主Bundle ID为官方 com.rayneo.venus.pub；日常证书只能装App，刷机需用 official_bundle_flash + 能签官方ID的Apple ID'
-        type: boolean
-        required: false
-        default: false
-      official_bundle_flash:
-        description: '刷机专用包：允许构建官方Bundle ID(com.rayneo.venus.pub)。需Apple ID签名时能保持该ID；安装前卸载官方雷鸟App；勿作日常用'
+        description: 'FOCUS-04 集成版（仅adhoc）。注意：刷机门禁运行时要求宿主Bundle ID为官方 com.rayneo.venus.pub，当前签名材料无法满足（免费Apple ID会被签名工具改写ID，已实测），故此模式只出App、刷机入口不可用'
         type: boolean
         required: false
         default: false
@@ -82,11 +77,12 @@ jobs:
             exit 1
           fi
           if [[ "$BUNDLE" == "com.rayneo.venus.pub" ]]; then
-            if [[ "${{ inputs.official_bundle_flash }}" != 'true' ]]; then
-              echo "::error::官方 Bundle ID 默认被拦截（你的常规证书签不了它）。构建刷机专用包请显式勾选 official_bundle_flash"
-              exit 1
-            fi
-            echo "::warning::正在构建【刷机专用包】：官方 Bundle ID com.rayneo.venus.pub。安装前须卸载手机上的官方雷鸟 App；刷完固件后建议换回日常包"
+            # 2026-10-08 实测结论：官方ID刷机包需要能覆盖它的签名材料；
+            # 免费 Apple ID 路线已被证实不可行（爱思助手签名时自动把 ID 改写为
+            # com.rayneo.venus.pub.<个人团队ID>，扩展宿主校验因此拒绝加载）。
+            # 取得能覆盖官方 ID 的签名材料（如付费账号+通配符描述文件）前保持拦截。
+            echo "::error::官方 Bundle ID 被拦截：当前签名材料覆盖不了它，免费 Apple ID 会被签名工具自动改写 ID（已实测不可行）。需要官方 ID 刷机包时请先取得能覆盖它的签名材料（付费开发者账号+通配符描述文件）"
+            exit 1
           fi
           if [[ "${{ inputs.enable_focus }}" == 'true' && "${{ inputs.signing_mode }}" == 'devcert' ]]; then
             echo "::error::FOCUS-04 仅支持 adhoc 模式（上游 package.mjs 的 OTA 门禁要求官方 Bundle ID，与你的证书描述文件冲突）"
@@ -225,12 +221,6 @@ jobs:
           echo "  2. Bundle ID 保持包内原值，不要修改"
           echo "  3. 目标设备：${{ inputs.device_udid }}（描述文件仅含此一台）"
           echo "  4. 安装后：设置→通用→VPN与设备管理→信任"
-          if [[ "${{ inputs.official_bundle_flash }}" == 'true' ]]; then
-            echo "  ⚠ 刷机专用包（Bundle ID = com.rayneo.venus.pub）："
-            echo "     - 爱思助手签名时 Bundle ID 保持不动；若 Apple ID 拒绝为该 ID 注册会在此失败"
-            echo "     - 安装前卸载手机上的官方雷鸟 App（同 ID 不能共存）"
-            echo "     - 刷完固件后换回日常包 app.aurora7070.potato6444"
-          fi
           if [[ "${{ inputs.enable_focus }}" == 'true' ]]; then
             echo "  5. FOCUS-04 版已内置 TFP1 刷机门禁：App内 诊断→FOCUS-04"
             echo "     刷机流程：只下载验收→核对15成员→输入TFP1授权→手动点安装"
