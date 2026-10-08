@@ -43,6 +43,11 @@ on:
         type: boolean
         required: false
         default: false
+      enable_focus:
+        description: 'FOCUS-04 集成版（新UI+原生导航+音乐+读书+番茄+TFP1刷机门禁；强制含高德SDK，仅支持 adhoc）'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -75,10 +80,14 @@ jobs:
             echo "::error::官方 Bundle ID 被雷鸟团队占用，无法签名安装。请用默认的 app.aurora7070.potato6444"
             exit 1
           fi
+          if [[ "${{ inputs.enable_focus }}" == 'true' && "${{ inputs.signing_mode }}" == 'devcert' ]]; then
+            echo "::error::FOCUS-04 仅支持 adhoc 模式（上游 package.mjs 的 OTA 门禁要求官方 Bundle ID，与你的证书描述文件冲突）"
+            exit 1
+          fi
           echo "Bundle ID 校验通过：$BUNDLE（签名描述文件覆盖的 ID 为 app.aurora7070.potato6444）"
 
       - name: 下载高德导航 SDK（优先 fork 的 amap-sdk-cache Release，回退官方源）
-        if: inputs.enable_amap
+        if: inputs.enable_amap || inputs.enable_focus
         run: |
           # 手动缓存：把两个官方 zip 上传到本仓库 tag=amap-sdk-cache 的 Release
           # （文件名必须一字不差），CI 从 GitHub CDN 秒取；没传则回退官方源长超时下载。
@@ -98,15 +107,34 @@ jobs:
           fetch_zip search-9.8.1.zip https://a.amap.com/lbs/static/zip/AMap_iOS_Search_Lib_V9.8.1.zip 600
           node official-addon/setup-amap.mjs --accept-sdk-terms --archives-dir "$PWD/amap-archives"
 
+      - name: 下载 FOCUS-04 固件（上游 Release，精确哈希与大小校验）
+        if: inputs.enable_focus
+        run: |
+          curl -L --fail -o focus-firmware.zip \
+            https://github.com/Turbo1123/Turbo-IO/releases/download/firmware-strix-1.0.4.12-tfp1-focus04/StrixOS-1.0.4.12-TurboFocus-TFP1-FOCUS04-EXPERIMENTAL.zip
+          echo "ad5054e3d7bda90e94d293bea882bd8dd5a125bcc8f42c13a59b2e149313c9e3  focus-firmware.zip" | shasum -a 256 -c -
+          SIZE=$(stat -f%z focus-firmware.zip)
+          [[ "$SIZE" == "9300112" ]] || { echo "::error::固件大小不符：$SIZE（期望 9300112）"; exit 1; }
+          echo "FOCUS-04 固件校验通过（9,300,112 字节）"
+
       - name: 编译 TurboIO 扩展 dylib
         run: |
-          if [[ "${{ inputs.enable_amap }}" == 'true' ]]; then export TIO_AMAP_ENABLED=1; fi
-          bash official-addon/build.sh embedded "${{ inputs.bundle_id }}"
-          # 导航版产物在 build/navigation，普通版在 build/embedded
-          if [[ -f official-addon/build/navigation/TurboIOPrivateAddon.dylib ]]; then
-            echo "ADDON=official-addon/build/navigation/TurboIOPrivateAddon.dylib" >> "$GITHUB_ENV"
+          if [[ "${{ inputs.enable_focus }}" == 'true' ]]; then
+            # FOCUS-04 集成版：独立源码树与构建脚本，强制启用高德导航
+            export TIO_AMAP_ENABLED=1 TIO_AMAP_SDK_ROOT="$PWD/official-addon/build/amap-sdk" \
+              TIO_OTA_FLASH_ENABLED=1 TIO_IMAGE_RX_LAB=1 TIO_IMAGE_RX_WIDE=1 \
+              TIO_DISPLAY_PHONE=1 TIO_DISPLAY_FLASH=1
+            bash official-addon/focus-edition/build.sh embedded "${{ inputs.bundle_id }}"
+            echo "ADDON=official-addon/focus-edition/build/image-rx-lab/TurboIOPrivateAddon.dylib" >> "$GITHUB_ENV"
           else
-            echo "ADDON=official-addon/build/embedded/TurboIOPrivateAddon.dylib" >> "$GITHUB_ENV"
+            if [[ "${{ inputs.enable_amap }}" == 'true' ]]; then export TIO_AMAP_ENABLED=1; fi
+            bash official-addon/build.sh embedded "${{ inputs.bundle_id }}"
+            # 导航版产物在 build/navigation，普通版在 build/embedded
+            if [[ -f official-addon/build/navigation/TurboIOPrivateAddon.dylib ]]; then
+              echo "ADDON=official-addon/build/navigation/TurboIOPrivateAddon.dylib" >> "$GITHUB_ENV"
+            else
+              echo "ADDON=official-addon/build/embedded/TurboIOPrivateAddon.dylib" >> "$GITHUB_ENV"
+            fi
           fi
           echo "使用扩展：$ADDON"
 
@@ -128,8 +156,8 @@ jobs:
             "$PWD/merged/Payload/Runner.app" \
             "$PWD/$ADDON" \
             "${{ inputs.bundle_id }}"
-          # 导航版：复制高德资源 bundle 并补定位用途说明（等价 package.mjs --amap-sdk-root）
-          if [[ "${{ inputs.enable_amap }}" == 'true' ]]; then
+          # 导航版/FOCUS版：复制高德资源 bundle 并补定位用途说明（等价 package.mjs --amap-sdk-root）
+          if [[ "${{ inputs.enable_amap }}" == 'true' || "${{ inputs.enable_focus }}" == 'true' ]]; then
             node --input-type=module -e "
               import {amapResources,copyAMapResources} from './official-addon/amap-resources.mjs';
               copyAMapResources(amapResources(process.argv[1]), process.argv[2]);
@@ -138,6 +166,15 @@ jobs:
             plutil -convert json -o - "$PLIST" | grep -q NSLocationWhenInUseUsageDescription || \
               plutil -insert NSLocationWhenInUseUsageDescription -string '用于用户主动选择的地图定位和前台步行导航。' "$PLIST"
             echo "高德资源已复制（AMap/AMapNavi/AMapSearch.bundle）"
+          fi
+          # FOCUS-04：OTA 回环补丁 + 美术资源 + 固件嵌入 + plist 注入
+          # （复刻 package.mjs focus 分支；固件哈希在脚本内再次精确校验）
+          if [[ "${{ inputs.enable_focus }}" == 'true' ]]; then
+            node .github/scripts/focus-adhoc-package.mjs \
+              "$PWD/merged/Payload/Runner.app" \
+              "$PWD/focus-firmware.zip" \
+              "$PWD/official-addon/build/amap-sdk" \
+              "$PWD/merged/experimental-ota-routing.json"
           fi
           # 原厂砸壳包被商店按机型裁剪（列表只到 iPhone16,2），新机型会报
           # DeviceNotSupportedByThinning；把目标机型补进 UISupportedDevices
@@ -180,7 +217,11 @@ jobs:
           echo "  2. Bundle ID 保持包内原值，不要修改"
           echo "  3. 目标设备：${{ inputs.device_udid }}（描述文件仅含此一台）"
           echo "  4. 安装后：设置→通用→VPN与设备管理→信任"
-          if [[ "${{ inputs.enable_amap }}" == 'true' ]]; then
+          if [[ "${{ inputs.enable_focus }}" == 'true' ]]; then
+            echo "  5. FOCUS-04 版已内置 TFP1 刷机门禁：App内 诊断→FOCUS-04"
+            echo "     刷机流程：只下载验收→核对15成员→输入TFP1授权→手动点安装"
+            echo "     刷机前：眼镜电量≥50%、结束所有任务；接受'短期无法回官方'的风险"
+          elif [[ "${{ inputs.enable_amap }}" == 'true' ]]; then
             echo "  5. 导航版：高德控制台建 iOS 平台 Key 时，绑定 Bundle ID"
             echo "     ${{ inputs.bundle_id }}（不是官方 com.rayneo.venus.pub！）"
             echo "     App内 TurboIO→资料→导航→右上角更多→高德Key设置 填入"
