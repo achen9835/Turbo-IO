@@ -44,7 +44,7 @@ on:
         required: false
         default: false
       enable_focus:
-        description: 'FOCUS-04 集成版（新UI+原生导航+音乐+读书+番茄+TFP1刷机门禁；强制含高德SDK，仅支持 adhoc）'
+        description: 'FOCUS-04 集成版（仅adhoc）。注意：刷机门禁运行时校验宿主Bundle ID必须为官方 com.rayneo.venus.pub（ExperimentalOTAFeed.m:182），固定自定义ID的证书只能装App不能刷机'
         type: boolean
         required: false
         default: false
