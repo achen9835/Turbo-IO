@@ -167,7 +167,11 @@
 }
 #if TIO_AMAP_ENABLED
 - (void)mapView:(MAMapView *)map didUpdateUserLocation:(MAUserLocation *)user updatingLocation:(BOOL)updating{
-    if(!self.locating||!updating||!user.location||user.location.horizontalAccuracy<0||user.location.horizontalAccuracy>200||fabs(user.location.timestamp.timeIntervalSinceNow)>15)return;self.locating=NO;self.locationGeneration++;[map setCenterCoordinate:user.coordinate animated:YES];if(!self.active){map.showsUserLocation=NO;if(self.travelMode.selectedSegmentIndex==0)[self selectSimulationStart:user.coordinate name:@"本次手机位置"];}self.note=@"地图已定位；模拟模式同时设为本次起点，尚未开始导航。";[self refresh];
+    if(!updating||!user.location||user.location.horizontalAccuracy<0||user.location.horizontalAccuracy>200||fabs(user.location.timestamp.timeIntervalSinceNow)>15)return;
+    if(self.voiceLocating){ // Voice realtime: a fresh fix is the confirmed start point; plan now.
+        self.voiceLocating=NO;self.note=[NSString stringWithFormat:@"已确认当前位置（±%.0f米），规划实时路线…",user.location.horizontalAccuracy];[self refresh];[self startWalking];return;
+    }
+    if(!self.locating)return;self.locating=NO;self.locationGeneration++;[map setCenterCoordinate:user.coordinate animated:YES];if(!self.active){map.showsUserLocation=NO;if(self.travelMode.selectedSegmentIndex==0)[self selectSimulationStart:user.coordinate name:@"本次手机位置"];}self.note=@"地图已定位；模拟模式同时设为本次起点，尚未开始导航。";[self refresh];
 }
 #endif
 - (void)demoRoute{

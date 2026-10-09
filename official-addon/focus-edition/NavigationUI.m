@@ -74,7 +74,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property NSInteger selectedTransport,sessionTransport;
 @property BOOL routeReady,locating;
 @property BOOL navigationStarted,backgroundLocationEnabled;
-@property BOOL voiceSession,voiceLifelogWasOn;
+@property BOOL voiceSession,voiceLifelogWasOn,voiceLocating;
 #if TIO_AMAP_ENABLED
 @property AMapSearchAPI *voiceSearch;
 @property AMapPOIKeywordsSearchRequest *voiceRequest;
@@ -118,6 +118,12 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     [NSLayoutConstraint activateConstraints:@[[self.scroll.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor],[self.scroll.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor],[self.scroll.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],[self.scroll.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor],[self.stack.leadingAnchor constraintEqualToAnchor:self.scroll.contentLayoutGuide.leadingAnchor constant:16],[self.stack.trailingAnchor constraintEqualToAnchor:self.scroll.contentLayoutGuide.trailingAnchor constant:-16],[self.stack.topAnchor constraintEqualToAnchor:self.scroll.contentLayoutGuide.topAnchor constant:16],[self.stack.bottomAnchor constraintEqualToAnchor:self.scroll.contentLayoutGuide.bottomAnchor constant:-24],[self.stack.widthAnchor constraintEqualToAnchor:self.scroll.frameLayoutGuide.widthAnchor constant:-32]]];
     self.statusLabel=[UILabel new]; // Diagnostic text only; not part of the primary layout.
     [self buildWorkspace];
+    // Voice flow presents this panel as a bare modal (no research-shell back
+    // stack); without an explicit exit the user gets trapped. Always offer one
+    // when there is nothing to pop back to.
+    if(self.navigationController.viewControllers.count<=1){
+        self.navigationItem.leftBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:@"退出导航页" style:UIBarButtonItemStylePlain target:self action:@selector(voiceDismiss)];
+    }
     self.permission=[CLLocationManager new];self.permission.delegate=self;self.navigationBackgroundTask=UIBackgroundTaskInvalid;
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(refresh) name:@"TIONavigationChanged" object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(stopUser) name:@"TIOResearchClosed" object:nil];
@@ -208,7 +214,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
         if(TIOAOSetAudioSaving(YES))self.note=@"全天智记录音已恢复";
         else self.note=@"智记录音恢复未确认：请到官方页核对并重新开启";
     }
-    self.voiceLifelogWasOn=NO;self.voiceSession=NO;
+    self.voiceLifelogWasOn=NO;self.voiceSession=NO;self.voiceLocating=NO;
     self.navigationStarted=NO;self.autoNativeHUD=NO;self.backgroundLocationEnabled=NO;[self endNavigationBackgroundTask];
 #if TIO_DISPLAY_PHONE
     TDPPhoneNavigationStop();self.hudIconPixels=nil;self.hudIconType=0;self.crossPixels=nil;
@@ -223,6 +229,10 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 #endif
 }
 - (void)stopUser{[self halt];TIONavEnableNotices(NO);self.note=@"导航更新已停止并请求退出。字幕退出仍需镜片确认；未关闭时用实体按钮。不会自动重新开启。";self.routeSummary.text=@"导航已结束 · 可重新规划路线";self.display=TIONavDisplay(@"stopped",0,@"",-1,-1,-1,self.simulated);TIONavEnableDisplay(NO);[self refresh];}
+- (void)voiceDismiss{
+    [self stopUser];
+    [self dismissViewControllerAnimated:YES completion:nil]; // also stops the modal that presented us
+}
 #pragma mark Voice entry ("导航去X" → full hands-free navigation)
 // Flow per product decision: pause our modules, turn all-day lifelog off
 // (remembering it was on), search the destination, plan realtime, auto-begin
@@ -234,8 +244,14 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     self.voiceSession=YES;self.voiceQuery=[query copy];
     TMMusicPauseForVoice();TWReaderPauseForVoice();
     NSDictionary *ao=TIOAOStatus();
-    self.voiceLifelogWasOn=[ao isKindOfClass:NSDictionary.class]&&[ao[@"dumpEnabled"] boolValue];
-    if(self.voiceLifelogWasOn&&!TIOAOSetAudioSaving(NO))self.note=@"智记录音关闭未确认，继续语音导航";
+    BOOL lifelogOn=[ao isKindOfClass:NSDictionary.class]&&[ao[@"dumpEnabled"] boolValue];
+    if(lifelogOn){
+        BOOL off=TIOAOSetAudioSaving(NO);
+        NSDictionary *after=TIOAOStatus();
+        // Readback decides: only promise auto-restore for a state we actually changed.
+        self.voiceLifelogWasOn=off&&[after isKindOfClass:NSDictionary.class]&&![after[@"dumpEnabled"] boolValue];
+        if(!self.voiceLifelogWasOn)self.note=@"智记关闭未生效（该接口可能不控制眼镜端智记）；导航继续，结束后不做自动恢复";
+    }
     if(![NSUserDefaults.standardUserDefaults boolForKey:NavConsent]){[self alert:@"语音导航需要先同意一次地图隐私" message:@"请在页面上点击“开启地图”完成一次同意，之后语音即可全程免手。"] ;self.voiceSession=NO;return;}
     [self openMap];
     if(!query.length){self.note=@"语音已打开导航；说出“导航去+地点”即可免手开始。";[self refresh];return;}
@@ -254,8 +270,15 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
         if(!first){[self fail:[NSString stringWithFormat:@"语音没找到“%@”：请说更完整的名称，或手动搜索",self.voiceQuery?:@""] ] ;return;}
         [self selectPlace:@{@"name":first.name?:@"目的地",@"address":[NSString stringWithFormat:@"%@ %@ %@",first.city?:@"",first.district?:@"",first.address?:@""],@"lat":@(first.location.latitude),@"lon":@(first.location.longitude)}];
         self.travelMode.selectedSegmentIndex=1; // Realtime; the native HUD engages itself once guidance exists.
-        self.note=[NSString stringWithFormat:@"语音选择：%@（搜索第一位）；正在规划实时路线",first.name?:@""];
-        [self refresh];[self startWalking];
+        // Realtime routes plan FROM the phone's real position. Confirm a fresh fix
+        // first instead of letting the SDK fall back to a stale/default origin.
+        CLAuthorizationStatus auth=self.permission.authorizationStatus;
+        if(auth==kCLAuthorizationStatusNotDetermined||auth==kCLAuthorizationStatusDenied||auth==kCLAuthorizationStatusRestricted){[self fail:@"语音实时导航需要定位授权：请在系统设置允许定位后重试，或用“导航去”前的手动流程"] ;return;}
+        self.voiceLocating=YES;self.map.showsUserLocation=YES;
+        self.note=[NSString stringWithFormat:@"语音选择：%@（搜索第一位）。正在确认当前位置，随后自动规划实时路线…",first.name?:@""];
+        [self refresh];
+        NSUInteger g=self.generation;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,15*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(g==self.generation&&self.voiceLocating){self.voiceLocating=NO;[self fail:@"15秒未获得可靠位置：到开阔处或直接点页面上的“规划路线”"];}});
     });
 }
 - (void)AMapSearchRequest:(id)request didFailWithError:(NSError *)error{
