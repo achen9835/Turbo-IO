@@ -132,7 +132,14 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     self.display=TIONavDisplay(@"stopped",0,@"",-1,-1,-1,NO);[self refresh];
 }
 - (void)viewWillAppear:(BOOL)animated{[super viewWillAppear:animated];if(!self.timer){__weak typeof(self) weak=self;self.timer=[NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *t){[weak tick];}];} [self refresh];}
-- (void)viewDidDisappear:(BOOL)animated{[super viewDidDisappear:animated];self.pendingMapAction=nil;if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive&&!self.isMovingFromParentViewController&&!self.isBeingDismissed&&!self.navigationController.isBeingDismissed)return;[self stopUser];[self.timer invalidate];self.timer=nil;}
+- (void)viewDidDisappear:(BOOL)animated{
+    [super viewDidDisappear:animated];self.pendingMapAction=nil;
+    if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive&&!self.isMovingFromParentViewController&&!self.isBeingDismissed&&!self.navigationController.isBeingDismissed)return;
+    // A voice-started navigation (headless panel owns the AMapNavi delegate)
+    // survives this page closing. Only clean up UI; the engine keeps running.
+    if(VoiceNavPanelIsRunning()){[self.timer invalidate];self.timer=nil;return;}
+    [self stopUser];[self.timer invalidate];self.timer=nil;
+}
 - (void)dealloc{if(self.navigationBackgroundTask!=UIBackgroundTaskInvalid)[UIApplication.sharedApplication endBackgroundTask:self.navigationBackgroundTask];[self.subtitleHUD stop:@"导航页面已销毁"];[self.teleHUD stop:@"导航页面已销毁"];[self.timer invalidate];[NSNotificationCenter.defaultCenter removeObserver:self];}
 - (void)refresh{if(!NSThread.isMainThread){dispatch_async(dispatch_get_main_queue(),^{[self refresh];});return;}NSDictionary *s=TIONavTransportStatus(),*tele=self.teleHUD.status;self.statusLabel.text=[NSString stringWithFormat:@"%@\n常亮：%@ · 已提交%@帧\n通知：%@\n连接／卡片：%@\nKey：%@ · SDK：%@",self.note?:@"",tele[@"note"],tele[@"frames"],s[@"noticeNote"],s[@"note"],ReadNavKey().length?@"已配置（有效性待实际算路）":@"未配置",
 #if TIO_AMAP_ENABLED
@@ -400,6 +407,8 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 // trigger prefix; bare "打开导航/开始导航" still opens the visible panel.
 static NSTimeInterval LastVoiceNavAt=0;
 static TIONavigationPanel *VoiceNavPanel=nil;
+// True when the headless voice panel owns a live navigation session.
+static BOOL VoiceNavPanelIsRunning(void){return VoiceNavPanel!=nil&&(VoiceNavPanel.active||VoiceNavPanel.planning);}
 // The voice flow is fully headless: no page is opened or presented. The panel
 // loads its view off-screen (which initializes the AMap SDK and location), runs
 // the search-plan-navigate pipeline, and the glasses HUD engages on its own.
@@ -441,8 +450,10 @@ void TIOVoiceNavMaybeStart(NSString *text){
         [VoiceNavPanel voiceStart:destination];
     });
 }
+// Opening the nav page does NOT stop a running voice session. The voice panel
+// is the navigation controller (AMapNavi delegate, TNV feed); this visible
+// panel is a viewer that reads state from the same shared managers. Closing
+// this page never stops voice-started navigation.
 UIViewController *TIONavigationController(void){
-    [VoiceNavPanel stopUser]; // Release any headless voice session before attaching a visible panel.
-    VoiceNavPanel=nil;
     return [TIONavigationPanel new];
 }
