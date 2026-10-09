@@ -5,3 +5,7 @@ UIViewController *TIONavigationController(void);
 // success feedback. Opt-out preference key: voiceNavDisabled (default: on).
 void TIOVoiceNavMaybeStart(NSString *text);
 void TIOVoiceNavStop(void);
+// Breadcrumb diagnostics for the headless voice pipeline (shown in 适配与回调).
+void TIOVoiceNavTrace(NSString *step);
+void TIOVoiceNavTraceReset(void);
+NSString *TIOVoiceNavTraceStatus(void);

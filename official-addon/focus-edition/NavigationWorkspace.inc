@@ -89,7 +89,8 @@
     self.backgroundLocationEnabled=!self.simulated&&[self navigationLocationModeAvailable]&&[self navigationLocationAuthorized];
     self.manager.allowsBackgroundLocationUpdates=self.backgroundLocationEnabled;
     self.manager.pausesLocationUpdatesAutomatically=!self.backgroundLocationEnabled;
-     BOOL ok=self.simulated?[self.manager startEmulatorNavi]:[self.manager startGPSNavi];if(!ok){[self fail:@"导航启动失败，可停止后重新规划"];return;}self.routeReady=NO;self.navigationStarted=YES;
+     BOOL ok=self.simulated?[self.manager startEmulatorNavi]:[self.manager startGPSNavi];if(!ok){[self fail:@"导航启动失败，可停止后重新规划"];if(self.voiceSession)TIOVoiceNavTrace(@"中止：SDK启动导航失败");return;}self.routeReady=NO;self.navigationStarted=YES;
+     if(self.voiceSession)TIOVoiceNavTrace(@"第4步：导航已开始，等待转向指引上眼镜");
 #if TIO_DISPLAY_PHONE
      self.autoNativeHUD=!self.simulated; // Realtime: the native HUD engages itself on first guidance.
 #endif

@@ -106,7 +106,6 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property MAPolyline *routeLine;
 #endif
 @end
-static BOOL VoiceNavPanelIsRunning(void); // Defined after @end with the trigger code; used by viewDidDisappear above.
 @implementation TIONavigationPanel
 - (UIButton *)button:(NSString *)title action:(SEL)action identifier:(NSString *)identifier{UIButton *b=[UIButton buttonWithType:UIButtonTypeSystem];b.configuration=[UIButtonConfiguration tintedButtonConfiguration];[b setTitle:title forState:UIControlStateNormal];b.accessibilityIdentifier=identifier;[b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];[self.stack addArrangedSubview:b];return b;}
 - (void)viewDidLoad{
@@ -136,9 +135,11 @@ static BOOL VoiceNavPanelIsRunning(void); // Defined after @end with the trigger
 - (void)viewDidDisappear:(BOOL)animated{
     [super viewDidDisappear:animated];self.pendingMapAction=nil;
     if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive&&!self.isMovingFromParentViewController&&!self.isBeingDismissed&&!self.navigationController.isBeingDismissed)return;
-    // A voice-started navigation (headless panel owns the AMapNavi delegate)
-    // survives this page closing. Only clean up UI; the engine keeps running.
-    if(VoiceNavPanelIsRunning()){[self.timer invalidate];self.timer=nil;return;}
+    // Navigation (voice-started or manual) survives this page closing: the
+    // shared panel is retained by TIONavigationController, so the timer keeps
+    // pumping the glasses HUD off-screen. Reopening the page reattaches to the
+    // same session and 结束导航 stops it.
+    if(self.active||self.planning){TIOVoiceNavTrace(@"导航页面已退出，导航继续后台运行");return;}
     [self stopUser];[self.timer invalidate];self.timer=nil;
 }
 - (void)dealloc{if(self.navigationBackgroundTask!=UIBackgroundTaskInvalid)[UIApplication.sharedApplication endBackgroundTask:self.navigationBackgroundTask];[self.subtitleHUD stop:@"导航页面已销毁"];[self.teleHUD stop:@"导航页面已销毁"];[self.timer invalidate];[NSNotificationCenter.defaultCenter removeObserver:self];}
@@ -234,8 +235,9 @@ static BOOL VoiceNavPanelIsRunning(void); // Defined after @end with the trigger
 }
 - (void)stopUser{[self halt];TIONavEnableNotices(NO);self.note=@"导航更新已停止并请求退出。字幕退出仍需镜片确认；未关闭时用实体按钮。不会自动重新开启。";self.routeSummary.text=@"导航已结束 · 可重新规划路线";self.display=TIONavDisplay(@"stopped",0,@"",-1,-1,-1,self.simulated);TIONavEnableDisplay(NO);[self refresh];}
 - (void)voiceDismiss{
-    [self stopUser];
-    [self dismissViewControllerAnimated:YES completion:nil]; // also stops the modal that presented us
+    // Exiting the page never stops a running session (the shared panel keeps
+    // feeding the glasses off-screen); 结束导航 or reopening the page stops it.
+    [self dismissViewControllerAnimated:YES completion:nil];
 }
 #pragma mark Voice entry ("导航去X" → full hands-free navigation)
 // Flow per product decision: pause our modules, turn all-day lifelog off
@@ -243,9 +245,9 @@ static BOOL VoiceNavPanelIsRunning(void); // Defined after @end with the trigger
 // (which auto-engages the glasses HUD). Lifelog toggle is deferred until the
 // real glasses-side control interface is identified (echo domain params).
 - (void)voiceStart:(NSString *)query{
-    if(self.active||self.planning){self.note=@"语音导航：已有导航进行中";[self refresh];return;}
+    if(self.active||self.planning){self.note=@"语音导航：已有导航进行中";TIOVoiceNavTrace(@"忽略：已有导航进行中");[self refresh];return;}
 #if TIO_AMAP_ENABLED
-    if(!ValidKey(ReadNavKey())){[self fail:@"语音导航不可用：尚未配置高德Key"] ;return;}
+    if(!ValidKey(ReadNavKey())){[self fail:@"语音导航不可用：尚未配置高德Key"];TIOVoiceNavTrace(@"中止：高德Key未配置");return;}
     self.voiceSession=YES;self.voiceQuery=[query copy];
     TMMusicPauseForVoice();TWReaderPauseForVoice();
     // Voice flow auto-consents: the user has already approved map privacy in
@@ -258,11 +260,11 @@ static BOOL VoiceNavPanelIsRunning(void); // Defined after @end with the trigger
     // must originate from a fresh fix, not an SDK fallback. Steps then run in
     // order: 定位 → 终点 → 规划 → 导航.
     CLAuthorizationStatus auth=self.permission.authorizationStatus;
-    if(auth==kCLAuthorizationStatusNotDetermined||auth==kCLAuthorizationStatusDenied||auth==kCLAuthorizationStatusRestricted){[self fail:@"语音实时导航需要定位授权：请在系统设置允许定位后重试"] ;return;}
+    if(auth==kCLAuthorizationStatusNotDetermined||auth==kCLAuthorizationStatusDenied||auth==kCLAuthorizationStatusRestricted){[self fail:@"语音实时导航需要定位授权：请在系统设置允许定位后重试"];TIOVoiceNavTrace(@"中止：定位未授权");return;}
     self.voiceLocating=YES;[self.permission startUpdatingLocation];
-    self.note=@"语音导航 第1步：正在定位当前位置（最多15秒）…";[self refresh];
+    self.note=@"语音导航 第1步：正在定位当前位置（最多15秒）…";TIOVoiceNavTrace(@"第1步：正在定位（最多15秒）");[self refresh];
     NSUInteger g=self.generation;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,15*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(g==self.generation&&self.voiceLocating){self.voiceLocating=NO;[self fail:@"15秒未获得可靠位置：到开阔处重试，或用页面按钮手动规划"];}});
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,15*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(g==self.generation&&self.voiceLocating){self.voiceLocating=NO;[self fail:@"15秒未获得可靠位置：到开阔处重试，或用页面按钮手动规划"];TIOVoiceNavTrace(@"中止：15秒未定位成功");}});
 #else
     [self alert:@"语音导航不可用" message:@"此构建未链接高德 SDK。"];
 #endif
@@ -272,22 +274,23 @@ static BOOL VoiceNavPanelIsRunning(void); // Defined after @end with the trigger
 - (void)voiceSearchDestination{
     if(!self.voiceSession||!self.voiceQuery.length)return;
     AMapPOIKeywordsSearchRequest *r=[AMapPOIKeywordsSearchRequest new];r.keywords=self.voiceQuery;r.offset=10;r.page=1;self.voiceRequest=r;
-    self.note=[NSString stringWithFormat:@"第2步：已定位。搜索目的地“%@”…",self.voiceQuery];[self refresh];
+    self.note=[NSString stringWithFormat:@”第2步：已定位。搜索目的地“%@”…”,self.voiceQuery];TIOVoiceNavTrace([NSString stringWithFormat:@”第2步：搜索「%@」”,self.voiceQuery]);[self refresh];
     [self.voiceSearch AMapPOIKeywordsSearch:r];
 }
 - (void)onPOISearchDone:(AMapPOISearchBaseRequest *)request response:(AMapPOISearchResponse *)response{
     dispatch_async(dispatch_get_main_queue(),^{
         if(request!=self.voiceRequest||!self.voiceSession)return;self.voiceRequest=nil;
         NSArray<AMapPOI *> *pois=response.pois;AMapPOI *first=nil;for(AMapPOI *poi in pois)if(poi.location){first=poi;break;}
-        if(!first){[self fail:[NSString stringWithFormat:@"语音没找到“%@”：请说更完整的名称，或手动搜索",self.voiceQuery?:@""] ] ;return;}
-        [self selectPlace:@{@"name":first.name?:@"目的地",@"address":[NSString stringWithFormat:@"%@ %@ %@",first.city?:@"",first.district?:@"",first.address?:@""],@"lat":@(first.location.latitude),@"lon":@(first.location.longitude)}];
+        if(!first){[self fail:[NSString stringWithFormat:@”语音没找到“%@”：请说更完整的名称，或手动搜索”,self.voiceQuery?:@””] ];TIOVoiceNavTrace(@”中止：搜索无结果”);return;}
+        TIOVoiceNavTrace([NSString stringWithFormat:@”第2步完成：选定「%@」，第3步算路”,first.name?:@””]);
+        [self selectPlace:@{@”name”:first.name?:@”目的地”,@”address”:[NSString stringWithFormat:@”%@ %@ %@”,first.city?:@””,first.district?:@””,first.address?:@””],@”lat”:@(first.location.latitude),@”lon”:@(first.location.longitude)}];
         self.travelMode.selectedSegmentIndex=1; // Position is already confirmed; plan now, auto-begin follows.
-        self.note=[NSString stringWithFormat:@"第2步：选定终点「%@」（搜索第一位）。第3步：规划实时路线…",first.name?:@""];
+        self.note=[NSString stringWithFormat:@”第2步：选定终点「%@」（搜索第一位）。第3步：规划实时路线…”,first.name?:@””];
         [self refresh];[self startWalking];
     });
 }
 - (void)AMapSearchRequest:(id)request didFailWithError:(NSError *)error{
-    dispatch_async(dispatch_get_main_queue(),^{if(request!=self.voiceRequest||!self.voiceSession)return;self.voiceRequest=nil;[self fail:[NSString stringWithFormat:@"语音搜索失败（code=%ld）：检查网络与Key搜索权限",(long)error.code] ] ;});
+    dispatch_async(dispatch_get_main_queue(),^{if(request!=self.voiceRequest||!self.voiceSession)return;self.voiceRequest=nil;[self fail:[NSString stringWithFormat:@”语音搜索失败（code=%ld）：检查网络与Key搜索权限”,(long)error.code] ];TIOVoiceNavTrace([NSString stringWithFormat:@”中止：搜索失败 code=%ld”,(long)error.code]);});
 }
 #endif
 #include "NavigationBackground.inc"
@@ -341,16 +344,18 @@ static BOOL VoiceNavPanelIsRunning(void); // Defined after @end with the trigger
     AMapNaviPoint *end=[AMapNaviPoint locationWithLatitude:self.destination.latitude longitude:self.destination.longitude];
     BOOL submitted=TIONavigationCalculate(manager,self.sessionTransport,sim,[AMapNaviPoint locationWithLatitude:self.simulationStart.latitude longitude:self.simulationStart.longitude],end);
     if(!sim)self.map.showsUserLocation=YES;
-    if(!submitted){[self fail:@"SDK 未接受算路请求，请核对 Key、网络和定位"] ;return;}
+    if(!submitted){[self fail:@"SDK 未接受算路请求，请核对 Key、网络和定位"];if(self.voiceSession)TIOVoiceNavTrace(@"中止：SDK未接受算路请求");return;}
+    if(self.voiceSession)TIOVoiceNavTrace(@"第3步：算路请求已提交，等待结果");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,45*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(self.generation==generation&&self.planning)[self fail:@"45 秒未收到算路结果；已停止，本次结果未知"] ;});
 }
 - (void)fail:(NSString *)message{[self halt];self.note=message;[self setFrame:TIONavDisplay(@"error",0,@"",-1,-1,-1,self.simulated)];}
 - (void)navigationRouteSuccess:(id<TIONavigationManager>)manager{dispatch_async(dispatch_get_main_queue(),^{if(manager!=self.manager||!self.active)return;BOOL first=self.planning;self.planning=NO;self.rerouting=NO;self.lastInfo=NSProcessInfo.processInfo.systemUptime;self.staleShown=NO;[self drawRoute:manager.naviRoute];if(first){self.routeReady=YES;self.note=@"路线已准备，核对地图后点击开始。尚未向眼镜发送导航。";self.routeSummary.text=[NSString stringWithFormat:@"%.1f 公里   ·   约 %ld 分钟",manager.naviRoute.routeLength/1000.0,(long)MAX(1,(manager.naviRoute.routeTime+59)/60)];self.display=TIONavDisplay(@"ready",0,@"",-1,manager.naviRoute.routeLength,manager.naviRoute.routeTime,self.simulated);
         if(self.voiceSession){ // Voice flow: no human at the screen; start as soon as the route exists.
+            TIOVoiceNavTrace(@"第3步完成：算路成功，1.2秒后自动开始导航");
             NSUInteger g=self.generation;dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{if(g==self.generation&&self.routeReady&&self.voiceSession)[self beginRoute];});
         }}else{self.note=@"已重新规划路线，请以手机指引为准；眼镜显示若已停止需手动开启。";}[self refresh];});}
-- (void)navigationManager:(id<TIONavigationManager>)manager onCalculateRouteFailure:(NSError *)error{dispatch_async(dispatch_get_main_queue(),^{if(manager==self.manager&&self.active)[self fail:[NSString stringWithFormat:@"高德算路失败（code=%ld），检查 Key 服务权限／Bundle 绑定、网络与路线",(long)error.code]];});}
-- (void)navigationManager:(id<TIONavigationManager>)manager error:(NSError *)error{dispatch_async(dispatch_get_main_queue(),^{if(manager==self.manager&&self.active)[self fail:[NSString stringWithFormat:@"高德引擎错误 code=%ld",(long)error.code]];});}
+- (void)navigationManager:(id<TIONavigationManager>)manager onCalculateRouteFailure:(NSError *)error{dispatch_async(dispatch_get_main_queue(),^{if(manager==self.manager&&self.active){[self fail:[NSString stringWithFormat:@"高德算路失败（code=%ld），检查 Key 服务权限／Bundle 绑定、网络与路线",(long)error.code]];if(self.voiceSession)TIOVoiceNavTrace([NSString stringWithFormat:@"中止：算路失败 code=%ld",(long)error.code]);}});}
+- (void)navigationManager:(id<TIONavigationManager>)manager error:(NSError *)error{dispatch_async(dispatch_get_main_queue(),^{if(manager==self.manager&&self.active){[self fail:[NSString stringWithFormat:@"高德引擎错误 code=%ld",(long)error.code]];if(self.voiceSession)TIOVoiceNavTrace([NSString stringWithFormat:@"中止：引擎错误 code=%ld",(long)error.code]);}});}
 - (void)navigationManager:(id<TIONavigationManager>)manager updateNaviInfo:(AMapNaviInfo *)info{
  if(!info)return;NSMutableDictionary *frame=[TIONavDisplay(@"navigating",info.iconType,info.nextRoadName,info.segmentRemainDistance,info.routeRemainDistance,info.routeRemainTime,self.simulated) mutableCopy];frame[@"segment"]=@(info.currentSegmentIndex);frame[@"remainingMeters"]=@(info.routeRemainDistance);frame[@"remainingSeconds"]=@(info.routeRemainTime);
  NSInteger segment=info.currentSegmentIndex,link=info.currentLinkIndex,point=info.currentPointIndex;
@@ -403,26 +408,25 @@ static BOOL VoiceNavPanelIsRunning(void); // Defined after @end with the trigger
 #include "NavigationDisplayHUD.inc"
 #include "NavigationWorkspace.inc"
 @end
-// Passive ASR keyword observer. Fires at most once per 8s; opt-out key
+// Passive NLP keyword observer. Fires at most once per 8s; opt-out key
 // voiceNavDisabled (default: enabled). Destinations 2-40 chars after the
-// trigger prefix; bare "打开导航/开始导航" still opens the visible panel.
+// trigger word.
 static NSTimeInterval LastVoiceNavAt=0;
-static TIONavigationPanel *VoiceNavPanel=nil;
-// True when the headless voice panel owns a live navigation session.
-static BOOL VoiceNavPanelIsRunning(void){return VoiceNavPanel!=nil&&(VoiceNavPanel.active||VoiceNavPanel.planning);}
+// Single shared panel: the visible research page and the headless voice flow
+// use the SAME instance. A running session therefore survives the page
+// closing (the static retains the panel, the timer keeps feeding the glasses)
+// and reopening the page reattaches to it, so 结束导航 always works.
+static TIONavigationPanel *SharedNavPanel=nil;
 // The voice flow is fully headless: no page is opened or presented. The panel
 // loads its view off-screen (which initializes the AMap SDK and location), runs
 // the search-plan-navigate pipeline, and the glasses HUD engages on its own.
 // The voice assistant's own chat UI stays untouched and dismisses normally.
-// Opening the nav page from the research shell later attaches to the SAME
-// shared AMapNavi managers, so the user can see and control the running route.
-void TIOVoiceNavStop(void){
-    [VoiceNavPanel stopUser];
-    VoiceNavPanel=nil;
-}
+// Every step appends to TIOVoiceNavTrace (shown in 适配与回调) so a silent
+// off-screen failure is still diagnosable.
+void TIOVoiceNavStop(void){[SharedNavPanel stopUser];}
 void TIOVoiceNavMaybeStart(NSString *text){
     if(![text isKindOfClass:NSString.class])return;
-    if([NSUserDefaults.standardUserDefaults boolForKey:@"voiceNavDisabled"])return;
+    if([NSUserDefaults.standardUserDefaults boolForKey:@"voiceNavDisabled"]){TIOVoiceNavTrace(@"忽略：语音导航开关已关闭（导航页-更多里可重新开启）");return;}
     NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
     if(now-LastVoiceNavAt<8)return;
     NSString *t=[text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
@@ -442,19 +446,24 @@ void TIOVoiceNavMaybeStart(NSString *text){
     }
     if(!destination)return;
     LastVoiceNavAt=now;
+    TIOVoiceNavTraceReset();
+    TIOVoiceNavTrace([NSString stringWithFormat:@"语音命中，终点「%@」",destination]);
     dispatch_async(dispatch_get_main_queue(),^{
-        if(VoiceNavPanel&&VoiceNavPanel.active)return; // Already navigating.
-        [VoiceNavPanel stopUser];
-        VoiceNavPanel=[TIONavigationPanel new];
-        [VoiceNavPanel view]; // Force viewDidLoad: initializes AMap SDK, map, and location.
-        [VoiceNavPanel viewWillAppear:NO]; // Force the 1s tick timer (lifecycle method never fires off-screen).
-        [VoiceNavPanel voiceStart:destination];
+        if(SharedNavPanel.active||SharedNavPanel.planning){TIOVoiceNavTrace(@"忽略：已有导航进行中");return;}
+        [SharedNavPanel stopUser];
+        SharedNavPanel=[TIONavigationPanel new];
+        [SharedNavPanel view]; // Force viewDidLoad: initializes AMap SDK, map, and location.
+        [SharedNavPanel viewWillAppear:NO]; // Force the 1s tick timer (lifecycle method never fires off-screen).
+        [SharedNavPanel voiceStart:destination];
+        TIOVoiceNavTrace(@"无头导航已启动：定位→搜索→算路→导航");
+        // No presentViewController. No UI. Glasses HUD appearing is the feedback.
     });
 }
-// Opening the nav page does NOT stop a running voice session. The voice panel
-// is the navigation controller (AMapNavi delegate, TNV feed); this visible
-// panel is a viewer that reads state from the same shared managers. Closing
-// this page never stops voice-started navigation.
+// Returns the SAME shared panel every time: opening the page during or after a
+// voice navigation reattaches to the live session (visible on the map, and
+// 结束导航 actually stops it). Closing the page never stops the session.
 UIViewController *TIONavigationController(void){
-    return [TIONavigationPanel new];
+    if(!SharedNavPanel)SharedNavPanel=[TIONavigationPanel new];
+    [SharedNavPanel viewWillAppear:NO]; // Panels created headless by the voice flow need the tick timer before first push.
+    return SharedNavPanel;
 }

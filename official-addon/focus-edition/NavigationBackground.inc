@@ -51,5 +51,6 @@
     if(loc.horizontalAccuracy<0||loc.horizontalAccuracy>200||fabs(loc.timestamp.timeIntervalSinceNow)>15)return;
     self.voiceLocating=NO;[self.permission stopUpdatingLocation];
     self.note=[NSString stringWithFormat:@"第1步完成：已确认当前位置（±%.0f米）。",loc.horizontalAccuracy];
+    TIOVoiceNavTrace([NSString stringWithFormat:@"第1步完成：已定位（±%.0f米）",loc.horizontalAccuracy]);
     [self refresh];[self voiceSearchDestination];
 }
