@@ -25,8 +25,17 @@
 - (void)nativeNavAlwaysChanged:(UISwitch *)sender{TNVSetAlways(sender.on);}
 - (void)refreshDisplayHUD{
  if(!self.tdpButton)return;NSDictionary *s=TDPPhoneNavigationStatus();BOOL on=[s[@"active"] boolValue];
- UIButtonConfiguration *c=self.tdpButton.configuration;c.title=on?@"停止并退出眼镜导航":@"开启眼镜原生导航";self.tdpButton.configuration=c;self.tdpButton.enabled=on||[self canStartDisplayHUD];
- self.tdpStatus.text=[NSString stringWithFormat:@"%@\n已确认 %@ 个快照 · %@\n路线示意图，不含路口实景或底图",s[@"note"],s[@"snapshots"]?:@0,TNVAlways()?@"常亮":@"60秒无更新息屏"];
+ BOOL can=[self canStartDisplayHUD];
+ UIButtonConfiguration *c=self.tdpButton.configuration;c.title=on?@"停止并退出眼镜导航":@"开启眼镜原生导航";self.tdpButton.configuration=c;self.tdpButton.enabled=on||can;
+ // The disabled state must explain itself. Realtime nav needs reliable GPS
+ // (Strong/SmartPos) before turn guidance exists; a dead gray button with no
+ // reason reads as a bug, which is exactly how this was reported.
+ NSString *hint=@"";
+ if(!on&&!can){
+  if(self.gpsWeak||[self.display[@"phase"] isEqual:@"weak"])hint=@"ⓘ GPS信号弱，暂不能开启：到户外开阔处，等定位增强、手机出现转向指引后此按钮自动恢复\n\n";
+  else if(self.active&&NSProcessInfo.processInfo.systemUptime-self.lastInfo>15)hint=@"ⓘ 等待手机转向指引出现后可开启\n\n";
+ }
+ self.tdpStatus.text=[hint stringByAppendingFormat:@"%@\n已确认 %@ 个快照 · %@\n路线示意图，不含路口实景或底图",s[@"note"],s[@"snapshots"]?:@0,TNVAlways()?@"常亮":@"60秒无更新息屏"];
  self.tdpPreview.hidden=YES; // Old pixel renderer is not an accurate TNV1 preview.
 }
 - (void)toggleDisplayHUD{
