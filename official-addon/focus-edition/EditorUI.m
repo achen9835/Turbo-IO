@@ -41,7 +41,7 @@ static UITextView *DraftText;
  if(TCEBusy()){[self refresh];return;}
  NSString *reason=nil;NSData *wire=TCEEncode(draft,&reason);
  if(!wire){[self alert:@"草稿未通过校验" message:reason?:@"未知错误，未发送"];return;}
- UIAlertController *a=[UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"发布「%@」？",draft[@"name"]] message:[NSString stringWithFormat:@"编码 %@ 字节（≤2 KiB）。先读基线，安装后回查并置顶；其他卡片保持不变。目标眼镜需已刷入含 TCE1/TAP1 运行时的实验固件。",(unsigned long)wire.length] preferredStyle:UIAlertControllerStyleAlert];
+ UIAlertController *a=[UIAlertController alertControllerWithTitle:[NSString stringWithFormat:@"发布「%@」？",draft[@"name"]] message:[NSString stringWithFormat:@"编码 %lu 字节（≤2 KiB）。先读基线，安装后回查并置顶；其他卡片保持不变。目标眼镜需已刷入含 TCE1/TAP1 运行时的实验固件。",(unsigned long)wire.length] preferredStyle:UIAlertControllerStyleAlert];
  [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
  [a addAction:[UIAlertAction actionWithTitle:@"确认发布" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){if(TCEBusy())return;TCEPublish(draft,top);[self refresh];}]];
  [self presentViewController:a animated:YES completion:nil];

@@ -77,10 +77,10 @@ UIImage *TCEBitmap(NSData *pixels,NSUInteger size){
  if(![pixels isKindOfClass:NSData.class]||pixels.length!=size*size/8||!size)return nil;
  uint8_t *gray=malloc(size*size);
  if(!gray)return nil;
- for(NSUInteger i=0;i<size*size;i++)gray[i]=(pixels.bytes[i/8]&(0x80>>(i%8)))?255:0;
+ for(NSUInteger i=0;i<size*size;i++)gray[i]=(((const uint8_t *)pixels.bytes)[i/8]&(0x80>>(i%8)))?255:0;
  CGColorSpaceRef space=CGColorSpaceCreateDeviceGray();
  CGDataProviderRef provider=CGDataProviderCreateWithData(NULL,gray,size*size,NULL);
- CGImageRef cg=CGImageCreate(size,size,8,8,size,space,kCGImageAlphaNone,provider,NULL,NO,kRenderingIntentDefault);
+ CGImageRef cg=CGImageCreate(size,size,8,8,size,space,kCGImageAlphaNone,provider,NULL,NO,kCGRenderingIntentDefault);
  UIImage *image=cg?[UIImage imageWithCGImage:cg]:nil;
  if(cg)CGImageRelease(cg);CGDataProviderRelease(provider);CGColorSpaceRelease(space);free(gray);
  return image;
@@ -88,7 +88,7 @@ UIImage *TCEBitmap(NSData *pixels,NSUInteger size){
 
 #pragma mark Draft -> TCE1 wire (port of the platform-independent Android encoder)
 
-static BOOL Fail(NSString **r,NSString *s){if(r)*r=s;return NO;}
+static NSData *Fail(NSString **r,NSString *s){if(r)*r=s;return nil;}
 static BOOL Int(id n,long lo,long hi,long *out){
  if(![n isKindOfClass:NSNumber.class]||CFGetTypeID((__bridge CFTypeRef)n)==CFBooleanGetTypeID())return NO;
  double v=[n doubleValue];if(!isfinite(v)||v<lo||v>hi||floor(v)!=v)return NO;*out=(long)v;return YES;
@@ -174,12 +174,12 @@ NSArray<NSString *> *TCETemplateNames(void){return @[@"资源与额度",@"双列
 BOOL TCESnapshot(id snapshot){
  if(![snapshot isKindOfClass:NSDictionary.class])return NO;
  id rows=snapshot[@"widgets_v2"];
- if(![rows isKindOfClass:NSArray.class]||rows.count>32)return NO;
+ if(![rows isKindOfClass:NSArray.class]||[rows count]>32)return NO;
  NSMutableSet *ids=[NSMutableSet new];
  for(id row in rows){
   if(![row isKindOfClass:NSDictionary.class])return NO;
   id identifier=row[@"id"],type=row[@"type"];
-  if(![identifier isKindOfClass:NSString.class]||identifier.length>128||![type isKindOfClass:NSString.class]||type.length>128||[ids containsObject:identifier])return NO;[ids addObject:identifier];
+  if(![identifier isKindOfClass:NSString.class]||[identifier length]>128||![type isKindOfClass:NSString.class]||[type length]>128||[ids containsObject:identifier])return NO;[ids addObject:identifier];
  }
  return YES;
 }

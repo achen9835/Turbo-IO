@@ -64,12 +64,12 @@ static NSDictionary *Config(NSDictionary *j){
  if([body isKindOfClass:NSString.class])body=[NSJSONSerialization JSONObjectWithData:[body dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
  if(![body isKindOfClass:NSDictionary.class])return nil;
  id rows=body[@"widgets_v2"];
- if(![rows isKindOfClass:NSArray.class]||rows.count>32)return nil;
+ if(![rows isKindOfClass:NSArray.class]||[rows count]>32)return nil;
  NSMutableSet *ids=[NSMutableSet new];
  for(id row in rows){
   if(![row isKindOfClass:NSDictionary.class])return nil;
   id identifier=row[@"id"],type=row[@"type"];
-  if(![identifier isKindOfClass:NSString.class]||identifier.length>128||![type isKindOfClass:NSString.class]||type.length>128||[ids containsObject:identifier])return nil;[ids addObject:identifier];
+  if(![identifier isKindOfClass:NSString.class]||[identifier length]>128||![type isKindOfClass:NSString.class]||[type length]>128||[ids containsObject:identifier])return nil;[ids addObject:identifier];
  }
  return body;
 }

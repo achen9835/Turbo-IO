@@ -29,7 +29,7 @@ NSString *TIONavSubtitleText(NSDictionary *f){
     NSString *text=TIONavSubtitleText(frame);if(_enabled||!text||!isfinite(now))return NO;
     BOOL realtime=TIONavSubtitleRealtime(frame);
     NSString *sid=realtime?TIOSubtitleRealtimeNavigationStart():TIOSubtitleNavigationStart();if(!sid){_note=realtime?@"未启动：实时导航需前台连接与空闲确认":@"未启动：需要预览/退出格式、空闲确认和前台连接";return NO;}
-    _sid=sid;_enabled=YES;_realtime=realtime;_latest=text;_latestAt=_began=now;_sent=nil;_frames=0;_lastSent=0;_note=realtime?@"等待实时字幕会话回执":"等待字幕临时会话成功回执";return YES;
+    _sid=sid;_enabled=YES;_realtime=realtime;_latest=text;_latestAt=_began=now;_sent=nil;_frames=0;_lastSent=0;_note=realtime?@"等待实时字幕会话回执":@"等待字幕临时会话成功回执";return YES;
 }
 - (void)offer:(NSDictionary *)frame at:(NSTimeInterval)now{
     if(!_enabled)return;NSString *text=TIONavSubtitleText(frame);
