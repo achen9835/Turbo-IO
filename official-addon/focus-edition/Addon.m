@@ -220,7 +220,10 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
     NSCharacterSet *allowed=[NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"];
     NSString *(^safe)(NSString *)=^NSString *(NSString *s){return s.length<64&&[s rangeOfCharacterFromSet:allowed.invertedSet].location==NSNotFound?s:@"(other)";};
     Diagnostic=[NSString stringWithFormat:@"NLP domain=%@ / intent=%@ / sub=%@ / offline=%d",safe(domain),safe(intent),safe(sub),offline];
+    // Surface the command name (device-control discovery: toggle lifelog, open app, etc.)
     id command=Get(response,@"command");
+    NSString *cmdName=String(Get(command,@"name"));
+    if(cmdName.length)Diagnostic=[Diagnostic stringByAppendingFormat:@" / cmd=%@",safe(cmdName)];
     if([_taskGate observeDomain:domain intent:intent command:String(Get(command,@"name")) params:Get(command,@"params") session:String(Get(response,@"sessionId")) expectedSession:_sid?:@"" sameListener:listener==_listener]){
         // Invalidate in-flight private deltas before forwarding the official
         // command. Keep subsequent acknowledgement and completion official too.
