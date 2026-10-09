@@ -417,9 +417,20 @@ void TIOVoiceNavMaybeStart(NSString *text){
     if(now-LastVoiceNavAt<8)return;
     NSString *t=[text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     while(t.length){unichar c=[t characterAtIndex:t.length-1];if(c==0x3002||c==0xFF01||c==0xFF1F||c==0xFF0C||c==','||c=='.'||c=='!'||c=='?')t=[t substringToIndex:t.length-1];else break;}
+    // Strip common speech prefixes so "帮我导航去X" and "请导航去X" also match.
+    for(NSString *pre in @[@"帮我",@"请你",@"请",@"给我",@"我要帮我"])if([t hasPrefix:pre]){t=[t substringFromIndex:pre.length];break;}
+    // Match if any trigger word appears anywhere in the utterance (not just prefix),
+    // then take everything after the trigger word as the destination.
     NSString *destination=nil;
-    for(NSString *p in @[@"导航到",@"导航去",@"导航至",@"带我去",@"我要去"])if([t hasPrefix:p]){NSString *d=[t substringFromIndex:p.length];if(d.length>=2&&d.length<=40)destination=d;break;}
-    if(!destination)return; // "打开导航" removed: headless mode has no page to open.
+    for(NSString *p in @[@"导航到",@"导航去",@"导航至",@"带我去",@"我要去"]){
+        NSRange r=[t rangeOfString:p];
+        if(r.location!=NSNotFound){
+            NSString *d=[t substringFromIndex:r.location+p.length];
+            d=[d stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+            if(d.length>=2&&d.length<=40){destination=d;break;}
+        }
+    }
+    if(!destination)return;
     LastVoiceNavAt=now;
     dispatch_async(dispatch_get_main_queue(),^{
         if(VoiceNavPanel&&VoiceNavPanel.active)return; // Already navigating.
@@ -428,8 +439,6 @@ void TIOVoiceNavMaybeStart(NSString *text){
         [VoiceNavPanel view]; // Force viewDidLoad: initializes AMap SDK, map, and location.
         [VoiceNavPanel viewWillAppear:NO]; // Force the 1s tick timer (lifecycle method never fires off-screen).
         [VoiceNavPanel voiceStart:destination];
-        // No presentViewController. No UI. The panel runs off-screen.
-        // Glasses HUD appearing is the success feedback to the user.
     });
 }
 UIViewController *TIONavigationController(void){

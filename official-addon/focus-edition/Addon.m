@@ -224,6 +224,10 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
     id command=Get(response,@"command");
     NSString *cmdName=String(Get(command,@"name"));
     if(cmdName.length)Diagnostic=[Diagnostic stringByAppendingFormat:@" / cmd=%@",safe(cmdName)];
+    // Voice nav debug: show the raw query text and length so we can see exactly
+    // what the NLP received (Chinese is safe here: it is the user's own speech).
+    NSString *nlpQuery=String(Get(response,@"query"));
+    if(nlpQuery.length)Diagnostic=[Diagnostic stringByAppendingFormat:@" / q=%@(%lu)",nlpQuery,(unsigned long)nlpQuery.length];
     id cmdParams=Get(command,@"params");
     if([cmdParams isKindOfClass:NSDictionary.class]){
         // Log keys and boolean/numeric values only; never text content.
