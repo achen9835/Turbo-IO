@@ -228,7 +228,7 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
     if([cmdParams isKindOfClass:NSDictionary.class]){
         // Log keys and boolean/numeric values only; never text content.
         NSMutableArray *parts=[NSMutableArray new];
-        for(NSString *k in [[cmdParams allKeys] sortedArrayUsingSelector:@selector(compare:)])]){
+        for(NSString *k in [cmdParams allKeys]){
             id v=cmdParams[k];
             if([v isKindOfClass:NSNumber.class]&&CFGetTypeID((__bridge CFTypeRef)v)==CFBooleanGetTypeID())
                 [parts addObject:[NSString stringWithFormat:@"%@=%@",safe(k),[v boolValue]?@"1":@"0"]];
