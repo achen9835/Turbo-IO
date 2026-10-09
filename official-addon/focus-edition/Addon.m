@@ -220,10 +220,25 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
     NSCharacterSet *allowed=[NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_.-"];
     NSString *(^safe)(NSString *)=^NSString *(NSString *s){return s.length<64&&[s rangeOfCharacterFromSet:allowed.invertedSet].location==NSNotFound?s:@"(other)";};
     Diagnostic=[NSString stringWithFormat:@"NLP domain=%@ / intent=%@ / sub=%@ / offline=%d",safe(domain),safe(intent),safe(sub),offline];
-    // Surface the command name (device-control discovery: toggle lifelog, open app, etc.)
+    // Surface the command name and params keys (device-control discovery).
     id command=Get(response,@"command");
     NSString *cmdName=String(Get(command,@"name"));
     if(cmdName.length)Diagnostic=[Diagnostic stringByAppendingFormat:@" / cmd=%@",safe(cmdName)];
+    id cmdParams=Get(command,@"params");
+    if([cmdParams isKindOfClass:NSDictionary.class]){
+        // Log keys and boolean/numeric values only; never text content.
+        NSMutableArray *parts=[NSMutableArray new];
+        for(NSString *k in [[cmdParams allKeys] sortedArrayUsingSelector:@selector(compare:)])]){
+            id v=cmdParams[k];
+            if([v isKindOfClass:NSNumber.class]&&CFGetTypeID((__bridge CFTypeRef)v)==CFBooleanGetTypeID())
+                [parts addObject:[NSString stringWithFormat:@"%@=%@",safe(k),[v boolValue]?@"1":@"0"]];
+            else if([v isKindOfClass:NSNumber.class])
+                [parts addObject:[NSString stringWithFormat:@"%@=%@",safe(k),v]];
+            else
+                [parts addObject:safe(k)];
+        }
+        if(parts.count)Diagnostic=[Diagnostic stringByAppendingFormat:@" / params=[%@]",[parts componentsJoinedByString:@" "]];
+    }
     if([_taskGate observeDomain:domain intent:intent command:String(Get(command,@"name")) params:Get(command,@"params") session:String(Get(response,@"sessionId")) expectedSession:_sid?:@"" sameListener:listener==_listener]){
         // Invalidate in-flight private deltas before forwarding the official
         // command. Keep subsequent acknowledgement and completion official too.
