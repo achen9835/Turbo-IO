@@ -62,5 +62,6 @@ def prepare(source, destination):
     return result
 
 
-if __name__ == "__main__":
-    print(json.dumps(prepare(sys.argv[1], sys.argv[2]), indent=2))
+# No standalone CLI entry: these tools are library-only (models.py drives the
+# documented flow with constructed, validated paths). Ad-hoc use:
+#   python -c "from prepare_hymt_model import prepare; print(prepare(src, dst))"

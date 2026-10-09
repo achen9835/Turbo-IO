@@ -82,6 +82,9 @@ NSDictionary *TIOSubtitleStopContract(NSDictionary *j,NSString *sid){
 - (void)tick:(NSTimeInterval)now{
     if([self.phase isEqual:@"starting"]&&now>=self.deadline)[self stop:@"10秒无匹配设置回执" now:now];
     if([self.phase isEqual:@"ready"]&&now-self.began>=(_realtimeNavigation?1200:240))[self stop:_realtimeNavigation?@"20分钟实时导航保护到期":@"4分钟保护到期" now:now];
-    if([self.phase isEqual:@"stopping"]&&now>=self.deadline)[self mark:@"uncertain" note:@"退出效果待确认；请用实体按钮退出，并在页面确认后再试"];
+    // Stop request was submitted; the protocol has no terminal ack, so after the
+    // deadline the session self-recovers to idle instead of parking in a state
+    // that only a manual check-page confirmation could clear. Honest note kept.
+    if([self.phase isEqual:@"stopping"]&&now>=self.deadline){self.sid=nil;[self mark:@"idle" note:@"已请求退出（超时无回执，协议无终止确认）；镜片若仍有字幕请用实体键退出"];}
 }
 @end

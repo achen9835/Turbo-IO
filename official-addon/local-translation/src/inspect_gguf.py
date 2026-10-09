@@ -66,5 +66,6 @@ def inspect(path):
         return dict(file=pathlib.Path(path).name, metadata=metadata, metadata_offsets=metadata_offsets, data_start=data_start, tensor_types=dict(collections.Counter(r["type"] for r in rows)), tensors=rows)
 
 
-if __name__ == "__main__":
-    print(json.dumps(inspect(sys.argv[1]), ensure_ascii=False, indent=2))
+# No standalone CLI entry: these tools are library-only (models.py drives the
+# documented flow with constructed, validated paths). Ad-hoc inspection:
+#   python -c "from inspect_gguf import inspect; print(inspect('model.gguf'))"
