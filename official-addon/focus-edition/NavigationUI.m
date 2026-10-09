@@ -407,8 +407,19 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @end
 // Passive ASR keyword observer. Fires at most once per 8s; opt-out key
 // voiceNavDisabled (default: enabled). Destinations 2-40 chars after the
-// trigger prefix; bare "打开导航/开始导航" opens the panel without a query.
+// trigger prefix; bare "打开导航/开始导航" still opens the visible panel.
 static NSTimeInterval LastVoiceNavAt=0;
+static TIONavigationPanel *VoiceNavPanel=nil;
+// The voice flow is fully headless: no page is opened or presented. The panel
+// loads its view off-screen (which initializes the AMap SDK and location), runs
+// the search-plan-navigate pipeline, and the glasses HUD engages on its own.
+// The voice assistant's own chat UI stays untouched and dismisses normally.
+// Opening the nav page from the research shell later attaches to the SAME
+// shared AMapNavi managers, so the user can see and control the running route.
+void TIOVoiceNavStop(void){
+    [VoiceNavPanel stopUser];
+    VoiceNavPanel=nil;
+}
 void TIOVoiceNavMaybeStart(NSString *text){
     if(![text isKindOfClass:NSString.class])return;
     if([NSUserDefaults.standardUserDefaults boolForKey:@"voiceNavDisabled"])return;
@@ -418,18 +429,20 @@ void TIOVoiceNavMaybeStart(NSString *text){
     while(t.length){unichar c=[t characterAtIndex:t.length-1];if(c==0x3002||c==0xFF01||c==0xFF1F||c==0xFF0C||c==','||c=='.'||c=='!'||c=='?')t=[t substringToIndex:t.length-1];else break;}
     NSString *destination=nil;
     for(NSString *p in @[@"导航到",@"导航去",@"导航至",@"带我去",@"我要去"])if([t hasPrefix:p]){NSString *d=[t substringFromIndex:p.length];if(d.length>=2&&d.length<=40)destination=d;break;}
-    if(!destination&&([t hasPrefix:@"打开导航"]||[t hasPrefix:@"开始导航"]))destination=@"";
-    if(!destination)return;
+    if(!destination)return; // "打开导航" removed: headless mode has no page to open.
     LastVoiceNavAt=now;
     dispatch_async(dispatch_get_main_queue(),^{
-        UIWindow *w=nil;for(UIWindowScene *s in UIApplication.sharedApplication.connectedScenes)if(s.activationState==UISceneActivationStateForegroundActive)for(UIWindow *win in s.windows)if(win.isKeyWindow)w=win;
-        UIViewController *top=w.rootViewController;if(!top)return;
-        while(top.presentedViewController&&!top.presentedViewController.isBeingDismissed)top=top.presentedViewController;
-        for(UIViewController *v in top.navigationController?(top.navigationController.viewControllers):@[])if([NSStringFromClass(v.class) containsString:@"Navigation"]){top=v;break;}
-        TIONavigationPanel *panel=[TIONavigationPanel new];
-        UINavigationController *nav=[[UINavigationController alloc]initWithRootViewController:panel];
-        nav.modalPresentationStyle=UIModalPresentationFullScreen;
-        [top presentViewController:nav animated:YES completion:^{[panel voiceStart:destination];}];
+        if(VoiceNavPanel&&VoiceNavPanel.active)return; // Already navigating.
+        [VoiceNavPanel stopUser];
+        VoiceNavPanel=[TIONavigationPanel new];
+        [VoiceNavPanel view]; // Force viewDidLoad: initializes AMap SDK, map, and location.
+        [VoiceNavPanel voiceStart:destination];
+        // No presentViewController. No UI. The panel runs off-screen.
+        // Glasses HUD appearing is the success feedback to the user.
     });
 }
-UIViewController *TIONavigationController(void){return [TIONavigationPanel new];}
+UIViewController *TIONavigationController(void){
+    [VoiceNavPanel stopUser]; // Release any headless voice session before attaching a visible panel.
+    VoiceNavPanel=nil;
+    return [TIONavigationPanel new];
+}
