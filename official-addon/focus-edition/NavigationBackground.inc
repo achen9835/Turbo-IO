@@ -43,3 +43,13 @@
         [self stopUser];self.note=@"定位权限已撤销，导航及本会话后台定位已停止。";[self refresh];
     }
 }
+// Voice headless flow: CLLocationManager delivers the fix directly; MAMapView's
+// didUpdateUserLocation is unreliable when the view is not in any window.
+- (void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray<CLLocation *> *)locations{
+    if(manager!=self.permission||!self.voiceLocating)return;
+    CLLocation *loc=[locations lastObject];if(!loc)return;
+    if(loc.horizontalAccuracy<0||loc.horizontalAccuracy>200||fabs(loc.timestamp.timeIntervalSinceNow)>15)return;
+    self.voiceLocating=NO;[self.permission stopUpdatingLocation];
+    self.note=[NSString stringWithFormat:@"第1步完成：已确认当前位置（±%.0f米）。",loc.horizontalAccuracy];
+    [self refresh];[self voiceSearchDestination];
+}

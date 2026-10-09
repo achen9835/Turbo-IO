@@ -261,7 +261,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     // order: 定位 → 终点 → 规划 → 导航.
     CLAuthorizationStatus auth=self.permission.authorizationStatus;
     if(auth==kCLAuthorizationStatusNotDetermined||auth==kCLAuthorizationStatusDenied||auth==kCLAuthorizationStatusRestricted){[self fail:@"语音实时导航需要定位授权：请在系统设置允许定位后重试"] ;return;}
-    self.voiceLocating=YES;self.map.showsUserLocation=YES;
+    self.voiceLocating=YES;[self.permission startUpdatingLocation];
     self.note=@"语音导航 第1步：正在定位当前位置（最多15秒）…";[self refresh];
     NSUInteger g=self.generation;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,15*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(g==self.generation&&self.voiceLocating){self.voiceLocating=NO;[self fail:@"15秒未获得可靠位置：到开阔处重试，或用页面按钮手动规划"];}});
@@ -436,6 +436,7 @@ void TIOVoiceNavMaybeStart(NSString *text){
         [VoiceNavPanel stopUser];
         VoiceNavPanel=[TIONavigationPanel new];
         [VoiceNavPanel view]; // Force viewDidLoad: initializes AMap SDK, map, and location.
+        [VoiceNavPanel viewWillAppear:NO]; // Force the 1s tick timer (lifecycle method never fires off-screen).
         [VoiceNavPanel voiceStart:destination];
         // No presentViewController. No UI. The panel runs off-screen.
         // Glasses HUD appearing is the success feedback to the user.
