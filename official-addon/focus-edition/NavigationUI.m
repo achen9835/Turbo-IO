@@ -254,31 +254,38 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     }
     if(![NSUserDefaults.standardUserDefaults boolForKey:NavConsent]){[self alert:@"语音导航需要先同意一次地图隐私" message:@"请在页面上点击“开启地图”完成一次同意，之后语音即可全程免手。"] ;self.voiceSession=NO;return;}
     [self openMap];
-    if(!query.length){self.note=@"语音已打开导航；说出“导航去+地点”即可免手开始。";[self refresh];return;}
+    if(!query.length){self.note=@”语音已打开导航；说出“导航去+地点”即可免手开始。”;[self refresh];return;}
     if(!self.voiceSearch){[AMapSearchAPI updatePrivacyShow:AMapPrivacyShowStatusDidShow privacyInfo:AMapPrivacyInfoStatusDidContain];[AMapSearchAPI updatePrivacyAgree:AMapPrivacyAgreeStatusDidAgree];self.voiceSearch=[AMapSearchAPI new];self.voiceSearch.delegate=self;self.voiceSearch.timeout=18;}
-    AMapPOIKeywordsSearchRequest *r=[AMapPOIKeywordsSearchRequest new];r.keywords=query;r.offset=10;r.page=1;self.voiceRequest=r;
-    self.note=[NSString stringWithFormat:@"语音搜索“%@”中…",query];[self refresh];[self.voiceSearch AMapPOIKeywordsSearch:r];
+    // Step 1: confirm the current position BEFORE anything else -- the route
+    // must originate from a fresh fix, not an SDK fallback. Steps then run in
+    // order: 定位 → 终点 → 规划 → 导航.
+    CLAuthorizationStatus auth=self.permission.authorizationStatus;
+    if(auth==kCLAuthorizationStatusNotDetermined||auth==kCLAuthorizationStatusDenied||auth==kCLAuthorizationStatusRestricted){[self fail:@”语音实时导航需要定位授权：请在系统设置允许定位后重试”] ;return;}
+    self.voiceLocating=YES;self.map.showsUserLocation=YES;
+    self.note=@”语音导航 第1步：正在定位当前位置（最多15秒）…”;[self refresh];
+    NSUInteger g=self.generation;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,15*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(g==self.generation&&self.voiceLocating){self.voiceLocating=NO;[self fail:@”15秒未获得可靠位置：到开阔处重试，或用页面按钮手动规划”];}});
 #else
     [self alert:@"语音导航不可用" message:@"此构建未链接高德 SDK。"];
 #endif
 }
 #if TIO_AMAP_ENABLED
+// Step 2 (after the position fix): search the spoken destination.
+- (void)voiceSearchDestination{
+    if(!self.voiceSession||!self.voiceQuery.length)return;
+    AMapPOIKeywordsSearchRequest *r=[AMapPOIKeywordsSearchRequest new];r.keywords=self.voiceQuery;r.offset=10;r.page=1;self.voiceRequest=r;
+    self.note=[NSString stringWithFormat:@"第2步：已定位。搜索目的地“%@”…",self.voiceQuery];[self refresh];
+    [self.voiceSearch AMapPOIKeywordsSearch:r];
+}
 - (void)onPOISearchDone:(AMapPOISearchBaseRequest *)request response:(AMapPOISearchResponse *)response{
     dispatch_async(dispatch_get_main_queue(),^{
         if(request!=self.voiceRequest||!self.voiceSession)return;self.voiceRequest=nil;
         NSArray<AMapPOI *> *pois=response.pois;AMapPOI *first=nil;for(AMapPOI *poi in pois)if(poi.location){first=poi;break;}
         if(!first){[self fail:[NSString stringWithFormat:@"语音没找到“%@”：请说更完整的名称，或手动搜索",self.voiceQuery?:@""] ] ;return;}
         [self selectPlace:@{@"name":first.name?:@"目的地",@"address":[NSString stringWithFormat:@"%@ %@ %@",first.city?:@"",first.district?:@"",first.address?:@""],@"lat":@(first.location.latitude),@"lon":@(first.location.longitude)}];
-        self.travelMode.selectedSegmentIndex=1; // Realtime; the native HUD engages itself once guidance exists.
-        // Realtime routes plan FROM the phone's real position. Confirm a fresh fix
-        // first instead of letting the SDK fall back to a stale/default origin.
-        CLAuthorizationStatus auth=self.permission.authorizationStatus;
-        if(auth==kCLAuthorizationStatusNotDetermined||auth==kCLAuthorizationStatusDenied||auth==kCLAuthorizationStatusRestricted){[self fail:@"语音实时导航需要定位授权：请在系统设置允许定位后重试，或用“导航去”前的手动流程"] ;return;}
-        self.voiceLocating=YES;self.map.showsUserLocation=YES;
-        self.note=[NSString stringWithFormat:@"语音选择：%@（搜索第一位）。正在确认当前位置，随后自动规划实时路线…",first.name?:@""];
-        [self refresh];
-        NSUInteger g=self.generation;
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,15*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(g==self.generation&&self.voiceLocating){self.voiceLocating=NO;[self fail:@"15秒未获得可靠位置：到开阔处或直接点页面上的“规划路线”"];}});
+        self.travelMode.selectedSegmentIndex=1; // Position is already confirmed; plan now, auto-begin follows.
+        self.note=[NSString stringWithFormat:@"第2步：选定终点「%@」（搜索第一位）。第3步：规划实时路线…",first.name?:@""];
+        [self refresh];[self startWalking];
     });
 }
 - (void)AMapSearchRequest:(id)request didFailWithError:(NSError *)error{
