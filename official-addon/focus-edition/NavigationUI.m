@@ -210,10 +210,6 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 - (void)enableNotices{if([self subtitleBlocksOtherDisplay])return;[self.teleHUD stop:@"切换到自动通知"];TIONavEnableNotices(YES);TIONavOfferDisplay(self.display);TIONavPump();[self refresh];[self.scroll setContentOffset:CGPointZero animated:YES];}
 - (void)enableGlasses{if([self subtitleBlocksOtherDisplay])return;UIAlertController *a=[UIAlertController alertControllerWithTitle:@"新增／更新专用导航卡？" message:@"只修改本扩展拥有的导航卡，不覆盖天气与待办。整卡连续更新仍需镜片验收。请先用模拟导航测试。" preferredStyle:UIAlertControllerStyleAlert];[a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[a addAction:[UIAlertAction actionWithTitle:@"启用" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){if([self subtitleBlocksOtherDisplay])return;[self.teleHUD stop:@"切换到仪表盘导航卡"];TIONavEnableDisplay(YES);TIONavOfferDisplay(self.display);TIONavPump();[self refresh];}]];[self presentViewController:a animated:YES completion:nil];}
 - (void)halt{
-    if(self.voiceLifelogWasOn){ // Voice flow owns the lifelog it paused; restore or surface honestly.
-        if(TIOAOSetAudioSaving(YES))self.note=@"全天智记录音已恢复";
-        else self.note=@"智记录音恢复未确认：请到官方页核对并重新开启";
-    }
     self.voiceLifelogWasOn=NO;self.voiceSession=NO;self.voiceLocating=NO;
     self.navigationStarted=NO;self.autoNativeHUD=NO;self.backgroundLocationEnabled=NO;[self endNavigationBackgroundTask];
 #if TIO_DISPLAY_PHONE
@@ -236,21 +232,14 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 #pragma mark Voice entry ("导航去X" → full hands-free navigation)
 // Flow per product decision: pause our modules, turn all-day lifelog off
 // (remembering it was on), search the destination, plan realtime, auto-begin
-// (which auto-engages the glasses HUD); arrival/stop restores the lifelog.
+// (which auto-engages the glasses HUD). Lifelog toggle is deferred until the
+// real glasses-side control interface is identified (echo domain params).
 - (void)voiceStart:(NSString *)query{
-    if(self.active||self.planning){self.note=@"语音导航：已有导航进行中，忽略新的语音指令";[self refresh];return;}
+    if(self.active||self.planning){self.note=@"语音导航：已有导航进行中";[self refresh];return;}
 #if TIO_AMAP_ENABLED
-    if(!ValidKey(ReadNavKey())){[self alert:@"语音导航不可用" message:@"尚未配置高德 Key；请在右上角更多里设置后再试。"] ;return;}
+    if(!ValidKey(ReadNavKey())){[self fail:@"语音导航不可用：尚未配置高德Key"] ;return;}
     self.voiceSession=YES;self.voiceQuery=[query copy];
     TMMusicPauseForVoice();TWReaderPauseForVoice();
-    NSDictionary *ao=TIOAOStatus();
-    BOOL lifelogOn=[ao isKindOfClass:NSDictionary.class]&&[ao[@”dumpEnabled”] boolValue];
-    if(lifelogOn){
-        BOOL off=TIOAOSetAudioSaving(NO);
-        NSDictionary *after=TIOAOStatus();
-        self.voiceLifelogWasOn=off&&[after isKindOfClass:NSDictionary.class]&&![after[@”dumpEnabled”] boolValue];
-        if(!self.voiceLifelogWasOn)self.note=@”智记关闭未生效（该接口可能不控制眼镜端智记）；导航继续，结束后不做自动恢复”;
-    }
     // Voice flow auto-consents: the user has already approved map privacy in
     // the visible nav page; a headless panel cannot present a consent dialog.
     [NSUserDefaults.standardUserDefaults setBool:YES forKey:NavConsent];
