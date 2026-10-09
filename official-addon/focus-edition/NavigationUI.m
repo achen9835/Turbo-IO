@@ -10,6 +10,9 @@
 #import "NewsTeleprompter.h"
 #import "NavigationPlaces.h"
 #import "NavigationBackground.h"
+#import "MusicPlayer.h"
+#import "ReaderUI.h"
+#import "AlwaysOnAudio.h"
 #if TIO_DISPLAY_PHONE
 #import "DisplayPhoneUI.h"
 #import "NativeNavigationUI.h"
@@ -22,6 +25,7 @@
 #import <AMapNaviKit/AMapNaviKit.h>
 #import <AMapNaviKit/MAMapKit.h>
 #import <AMapFoundationKit/AMapFoundationKit.h>
+#import <AMapSearchKit/AMapSearchKit.h>
 #endif
 
 static NSString *const NavConsent=@"io.turboio.navigation.privacy.v1";
@@ -33,7 +37,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 
 @interface TIONavigationPanel:UIViewController<CLLocationManagerDelegate
 #if TIO_AMAP_ENABLED
-,MAMapViewDelegate,AMapNaviWalkManagerDelegate,AMapNaviWalkDataRepresentable,AMapNaviRideManagerDelegate,AMapNaviRideDataRepresentable,AMapNaviDriveManagerDelegate,AMapNaviDriveDataRepresentable
+,MAMapViewDelegate,AMapSearchDelegate,AMapNaviWalkManagerDelegate,AMapNaviWalkDataRepresentable,AMapNaviRideManagerDelegate,AMapNaviRideDataRepresentable,AMapNaviDriveManagerDelegate,AMapNaviDriveDataRepresentable
 #endif
 >
 @property UILabel *statusLabel,*hudLabel,*destinationLabel;
@@ -70,6 +74,12 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property NSInteger selectedTransport,sessionTransport;
 @property BOOL routeReady,locating;
 @property BOOL navigationStarted,backgroundLocationEnabled;
+@property BOOL voiceSession,voiceLifelogWasOn;
+#if TIO_AMAP_ENABLED
+@property AMapSearchAPI *voiceSearch;
+@property AMapPOIKeywordsSearchRequest *voiceRequest;
+#endif
+@property NSString *voiceQuery;
 @property UIBackgroundTaskIdentifier navigationBackgroundTask;
 @property NSUInteger backgroundEpoch;
 @property NSString *destinationName;
@@ -194,6 +204,11 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 - (void)enableNotices{if([self subtitleBlocksOtherDisplay])return;[self.teleHUD stop:@"切换到自动通知"];TIONavEnableNotices(YES);TIONavOfferDisplay(self.display);TIONavPump();[self refresh];[self.scroll setContentOffset:CGPointZero animated:YES];}
 - (void)enableGlasses{if([self subtitleBlocksOtherDisplay])return;UIAlertController *a=[UIAlertController alertControllerWithTitle:@"新增／更新专用导航卡？" message:@"只修改本扩展拥有的导航卡，不覆盖天气与待办。整卡连续更新仍需镜片验收。请先用模拟导航测试。" preferredStyle:UIAlertControllerStyleAlert];[a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[a addAction:[UIAlertAction actionWithTitle:@"启用" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){if([self subtitleBlocksOtherDisplay])return;[self.teleHUD stop:@"切换到仪表盘导航卡"];TIONavEnableDisplay(YES);TIONavOfferDisplay(self.display);TIONavPump();[self refresh];}]];[self presentViewController:a animated:YES completion:nil];}
 - (void)halt{
+    if(self.voiceLifelogWasOn){ // Voice flow owns the lifelog it paused; restore or surface honestly.
+        if(TIOAOSetAudioSaving(YES))self.note=@"全天智记录音已恢复";
+        else self.note=@"智记录音恢复未确认：请到官方页核对并重新开启";
+    }
+    self.voiceLifelogWasOn=NO;self.voiceSession=NO;
     self.navigationStarted=NO;self.autoNativeHUD=NO;self.backgroundLocationEnabled=NO;[self endNavigationBackgroundTask];
 #if TIO_DISPLAY_PHONE
     TDPPhoneNavigationStop();self.hudIconPixels=nil;self.hudIconType=0;self.crossPixels=nil;
@@ -208,6 +223,45 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 #endif
 }
 - (void)stopUser{[self halt];TIONavEnableNotices(NO);self.note=@"导航更新已停止并请求退出。字幕退出仍需镜片确认；未关闭时用实体按钮。不会自动重新开启。";self.routeSummary.text=@"导航已结束 · 可重新规划路线";self.display=TIONavDisplay(@"stopped",0,@"",-1,-1,-1,self.simulated);TIONavEnableDisplay(NO);[self refresh];}
+#pragma mark Voice entry ("导航去X" → full hands-free navigation)
+// Flow per product decision: pause our modules, turn all-day lifelog off
+// (remembering it was on), search the destination, plan realtime, auto-begin
+// (which auto-engages the glasses HUD); arrival/stop restores the lifelog.
+- (void)voiceStart:(NSString *)query{
+    if(self.active||self.planning){self.note=@"语音导航：已有导航进行中，忽略新的语音指令";[self refresh];return;}
+#if TIO_AMAP_ENABLED
+    if(!ValidKey(ReadNavKey())){[self alert:@"语音导航不可用" message:@"尚未配置高德 Key；请在右上角更多里设置后再试。"] ;return;}
+    self.voiceSession=YES;self.voiceQuery=[query copy];
+    TMMusicPauseForVoice();TWReaderPauseForVoice();
+    NSDictionary *ao=TIOAOStatus();
+    self.voiceLifelogWasOn=[ao isKindOfClass:NSDictionary.class]&&[ao[@"dumpEnabled"] boolValue];
+    if(self.voiceLifelogWasOn&&!TIOAOSetAudioSaving(NO))self.note=@"智记录音关闭未确认，继续语音导航";
+    if(![NSUserDefaults.standardUserDefaults boolForKey:NavConsent]){[self alert:@"语音导航需要先同意一次地图隐私" message:@"请在页面上点击“开启地图”完成一次同意，之后语音即可全程免手。"] ;self.voiceSession=NO;return;}
+    [self openMap];
+    if(!query.length){self.note=@"语音已打开导航；说出“导航去+地点”即可免手开始。";[self refresh];return;}
+    if(!self.voiceSearch){[AMapSearchAPI updatePrivacyShow:AMapPrivacyShowStatusDidShow privacyInfo:AMapPrivacyInfoStatusDidContain];[AMapSearchAPI updatePrivacyAgree:AMapPrivacyAgreeStatusDidAgree];self.voiceSearch=[AMapSearchAPI new];self.voiceSearch.delegate=self;self.voiceSearch.timeout=18;}
+    AMapPOIKeywordsSearchRequest *r=[AMapPOIKeywordsSearchRequest new];r.keywords=query;r.offset=10;r.page=1;self.voiceRequest=r;
+    self.note=[NSString stringWithFormat:@"语音搜索“%@”中…",query];[self refresh];[self.voiceSearch AMapPOIKeywordsSearch:r];
+#else
+    [self alert:@"语音导航不可用" message:@"此构建未链接高德 SDK。"];
+#endif
+}
+#if TIO_AMAP_ENABLED
+- (void)onPOISearchDone:(AMapPOISearchBaseRequest *)request response:(AMapPOISearchResponse *)response{
+    dispatch_async(dispatch_get_main_queue(),^{
+        if(request!=self.voiceRequest||!self.voiceSession)return;self.voiceRequest=nil;
+        NSArray<AMapPOI *> *pois=response.pois;AMapPOI *first=nil;for(AMapPOI *poi in pois)if(poi.location){first=poi;break;}
+        if(!first){[self fail:[NSString stringWithFormat:@"语音没找到“%@”：请说更完整的名称，或手动搜索",self.voiceQuery?:@""] ] ;return;}
+        [self selectPlace:@{@"name":first.name?:@"目的地",@"address":[NSString stringWithFormat:@"%@ %@ %@",first.city?:@"",first.district?:@"",first.address?:@""],@"lat":@(first.location.latitude),@"lon":@(first.location.longitude)}];
+        self.travelMode.selectedSegmentIndex=1; // Realtime; the native HUD engages itself once guidance exists.
+        self.note=[NSString stringWithFormat:@"语音选择：%@（搜索第一位）；正在规划实时路线",first.name?:@""];
+        [self refresh];[self startWalking];
+    });
+}
+- (void)AMapSearchRequest:(id)request didFailWithError:(NSError *)error{
+    dispatch_async(dispatch_get_main_queue(),^{if(request!=self.voiceRequest||!self.voiceSession)return;self.voiceRequest=nil;[self fail:[NSString stringWithFormat:@"语音搜索失败（code=%ld）：检查网络与Key搜索权限",(long)error.code] ] ;});
+}
+#endif
 #include "NavigationBackground.inc"
 - (void)startFixture{[self halt];self.active=YES;self.fixture=YES;self.simulated=YES;self.fixtureStep=0;self.note=@"离线夹具：模拟转向顺序，不使用 Key、网络或定位";[self setFrame:TIONavDisplay(@"navigating",9,@"模拟测试道路",160,850,720,YES)];}
 - (void)startWalking{
@@ -263,7 +317,10 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,45*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(self.generation==generation&&self.planning)[self fail:@"45 秒未收到算路结果；已停止，本次结果未知"] ;});
 }
 - (void)fail:(NSString *)message{[self halt];self.note=message;[self setFrame:TIONavDisplay(@"error",0,@"",-1,-1,-1,self.simulated)];}
-- (void)navigationRouteSuccess:(id<TIONavigationManager>)manager{dispatch_async(dispatch_get_main_queue(),^{if(manager!=self.manager||!self.active)return;BOOL first=self.planning;self.planning=NO;self.rerouting=NO;self.lastInfo=NSProcessInfo.processInfo.systemUptime;self.staleShown=NO;[self drawRoute:manager.naviRoute];if(first){self.routeReady=YES;self.note=@"路线已准备，核对地图后点击开始。尚未向眼镜发送导航。";self.routeSummary.text=[NSString stringWithFormat:@"%.1f 公里   ·   约 %ld 分钟",manager.naviRoute.routeLength/1000.0,(long)MAX(1,(manager.naviRoute.routeTime+59)/60)];self.display=TIONavDisplay(@"ready",0,@"",-1,manager.naviRoute.routeLength,manager.naviRoute.routeTime,self.simulated);}else{self.note=@"已重新规划路线，请以手机指引为准；眼镜显示若已停止需手动开启。";}[self refresh];});}
+- (void)navigationRouteSuccess:(id<TIONavigationManager>)manager{dispatch_async(dispatch_get_main_queue(),^{if(manager!=self.manager||!self.active)return;BOOL first=self.planning;self.planning=NO;self.rerouting=NO;self.lastInfo=NSProcessInfo.processInfo.systemUptime;self.staleShown=NO;[self drawRoute:manager.naviRoute];if(first){self.routeReady=YES;self.note=@"路线已准备，核对地图后点击开始。尚未向眼镜发送导航。";self.routeSummary.text=[NSString stringWithFormat:@"%.1f 公里   ·   约 %ld 分钟",manager.naviRoute.routeLength/1000.0,(long)MAX(1,(manager.naviRoute.routeTime+59)/60)];self.display=TIONavDisplay(@"ready",0,@"",-1,manager.naviRoute.routeLength,manager.naviRoute.routeTime,self.simulated);
+        if(self.voiceSession){ // Voice flow: no human at the screen; start as soon as the route exists.
+            NSUInteger g=self.generation;dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{if(g==self.generation&&self.routeReady&&self.voiceSession)[self beginRoute];});
+        }}else{self.note=@"已重新规划路线，请以手机指引为准；眼镜显示若已停止需手动开启。";}[self refresh];});}
 - (void)navigationManager:(id<TIONavigationManager>)manager onCalculateRouteFailure:(NSError *)error{dispatch_async(dispatch_get_main_queue(),^{if(manager==self.manager&&self.active)[self fail:[NSString stringWithFormat:@"高德算路失败（code=%ld），检查 Key 服务权限／Bundle 绑定、网络与路线",(long)error.code]];});}
 - (void)navigationManager:(id<TIONavigationManager>)manager error:(NSError *)error{dispatch_async(dispatch_get_main_queue(),^{if(manager==self.manager&&self.active)[self fail:[NSString stringWithFormat:@"高德引擎错误 code=%ld",(long)error.code]];});}
 - (void)navigationManager:(id<TIONavigationManager>)manager updateNaviInfo:(AMapNaviInfo *)info{
@@ -318,4 +375,31 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 #include "NavigationDisplayHUD.inc"
 #include "NavigationWorkspace.inc"
 @end
+// Passive ASR keyword observer. Fires at most once per 8s; opt-out key
+// voiceNavDisabled (default: enabled). Destinations 2-40 chars after the
+// trigger prefix; bare "打开导航/开始导航" opens the panel without a query.
+static NSTimeInterval LastVoiceNavAt=0;
+void TIOVoiceNavMaybeStart(NSString *text){
+    if(![text isKindOfClass:NSString.class])return;
+    if([NSUserDefaults.standardUserDefaults boolForKey:@"voiceNavDisabled"])return;
+    NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
+    if(now-LastVoiceNavAt<8)return;
+    NSString *t=[text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    while(t.length){unichar c=[t characterAtIndex:t.length-1];if(c==0x3002||c==0xFF01||c==0xFF1F||c==0xFF0C||c==','||c=='.'||c=='!'||c=='?')t=[t substringToIndex:t.length-1];else break;}
+    NSString *destination=nil;
+    for(NSString *p in @[@"导航到",@"导航去",@"导航至",@"带我去",@"我要去"])if([t hasPrefix:p]){NSString *d=[t substringFromIndex:p.length];if(d.length>=2&&d.length<=40)destination=d;break;}
+    if(!destination&&([t hasPrefix:@"打开导航"]||[t hasPrefix:@"开始导航"]))destination=@"";
+    if(!destination)return;
+    LastVoiceNavAt=now;
+    dispatch_async(dispatch_get_main_queue(),^{
+        UIWindow *w=nil;for(UIWindowScene *s in UIApplication.sharedApplication.connectedScenes)if(s.activationState==UISceneActivationStateForegroundActive)for(UIWindow *win in s.windows)if(win.isKeyWindow)w=win;
+        UIViewController *top=w.rootViewController;if(!top)return;
+        while(top.presentedViewController&&!top.presentedViewController.isBeingDismissed)top=top.presentedViewController;
+        for(UIViewController *v in top.navigationController?(top.navigationController.viewControllers):@[])if([NSStringFromClass(v.class) containsString:@"Navigation"]){top=v;break;}
+        TIONavigationPanel *panel=[TIONavigationPanel new];
+        UINavigationController *nav=[[UINavigationController alloc]initWithRootViewController:panel];
+        nav.modalPresentationStyle=UIModalPresentationFullScreen;
+        [top presentViewController:nav animated:YES completion:^{[panel voiceStart:destination];}];
+    });
+}
 UIViewController *TIONavigationController(void){return [TIONavigationPanel new];}

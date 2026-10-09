@@ -278,6 +278,8 @@ static void AsrHook(id self,SEL cmd,id text,BOOL final,id sid) {
         if(copy.length&&[Prefs boolForKey:@"ttsEnabled"]){[Prefs setObject:@"user.asr" forKey:@"ttsLastReset"];[VoiceTTS cancel];}
         OriginalAsr(self,cmd,text,final,sid);
         [Controller acceptAsr:copy finished:final session:session listener:self];
+        // Passive voice-nav keyword ("导航去X"); observes only, official flow untouched.
+        if(final)TIOVoiceNavMaybeStart(copy);
     };
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }

@@ -178,9 +178,14 @@
 #endif
 }
 - (void)showDiagnostic{[self refresh];[self alert:@"导航状态 · v3" message:self.statusLabel.text];}
+- (void)voiceNavToggle{
+    NSUserDefaults *d=NSUserDefaults.standardUserDefaults;BOOL disabled=[d boolForKey:@"voiceNavDisabled"];
+    if(disabled){[d setBool:NO forKey:@"voiceNavDisabled"];[self alert:@"语音导航已开启" message:@"对眼镜说“导航去+地点”（如：导航去天安门）即可免手开始实时导航；到达或停止后自动恢复智记录音。说“打开导航”只打开本页。"] ;return;}
+    [d setBool:YES forKey:@"voiceNavDisabled"];[self alert:@"语音导航已关闭" message:@"语音不再触发导航；手动操作不受影响。"] ;
+}
 - (void)navigationMore{
     UIAlertController *a=[UIAlertController alertControllerWithTitle:@"导航设置与诊断" message:@"主要流程留在地图页；实验入口不会自动执行。" preferredStyle:UIAlertControllerStyleActionSheet];
-    NSArray *items=@[@[@"字幕格式与退出检查",@"subtitleCheck"],@[@"北京演示路线",@"demoRoute"],@[@"路线详情",@"routeDetails"],@[@"读取连接状态",@"refreshConnection"],@[@"详细诊断",@"showDiagnostic"],@[@"高德 Key 设置",@"configureKey"],@[@"备用显示通道",@"fallbackMenu"]];
+    NSArray *items=@[@[@"字幕格式与退出检查",@"subtitleCheck"],@[@"北京演示路线",@"demoRoute"],@[@"路线详情",@"routeDetails"],@[@"读取连接状态",@"refreshConnection"],@[@"详细诊断",@"showDiagnostic"],@[@"高德 Key 设置",@"configureKey"],@[@"语音导航：说“导航去+地点”",@"voiceNavToggle"],@[@"备用显示通道",@"fallbackMenu"]];
     for(NSArray *item in items)[a addAction:[UIAlertAction actionWithTitle:item[0] style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){[self performSelector:NSSelectorFromString(item[1])];}]];[a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];a.popoverPresentationController.barButtonItem=self.navigationItem.rightBarButtonItem;[self presentViewController:a animated:YES completion:nil];
 }
 - (void)fallbackMenu{
