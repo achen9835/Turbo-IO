@@ -185,8 +185,10 @@ jobs:
         run: |
           brew install uv
           RESOURCES="$PWD/app-resources"
-          rm -rf "$RESOURCES" && mkdir -p "$RESOURCES/TurboIOGallery"
-          # 20 个 MCP 离线模板目录 + 4 个内置示例 ZIP，布局与 package.mjs --app-gallery 一致
+          rm -rf "$RESOURCES" && mkdir -p "$RESOURCES"
+          # 20 个 MCP 离线模板目录 + 4 个内置示例 ZIP，布局与 package.mjs --app-gallery 一致。
+          # gallery export 的内部契约为 mkdir(exist_ok=False)：目标 TurboIOGallery 目录
+          # 必须不存在，由它自己创建；不要预先 mkdir，否则 FileExistsError。
           (cd dashboard-service && uv run turbo-app gallery export --out "$RESOURCES/TurboIOGallery")
           (cd dashboard-service && uv run python -m turbo_dashboard.app_examples --out "$RESOURCES")
           test -f "$RESOURCES/TurboIOGallery/catalog.json" || { echo "::error::gallery export 未产出 catalog.json"; exit 1; }
