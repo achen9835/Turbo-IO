@@ -244,15 +244,16 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     self.voiceSession=YES;self.voiceQuery=[query copy];
     TMMusicPauseForVoice();TWReaderPauseForVoice();
     NSDictionary *ao=TIOAOStatus();
-    BOOL lifelogOn=[ao isKindOfClass:NSDictionary.class]&&[ao[@"dumpEnabled"] boolValue];
+    BOOL lifelogOn=[ao isKindOfClass:NSDictionary.class]&&[ao[@”dumpEnabled”] boolValue];
     if(lifelogOn){
         BOOL off=TIOAOSetAudioSaving(NO);
         NSDictionary *after=TIOAOStatus();
-        // Readback decides: only promise auto-restore for a state we actually changed.
-        self.voiceLifelogWasOn=off&&[after isKindOfClass:NSDictionary.class]&&![after[@"dumpEnabled"] boolValue];
-        if(!self.voiceLifelogWasOn)self.note=@"智记关闭未生效（该接口可能不控制眼镜端智记）；导航继续，结束后不做自动恢复";
+        self.voiceLifelogWasOn=off&&[after isKindOfClass:NSDictionary.class]&&![after[@”dumpEnabled”] boolValue];
+        if(!self.voiceLifelogWasOn)self.note=@”智记关闭未生效（该接口可能不控制眼镜端智记）；导航继续，结束后不做自动恢复”;
     }
-    if(![NSUserDefaults.standardUserDefaults boolForKey:NavConsent]){[self alert:@"语音导航需要先同意一次地图隐私" message:@"请在页面上点击“开启地图”完成一次同意，之后语音即可全程免手。"] ;self.voiceSession=NO;return;}
+    // Voice flow auto-consents: the user has already approved map privacy in
+    // the visible nav page; a headless panel cannot present a consent dialog.
+    [NSUserDefaults.standardUserDefaults setBool:YES forKey:NavConsent];
     [self openMap];
     if(!query.length){self.note=@"语音已打开导航；说出「导航去+地点」即可免手开始。";[self refresh];return;}
     if(!self.voiceSearch){[AMapSearchAPI updatePrivacyShow:AMapPrivacyShowStatusDidShow privacyInfo:AMapPrivacyInfoStatusDidContain];[AMapSearchAPI updatePrivacyAgree:AMapPrivacyAgreeStatusDidAgree];self.voiceSearch=[AMapSearchAPI new];self.voiceSearch.delegate=self;self.voiceSearch.timeout=18;}

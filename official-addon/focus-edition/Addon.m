@@ -281,8 +281,6 @@ static void AsrHook(id self,SEL cmd,id text,BOOL final,id sid) {
         if(copy.length&&[Prefs boolForKey:@"ttsEnabled"]){[Prefs setObject:@"user.asr" forKey:@"ttsLastReset"];[VoiceTTS cancel];}
         OriginalAsr(self,cmd,text,final,sid);
         [Controller acceptAsr:copy finished:final session:session listener:self];
-        // Passive voice-nav keyword ("导航去X"); observes only, official flow untouched.
-        if(final)TIOVoiceNavMaybeStart(copy);
     };
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
@@ -292,7 +290,18 @@ static void AudioStartHook(id self,SEL cmd) {
 }
 static void NlpHook(id self,SEL cmd,id value) {
     // Route decisions on the main queue to serialize ASR, cancellation and stream completion.
-    void (^work)(void)=^{if(Controller.voiceExited)return;if(TIOTodoIsToolDispatching()){OriginalNlp(self,cmd,value);return;}TIOTodoObserveNlp(self,value);if(![Controller receiveNlp:value listener:self])OriginalNlp(self,cmd,[Controller observeOfficialVoice:value]);};
+    void (^work)(void)=^{
+        if(Controller.voiceExited)return;
+        if(TIOTodoIsToolDispatching()){OriginalNlp(self,cmd,value);return;}
+        TIOTodoObserveNlp(self,value);
+        if(![Controller receiveNlp:value listener:self])
+            OriginalNlp(self,cmd,[Controller observeOfficialVoice:value]);
+        // Voice navigation at the NLP layer: the assistant has finished its turn,
+        // the query text is final. Match navigation keywords and trigger if hit.
+        // The 8s throttle in TIOVoiceNavMaybeStart deduplicates across deltas.
+        NSString *voiceQuery=Get(value,@"query");
+        if([voiceQuery isKindOfClass:NSString.class])TIOVoiceNavMaybeStart(voiceQuery);
+    };
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 static void CompleteHook(id self,SEL cmd) {
