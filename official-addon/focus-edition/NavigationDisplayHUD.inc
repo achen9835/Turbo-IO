@@ -1,9 +1,17 @@
 // Included inside TIONavigationPanel. Uses the same pinned SDK manager, no second navigation engine.
 #if TIO_DISPLAY_PHONE
 - (NSDictionary *)displayHUDFrame{return self.display;}
+// A live subtitle session (starting/ready) owns the glasses channel. A leftover
+// stopping/uncertain phase never auto-returns to idle and must not permanently
+// lock the native HUD; toggleDisplayHUD resets it behind an explicit user
+// confirmation that the lens is back home.
+- (BOOL)subtitleTrialBlocksNative{
+ NSString *phase=TIOSubtitleNavigationStatus()[@"phase"];
+ return [phase isEqual:@"starting"]||[phase isEqual:@"ready"]||[self.subtitleHUD.status[@"enabled"] boolValue];
+}
 - (BOOL)canStartDisplayHUD{
  NSDictionary *t=TIONavTransportStatus();
- return self.active&&!self.routeReady&&!self.fixture&&!self.planning&&!self.rerouting&&!self.gpsWeak&&NSProcessInfo.processInfo.systemUptime-self.lastInfo<=15&&[self.display[@"phase"] isEqual:@"navigating"]&&![self.subtitleHUD.status[@"enabled"] boolValue]&&[TIOSubtitleNavigationStatus()[@"phase"] isEqual:@"idle"]&&![self.teleHUD.status[@"enabled"] boolValue]&&![TIONewsTeleStatus()[@"active"] boolValue]&&![t[@"enabled"] boolValue]&&![t[@"pending"] boolValue]&&![t[@"notices"] boolValue]&&![t[@"noticePending"] boolValue];
+ return self.active&&!self.routeReady&&!self.fixture&&!self.planning&&!self.rerouting&&!self.gpsWeak&&NSProcessInfo.processInfo.systemUptime-self.lastInfo<=15&&[self.display[@"phase"] isEqual:@"navigating"]&&![self subtitleTrialBlocksNative]&&![self.teleHUD.status[@"enabled"] boolValue]&&![TIONewsTeleStatus()[@"active"] boolValue]&&![t[@"enabled"] boolValue]&&![t[@"pending"] boolValue]&&![t[@"notices"] boolValue]&&![t[@"noticePending"] boolValue];
 }
 - (void)buildDisplayHUD{
  UILabel *title=[self navLabel:@"眼镜原生导航 · TNV1" size:16 weight:UIFontWeightSemibold];[self.lensCard addArrangedSubview:title];
@@ -24,9 +32,17 @@
 - (void)toggleDisplayHUD{
  if([TDPPhoneNavigationStatus()[@"active"] boolValue]){TDPPhoneNavigationStop();[self refreshDisplayHUD];return;}
  if(![self canStartDisplayHUD]){[self alert:@"先开始高德导航" message:@"等待转向和距离出现，并先结束字幕、提词、录音及其他眼镜任务。"] ;return;}
- NSUInteger g=self.generation;UIAlertController *a=[UIAlertController alertControllerWithTitle:@"开启原生导航？" message:@"需TNV1专用固件。眼镜在首页即可，收到START后自动进入第九项导航；不要同时运行录音、语音或其他显示任务。本轮请先用模拟路线验收。" preferredStyle:UIAlertControllerStyleAlert];
+ NSUInteger g=self.generation;
+ // A previous subtitle session (sim or realtime) can leave stopping/uncertain
+ // behind; it never self-resets. Fold the lens-home confirmation into this
+ // dialog so one tap clears it instead of permanently gating the native HUD.
+ NSString *subtitlePhase=TIOSubtitleNavigationStatus()[@"phase"];
+ BOOL subtitleLeftover=![subtitlePhase isEqual:@"idle"]&&![self subtitleTrialBlocksNative];
+ NSString *message=@"需TNV1专用固件。眼镜在首页即可，收到START后自动进入第九项导航；不要同时运行录音、语音或其他显示任务。本轮请先用模拟路线验收。";
+ if(subtitleLeftover)message=[message stringByAppendingString:@"\n检测到上次字幕会话未确认退出：请同时确认镜片已回首页、没有字幕残留，再开始。"];
+ UIAlertController *a=[UIAlertController alertControllerWithTitle:@"开启原生导航？" message:message preferredStyle:UIAlertControllerStyleAlert];
  [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
- [a addAction:[UIAlertAction actionWithTitle:@"已确认，开始" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){if(g!=self.generation||![self canStartDisplayHUD])return;BOOL ok=TDPPhoneNavigationStart([self displayHUDFrame]);if(!ok)[self alert:@"HUD未开启" message:@"请确认连接和无在途文件，再查看状态；不会自动重试。"] ;[self refreshDisplayHUD];}]];[self presentViewController:a animated:YES completion:nil];
+ [a addAction:[UIAlertAction actionWithTitle:@"已确认，开始" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){if(g!=self.generation)return;if(subtitleLeftover)TIOSubtitleConfirmIdle();if(![self canStartDisplayHUD])return;BOOL ok=TDPPhoneNavigationStart([self displayHUDFrame]);if(!ok)[self alert:@"HUD未开启" message:@"请确认连接和无在途文件，再查看状态；不会自动重试。" ] ;[self refreshDisplayHUD];}]];[self presentViewController:a animated:YES completion:nil];
 }
 #if TIO_AMAP_ENABLED
 - (void)attachNativeHUD{
