@@ -264,7 +264,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     self.voiceLocating=YES;self.map.showsUserLocation=YES;
     self.note=@"语音导航 第1步：正在定位当前位置（最多15秒）…";[self refresh];
     NSUInteger g=self.generation;
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,15*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(g==self.generation&&self.voiceLocating){self.voiceLocating=NO;[self fail:@”15秒未获得可靠位置：到开阔处重试，或用页面按钮手动规划”];}});
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,15*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(g==self.generation&&self.voiceLocating){self.voiceLocating=NO;[self fail:@"15秒未获得可靠位置：到开阔处重试，或用页面按钮手动规划"];}});
 #else
     [self alert:@"语音导航不可用" message:@"此构建未链接高德 SDK。"];
 #endif
