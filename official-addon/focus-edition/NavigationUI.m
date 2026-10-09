@@ -254,15 +254,15 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     }
     if(![NSUserDefaults.standardUserDefaults boolForKey:NavConsent]){[self alert:@"语音导航需要先同意一次地图隐私" message:@"请在页面上点击“开启地图”完成一次同意，之后语音即可全程免手。"] ;self.voiceSession=NO;return;}
     [self openMap];
-    if(!query.length){self.note=@”语音已打开导航；说出“导航去+地点”即可免手开始。”;[self refresh];return;}
+    if(!query.length){self.note=@"语音已打开导航；说出「导航去+地点」即可免手开始。";[self refresh];return;}
     if(!self.voiceSearch){[AMapSearchAPI updatePrivacyShow:AMapPrivacyShowStatusDidShow privacyInfo:AMapPrivacyInfoStatusDidContain];[AMapSearchAPI updatePrivacyAgree:AMapPrivacyAgreeStatusDidAgree];self.voiceSearch=[AMapSearchAPI new];self.voiceSearch.delegate=self;self.voiceSearch.timeout=18;}
     // Step 1: confirm the current position BEFORE anything else -- the route
     // must originate from a fresh fix, not an SDK fallback. Steps then run in
     // order: 定位 → 终点 → 规划 → 导航.
     CLAuthorizationStatus auth=self.permission.authorizationStatus;
-    if(auth==kCLAuthorizationStatusNotDetermined||auth==kCLAuthorizationStatusDenied||auth==kCLAuthorizationStatusRestricted){[self fail:@”语音实时导航需要定位授权：请在系统设置允许定位后重试”] ;return;}
+    if(auth==kCLAuthorizationStatusNotDetermined||auth==kCLAuthorizationStatusDenied||auth==kCLAuthorizationStatusRestricted){[self fail:@"语音实时导航需要定位授权：请在系统设置允许定位后重试"] ;return;}
     self.voiceLocating=YES;self.map.showsUserLocation=YES;
-    self.note=@”语音导航 第1步：正在定位当前位置（最多15秒）…”;[self refresh];
+    self.note=@"语音导航 第1步：正在定位当前位置（最多15秒）…";[self refresh];
     NSUInteger g=self.generation;
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,15*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(g==self.generation&&self.voiceLocating){self.voiceLocating=NO;[self fail:@”15秒未获得可靠位置：到开阔处重试，或用页面按钮手动规划”];}});
 #else
