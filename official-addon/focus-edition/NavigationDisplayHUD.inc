@@ -11,7 +11,20 @@
 }
 - (BOOL)canStartDisplayHUD{
  NSDictionary *t=TIONavTransportStatus();
- return self.active&&!self.routeReady&&!self.fixture&&!self.planning&&!self.rerouting&&!self.gpsWeak&&NSProcessInfo.processInfo.systemUptime-self.lastInfo<=15&&[self.display[@"phase"] isEqual:@"navigating"]&&![self subtitleTrialBlocksNative]&&![self.teleHUD.status[@"enabled"] boolValue]&&![TIONewsTeleStatus()[@"active"] boolValue]&&![t[@"enabled"] boolValue]&&![t[@"pending"] boolValue]&&![t[@"notices"] boolValue]&&![t[@"noticePending"] boolValue];
+ // AMap's guidance stream is the authority on when turn data is valid; the
+ // remaining gates are freshness (lastInfo) and live channel conflicts.
+ return self.active&&!self.routeReady&&!self.fixture&&!self.planning&&!self.rerouting&&NSProcessInfo.processInfo.systemUptime-self.lastInfo<=15&&[self.display[@"phase"] isEqual:@"navigating"]&&![self subtitleTrialBlocksNative]&&![self.teleHUD.status[@"enabled"] boolValue]&&![TIONewsTeleStatus()[@"active"] boolValue]&&![t[@"enabled"] boolValue]&&![t[@"pending"] boolValue]&&![t[@"notices"] boolValue]&&![t[@"noticePending"] boolValue];
+}
+// Realtime navigation engages the native HUD by itself once AMap turn guidance
+// exists -- no manual tap. Exactly one attempt per navigation session: if the
+// glasses are busy it falls back to the manual button, and a user who stops
+// the HUD mid-session is never fought with a restart.
+- (void)autoStartNativeHUDIfNeeded{
+ if(!self.autoNativeHUD)return;
+ if([TDPPhoneNavigationStatus()[@"active"] boolValue]){self.autoNativeHUD=NO;return;}
+ if(![self canStartDisplayHUD])return;
+ self.autoNativeHUD=NO;
+ if(!TDPPhoneNavigationStart([self displayHUDFrame]))self.note=@"眼镜原生导航自动开启未成功；可手动点按钮重试。";
 }
 - (void)buildDisplayHUD{
  UILabel *title=[self navLabel:@"眼镜原生导航 · TNV1" size:16 weight:UIFontWeightSemibold];[self.lensCard addArrangedSubview:title];
@@ -31,9 +44,9 @@
  // (Strong/SmartPos) before turn guidance exists; a dead gray button with no
  // reason reads as a bug, which is exactly how this was reported.
  NSString *hint=@"";
- if(!on&&!can){
-  if(self.gpsWeak||[self.display[@"phase"] isEqual:@"weak"])hint=@"ⓘ GPS信号弱，暂不能开启：到户外开阔处，等定位增强、手机出现转向指引后此按钮自动恢复\n\n";
-  else if(self.active&&NSProcessInfo.processInfo.systemUptime-self.lastInfo>15)hint=@"ⓘ 等待手机转向指引出现后可开启\n\n";
+ if(!on&&!can&&self.active){
+  if(![self.display[@"phase"] isEqual:@"navigating"]||NSProcessInfo.processInfo.systemUptime-self.lastInfo>15)
+   hint=self.autoNativeHUD?@"ⓘ 定位中：手机出现转向指引后，眼镜原生导航将自动开启\n\n":@"ⓘ 等待手机出现转向指引后可开启\n\n";
  }
  self.tdpStatus.text=[hint stringByAppendingFormat:@"%@\n已确认 %@ 个快照 · %@\n路线示意图，不含路口实景或底图",s[@"note"],s[@"snapshots"]?:@0,TNVAlways()?@"常亮":@"60秒无更新息屏"];
  self.tdpPreview.hidden=YES; // Old pixel renderer is not an accurate TNV1 preview.

@@ -78,6 +78,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 #if TIO_DISPLAY_PHONE
 @property UIButton *tdpButton;
 @property UILabel *tdpStatus;
+@property BOOL autoNativeHUD;
 @property UIImageView *tdpPreview;
 @property NSData *hudIconPixels,*crossPixels;
 @property NSInteger hudIconType;
@@ -133,7 +134,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 #endif
     self.display=frame;TIONavOfferDisplay(frame);[self.teleHUD offer:frame at:NSProcessInfo.processInfo.systemUptime];[self.subtitleHUD offer:frame at:NSProcessInfo.processInfo.systemUptime];
 #if TIO_DISPLAY_PHONE
-    TDPPhoneNavigationOffer([self displayHUDFrame]);[self refreshDisplayHUD];
+    TDPPhoneNavigationOffer([self displayHUDFrame]);[self autoStartNativeHUDIfNeeded];[self refreshDisplayHUD];
 #endif
     [self refresh];}
 - (void)tick{
@@ -193,7 +194,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 - (void)enableNotices{if([self subtitleBlocksOtherDisplay])return;[self.teleHUD stop:@"切换到自动通知"];TIONavEnableNotices(YES);TIONavOfferDisplay(self.display);TIONavPump();[self refresh];[self.scroll setContentOffset:CGPointZero animated:YES];}
 - (void)enableGlasses{if([self subtitleBlocksOtherDisplay])return;UIAlertController *a=[UIAlertController alertControllerWithTitle:@"新增／更新专用导航卡？" message:@"只修改本扩展拥有的导航卡，不覆盖天气与待办。整卡连续更新仍需镜片验收。请先用模拟导航测试。" preferredStyle:UIAlertControllerStyleAlert];[a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[a addAction:[UIAlertAction actionWithTitle:@"启用" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){if([self subtitleBlocksOtherDisplay])return;[self.teleHUD stop:@"切换到仪表盘导航卡"];TIONavEnableDisplay(YES);TIONavOfferDisplay(self.display);TIONavPump();[self refresh];}]];[self presentViewController:a animated:YES completion:nil];}
 - (void)halt{
-    self.navigationStarted=NO;self.backgroundLocationEnabled=NO;[self endNavigationBackgroundTask];
+    self.navigationStarted=NO;self.autoNativeHUD=NO;self.backgroundLocationEnabled=NO;[self endNavigationBackgroundTask];
 #if TIO_DISPLAY_PHONE
     TDPPhoneNavigationStop();self.hudIconPixels=nil;self.hudIconType=0;self.crossPixels=nil;
 #endif
@@ -279,13 +280,14 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     }
    }
   }
-  [frame addEntriesFromDictionary:TNVNormalizeCoordinates(coords)];self.lastInfo=NSProcessInfo.processInfo.systemUptime;self.staleShown=NO;if(!self.gpsWeak)[self setFrame:frame];
+  [frame addEntriesFromDictionary:TNVNormalizeCoordinates(coords)];self.lastInfo=NSProcessInfo.processInfo.systemUptime;self.staleShown=NO;[self setFrame:frame];
  });
 }
 - (void)navigationReroute:(id<TIONavigationManager>)manager{dispatch_async(dispatch_get_main_queue(),^{if(manager==self.manager&&self.active){self.rerouting=YES;self.note=@"偏航，等待高德重新规划";[self setFrame:TIONavDisplay(@"rerouting",0,@"",-1,-1,-1,self.simulated)];}});}
 - (void)drawRoute:(AMapNaviRoute *)route{NSArray<AMapNaviPoint *> *points=route.routeCoordinates;if(points.count<2||points.count>100000)return;CLLocationCoordinate2D *coords=calloc(points.count,sizeof(CLLocationCoordinate2D));if(!coords)return;for(NSUInteger i=0;i<points.count;i++)coords[i]=CLLocationCoordinate2DMake(points[i].latitude,points[i].longitude);if(self.routeLine)[self.map removeOverlay:self.routeLine];self.routeLine=[MAPolyline polylineWithCoordinates:coords count:points.count];free(coords);[self.map addOverlay:self.routeLine];[self.map setVisibleMapRect:self.routeLine.boundingMapRect edgePadding:UIEdgeInsetsMake(30,25,30,25) animated:YES];}
 - (MAOverlayRenderer *)mapView:(MAMapView *)map rendererForOverlay:(id<MAOverlay>)overlay{if([overlay isKindOfClass:MAPolyline.class]){MAPolylineRenderer *r=[[MAPolylineRenderer alloc]initWithPolyline:overlay];r.lineWidth=6;r.strokeColor=UIColor.systemIndigoColor;return r;}return nil;}
-- (void)navigationManager:(id<TIONavigationManager>)manager updateGPSSignalStrength:(AMapNaviGPSSignalStrength)strength{dispatch_async(dispatch_get_main_queue(),^{if(manager!=self.manager||!self.active||self.simulated)return;self.gpsWeak=strength!=AMapNaviGPSSignalStrengthStrong&&strength!=AMapNaviGPSSignalStrengthSmartPos;if(self.gpsWeak)[self setFrame:TIONavDisplay(@"weak",0,@"",-1,-1,-1,NO)];});}
+- (void)navigationManager:(id<TIONavigationManager>)manager updateGPSSignalStrength:(AMapNaviGPSSignalStrength)strength{dispatch_async(dispatch_get_main_queue(),^{if(manager!=self.manager||!self.active||self.simulated)return;self.gpsWeak=strength!=AMapNaviGPSSignalStrengthStrong&&strength!=AMapNaviGPSSignalStrengthSmartPos; // AMap's guidance stream is the authority; only surface a weak-state frame when AMap itself has gone quiet, so live guidance never flickers.
+ if(self.gpsWeak&&NSProcessInfo.processInfo.systemUptime-self.lastInfo>15)[self setFrame:TIONavDisplay(@"weak",0,@"",-1,-1,-1,NO)];});}
 - (void)arrived:(id<TIONavigationManager>)manager{dispatch_async(dispatch_get_main_queue(),^{if(manager!=self.manager||!self.active)return;[self halt];self.note=@"已到达；导航已停止，10 秒后清理本次导航卡";[self setFrame:TIONavDisplay(@"arrived",0,@"",0,0,0,self.simulated)];NSUInteger g=self.generation;dispatch_after(dispatch_time(DISPATCH_TIME_NOW,10*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(g==self.generation)TIONavEnableDisplay(NO);});});}
 - (void)walkManagerOnCalculateRouteSuccess:(AMapNaviWalkManager *)m{[self navigationRouteSuccess:(id)m];}
 - (void)walkManager:(AMapNaviWalkManager *)m onCalculateRouteFailure:(NSError *)e{[self navigationManager:(id)m onCalculateRouteFailure:e];}
