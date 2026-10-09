@@ -15,6 +15,10 @@
 #import "GlassesLogProbe.h"
 #import "NavigationTransport.h"
 #import "SubtitleHUD.h"
+#if TIO_APP_SDK
+#import "AppBridge.h"
+#import "EditorTransport.h"
+#endif
 #import "ExperimentalOTAGuard.h"
 #import "ExperimentalOTAFlash.h"
 #import <UIKit/UIKit.h>
@@ -72,7 +76,11 @@ static void MethodHook(id self,SEL cmd,id call,id result){
     if(otaBlocked){if(result)((void(^)(id))result)(@{@"success":@NO,@"message":@"Turbo IO transfer gate: not authorized or packet mismatch"});return;}
     if(TIOOTABlockPreparationCall(call)){if(result)((void(^)(id))result)(@{@"success":@NO,@"message":@"Turbo IO OTA preparation only: outbound traffic blocked"});return;}
     if(TIOGlassesLogBlockCall(call)){if(result)((void(^)(id))result)(@{@"success":@NO,@"message":@"本机日志研究任务隔离中，未重复请求"});return;}
-    {NSString *method=Get(call,@"method");id args=Get(call,@"arguments");if([args isKindOfClass:NSDictionary.class]){void(^work)(void)=^{TIOProtocolObserveCall(self,method,args);TIONewsTeleObserveCall(self,method,args);TIOA2UIObserveCall(self,method,args);TIOGlassesLogObserveCall(self,method,args);TIONavObserveCall(self,method,args);TIOSubtitleObserveCall(self,method,args);};if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);}}
+    {NSString *method=Get(call,@"method");id args=Get(call,@"arguments");if([args isKindOfClass:NSDictionary.class]){void(^work)(void)=^{TIOProtocolObserveCall(self,method,args);TIONewsTeleObserveCall(self,method,args);TIOA2UIObserveCall(self,method,args);TIOGlassesLogObserveCall(self,method,args);TIONavObserveCall(self,method,args);TIOSubtitleObserveCall(self,method,args);
+#if TIO_APP_SDK
+        TCECardObserveCall(self,method,args);
+#endif
+        };if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);}}
     if([Get(call,@"method") isEqual:@"rayneonet_sendMessage"]){id args=Get(call,@"arguments");if([args isKindOfClass:NSDictionary.class]&&[args[@"businessId"] isEqual:@22]){void (^work)(void)=^{ObserveSnapshot(args);};if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);}}
     id args=Get(call,@"arguments");
     if([Get(call,@"method") isEqual:@"rayneonet_sendFile"]&&[args isKindOfClass:NSDictionary.class]&&result){
@@ -89,6 +97,11 @@ static void Send(id self,SEL cmd,NSString *channel,NSData *message,id reply){
                 TDPDiagEnvelope(copy);
 #endif
                 if(TIOGlassesLogConsumeEvent(copy)){if(reply)((void(^)(NSData *))reply)(nil);return;}}
+#if TIO_APP_SDK
+            // App SDK observes file results for its own turbo-app.tax tasks and
+            // never consumes the event; the official delivery path is untouched.
+            if([event isKindOfClass:NSDictionary.class]&&([event[@"eventType"] isEqual:@"fileShareSuccess"]||[event[@"eventType"] isEqual:@"fileShareFailed"])){NSDictionary *fileEvent=[event copy];void(^work)(void)=^{TAPObserveEvent(fileEvent);};if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);}
+#endif
 #if TIO_IMAGE_RX_LAB
             // File results are siblings of messageReceived, not business messages.
             // Only our exact sender task is consumed; foreign events keep Flutter's path.
@@ -113,7 +126,11 @@ static void Send(id self,SEL cmd,NSString *channel,NSData *message,id reply){
                     void(^work)(void)=^{BOOL own=TIONewsTeleOwnsEvent(e);TIOProtocolObserveEvent(e);TIONewsTeleObserveEvent(e);TIOA2UIObserveEvent(e);TIONavObserveEvent(e);TIOSubtitleObserveEvent(e);if(own){if(reply)((void(^)(NSData *))reply)(nil);}else PriorSend(self,cmd,channel,message,reply);};
                     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);return;
                 }
-                dispatch_async(dispatch_get_main_queue(),^{TIOProtocolObserveEvent(e);TIONewsTeleObserveEvent(e);TIOA2UIObserveEvent(e);TIONavObserveEvent(e);TIOSubtitleObserveEvent(e);});
+                dispatch_async(dispatch_get_main_queue(),^{TIOProtocolObserveEvent(e);TIONewsTeleObserveEvent(e);TIOA2UIObserveEvent(e);TIONavObserveEvent(e);TIOSubtitleObserveEvent(e);
+#if TIO_APP_SDK
+                    TAPObserveEvent(e);TCEObserveEvent(e);
+#endif
+                });
                 if(physical)dispatch_async(dispatch_get_main_queue(),^{PhysicalEvents++;if(TestWire.length&&[physical[@"wireId"] isEqual:TestWire]&&[physical[@"deviceId"] isEqual:TestDevice]){PhysicalComplete=[physical[@"status"] isEqual:@1];State=PhysicalComplete?@"收到此测试项的眼镜完成回传，真实ID匹配":@"收到此测试项的眼镜未完成回传";SaveEvidence();}});
             }
         }}@catch(NSException *e){}

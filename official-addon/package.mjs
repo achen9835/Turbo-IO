@@ -43,10 +43,11 @@ function run(program,args,options={}){return exec(program,args,{stdio:['pipe','p
 function main(){
   if(process.argv.includes('--help'))console.log('FOCUS-04 integrated edition: --experimental-ota TFP1 --firmware /absolute/exact-FOCUS04-release.zip; see focus-edition/README.md. Optional translation resources may be omitted for this edition.');
   if(process.argv.includes('--help'))console.log('Optional local translation: --translation-module-dir /absolute/module --translation-models /absolute/models (requires TIO_LOCAL_TRANSLATION=1 addon; see local-translation/README.md)');
-  if(process.argv.includes('--help')){console.log('node official-addon/package.mjs --app /absolute/Runner.app --addon /absolute/TurboIOPrivateAddon.dylib --profile /absolute/profile.mobileprovision --identity CERTIFICATE_SHA1 --device YOUR_DEVICE_ID --out /absolute/new-private-output [--bundle com.rayneo.venus.pub] [--product iPhone18,4] [--amap-sdk-root /absolute/build/amap-sdk] [--experimental-ota R3|TNV1|TMU1 --firmware /absolute/matching-firmware.zip (required for TNV1/TMU1; HIGH RISK)]');return;}
+  if(process.argv.includes('--help'))console.log('Optional TAP1 app gallery resources: --app-gallery /absolute/dir containing TurboIOGallery/ (catalog.json + template ZIPs) and optionally TurboAppSDK*.zip builtins; requires a TIO_APP_SDK=1 addon build.');
+  if(process.argv.includes('--help')){console.log('node official-addon/package.mjs --app /absolute/Runner.app --addon /absolute/TurboIOPrivateAddon.dylib --profile /absolute/profile.mobileprovision --identity CERTIFICATE_SHA1 --device YOUR_DEVICE_ID --out /absolute/new-private-output [--bundle com.rayneo.venus.pub] [--product iPhone18,4] [--amap-sdk-root /absolute/build/amap-sdk] [--app-gallery /absolute/gallery-export] [--experimental-ota R3|TNV1|TMU1 --firmware /absolute/matching-firmware.zip (required for TNV1/TMU1; HIGH RISK)]');return;}
   const o={bundle:'com.rayneo.venus.pub'};const args=process.argv.slice(2);
   if(args.length%2)throw Error('expected_named_arguments');
-  const seen=new Set();for(let i=0;i<args.length;i+=2){const k=args[i].slice(2);if(!args[i].startsWith('--')||!['app','addon','profile','identity','device','out','bundle','product','amap-sdk-root','experimental-ota','firmware','translation-module-dir','translation-models'].includes(k)||seen.has(k))throw Error('unknown_or_duplicate_argument');seen.add(k);o[k]=args[i+1];}
+  const seen=new Set();for(let i=0;i<args.length;i+=2){const k=args[i].slice(2);if(!args[i].startsWith('--')||!['app','addon','profile','identity','device','out','bundle','product','amap-sdk-root','app-gallery','experimental-ota','firmware','translation-module-dir','translation-models'].includes(k)||seen.has(k))throw Error('unknown_or_duplicate_argument');seen.add(k);o[k]=args[i+1];}
   validateOptions(o);
   const mapResources=o['amap-sdk-root']?amapResources(o['amap-sdk-root']):[];
   const symbols=run('/usr/bin/nm',['-g',o.addon],{encoding:'utf8',maxBuffer:64*1024*1024});
@@ -77,6 +78,15 @@ print(json.dumps({'entitlements':p['Entitlements'],'expires':p['ExpirationDate']
   run(process.execPath,[path.join(here,'macho-embed.mjs'),source,app,o.addon,o.bundle]);
   if(focusEdition){
     fs.cpSync(path.join(here,'focus-edition/TurboIOArt'),path.join(app,'TurboIOArt'),{recursive:true,errorOnExist:true,force:false});
+  }
+  if(o['app-gallery']){
+    if(!symbols.includes('_TAPAppsController'))throw Error('app_gallery_requires_app_sdk_addon');
+    const galleryRoot=fs.realpathSync(o['app-gallery']);
+    const galleryDir=fs.existsSync(path.join(galleryRoot,'TurboIOGallery','catalog.json'))?path.join(galleryRoot,'TurboIOGallery'):(fs.existsSync(path.join(galleryRoot,'catalog.json'))?galleryRoot:null);
+    if(!galleryDir)throw Error('app_gallery_missing_catalog');
+    fs.cpSync(galleryDir,path.join(app,'TurboIOGallery'),{recursive:true,errorOnExist:true,force:false});
+    for(const entry of fs.readdirSync(galleryRoot,{withFileTypes:true}))
+      if(entry.isFile()&&/^TurboAppSDK[A-Za-z0-9_]+\.zip$/.test(entry.name))fs.copyFileSync(path.join(galleryRoot,entry.name),path.join(app,entry.name));
   }
   copyTranslationResources(translationResources,app);
   if(translationResources){

@@ -32,6 +32,12 @@
 #import "NavigationUI.h"
 #import "SubtitleHUD.h"
 #import "VoiceTTS.h"
+#if TIO_APP_SDK
+#import "AppUI.h"
+#import "AppBridge.h"
+#import "EditorUI.h"
+#import "EditorTransport.h"
+#endif
 #if TIO_IMAGE_RX_LAB
 #import "ImageUploadUI.h"
 #if TIO_DISPLAY_PHONE
@@ -332,7 +338,11 @@ static void AlwaysOnHook(id self,SEL cmd,id value) {
     if([r[@"key"] isEqual:@"agent"]){__weak typeof(self) weak=self;c.accessoryView=TIOAgentPicker(^{[weak.tableView reloadData];});c.detailTextLabel.text=[TIOSelectedAgent() isEqual:@"Codex"]?@"Mac · projectmanager":@"未连接执行器";}
     if([r[@"key"] isEqual:@"knowledge"])c.detailTextLabel.text=@"微信归档 · 项目文档 · 学习资料";
     if([r[@"key"] isEqual:@"a2ui"])c.detailTextLabel.text=@"文字7392 → 排版8642 → 单卡卸载；需镜片验收";
-    if([r[@"key"] isEqual:@"navigation"])c.detailTextLabel.text=@"地点搜索 · 路线总览 · 眼镜字幕导航（模拟验收）";
+    if([r[@"key"] isEqual:@"navigation"])c.detailTextLabel.text=@"地点搜索 · 路线总览 · 眼镜字幕导航（模拟与实时）";
+#if TIO_APP_SDK
+    if([r[@"key"] isEqual:@"apps"])c.detailTextLabel.text=@"四槽原生小应用 · 需 TAP1/TAX1 实验固件 · 手机预览确认";
+    if([r[@"key"] isEqual:@"cards"])c.detailTextLabel.text=@"TCE1 图形卡片 · 模板/JSON 草稿 · 读基线再发布回查";
+#endif
     if([r[@"key"] isEqual:@"tts"]){c.detailTextLabel.text=@"官方/自有回答 · 眼镜蓝牙音频";
         UISwitch *s=[UISwitch new];s.on=[Prefs boolForKey:@"ttsEnabled"];[s addTarget:self action:@selector(ttsToggle:) forControlEvents:UIControlEventValueChanged];c.accessoryView=s;}
     if([r[@"key"] isEqual:@"ttsEngine"])c.detailTextLabel.text=[[Prefs stringForKey:@"ttsEngine"] isEqual:@"local"]?@"iOS 本机语音 · 无需 Key · 默认":@"阿里 qwen-audio-3.1-tts-flash · 云端";
@@ -462,6 +472,10 @@ static void AlwaysOnHook(id self,SEL cmd,id value) {
     if([r[@"key"] isEqual:@"a2ui"]){[self.navigationController pushViewController:TIOA2UIController() animated:YES];return;}
     if([r[@"key"] isEqual:@"subtitleHUD"]){[self.navigationController pushViewController:TIOSubtitleHUDController() animated:YES];return;}
     if([r[@"key"] isEqual:@"navigation"]){[self.navigationController pushViewController:TIONavigationController() animated:YES];return;}
+#if TIO_APP_SDK
+    if([r[@"key"] isEqual:@"apps"]){[self.navigationController pushViewController:TAPAppsController() animated:YES];return;}
+    if([r[@"key"] isEqual:@"cards"]){[self.navigationController pushViewController:TCEEditorController() animated:YES];return;}
+#endif
     if([r[@"key"] isEqual:@"ttsEngine"]){[self configureTTSEngine];return;}
     if([r[@"key"] isEqual:@"ttsKey"]){[self configureTTS];return;}
     if([r[@"key"] isEqual:@"ttsTest"]){[self testTTS];return;}

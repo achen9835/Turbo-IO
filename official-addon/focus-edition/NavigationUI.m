@@ -98,7 +98,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @implementation TIONavigationPanel
 - (UIButton *)button:(NSString *)title action:(SEL)action identifier:(NSString *)identifier{UIButton *b=[UIButton buttonWithType:UIButtonTypeSystem];b.configuration=[UIButtonConfiguration tintedButtonConfiguration];[b setTitle:title forState:UIControlStateNormal];b.accessibilityIdentifier=identifier;[b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];[self.stack addArrangedSubview:b];return b;}
 - (void)viewDidLoad{
-    [super viewDidLoad];self.title=@"多模式导航 · 后台连接";self.view.backgroundColor=TIOPaper();self.view.tintColor=TIOAccent();self.note=@"字幕直传：先获取预览/退出格式，再启动高德模拟，确认眼镜空闲后开启。模拟可短时退后台；实时导航在授权后可后台运行。请勿边驾驶边调试。";self.teleHUD=[TIONavTeleHUD new];self.subtitleHUD=[TIONavSubtitleHUD new];
+    [super viewDidLoad];self.title=@"多模式导航 · 后台连接";self.view.backgroundColor=TIOPaper();self.view.tintColor=TIOAccent();self.note=@"字幕直传：先获取预览/退出格式，再启动高德导航（模拟或实时），确认眼镜空闲后开启。字幕更新需保持本页前台；实时定位在授权后可后台运行。请勿边驾驶边调试。";self.teleHUD=[TIONavTeleHUD new];self.subtitleHUD=[TIONavSubtitleHUD new];
 #ifndef TIO_UI_PREVIEW
     BootstrapKey();
 #endif
@@ -164,12 +164,12 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     if([TDPPhoneNavigationStatus()[@"active"] boolValue])return NO;
 #endif
     NSDictionary *transport=TIONavTransportStatus();
-    return self.active&&self.simulated&&!self.fixture&&!self.planning&&!self.rerouting&&NSProcessInfo.processInfo.systemUptime-self.lastInfo<=15&&TIONavSubtitleText(self.display)&&![TIONewsTeleStatus()[@"active"] boolValue]&&![self.teleHUD.status[@"enabled"] boolValue]&&![transport[@"enabled"] boolValue]&&![transport[@"pending"] boolValue]&&![transport[@"noticePending"] boolValue]&&![transport[@"notices"] boolValue];
+    return self.active&&!self.fixture&&!self.planning&&!self.rerouting&&NSProcessInfo.processInfo.systemUptime-self.lastInfo<=15&&TIONavSubtitleText(self.display)&&![TIONewsTeleStatus()[@"active"] boolValue]&&![self.teleHUD.status[@"enabled"] boolValue]&&![transport[@"enabled"] boolValue]&&![transport[@"pending"] boolValue]&&![transport[@"noticePending"] boolValue]&&![transport[@"notices"] boolValue];
 }
 - (void)enableSubtitleHUD{
-    if(![self canStartSubtitle]){[self alert:@"先启动高德模拟并结束其他显示" message:@"等待手机出现模拟转向；退出提词、导航卡与自动通知。本轮不支持实际道路导航或离线夹具。"] ;return;}
+    if(![self canStartSubtitle]){[self alert:@"先启动高德导航并结束其他显示" message:@"等待手机出现转向指引（模拟或实时均可）；退出提词、导航卡与自动通知。仍不支持离线夹具。"] ;return;}
     if(![TIOSubtitleNavigationStatus()[@"available"] boolValue]){[self alert:@"字幕通道未就绪" message:@"先确认眼镜已连接。当前支持版本使用固化协议或已保存配置；若仍不可用，再在诊断页学习一次新配置。"] ;return;}
-    NSUInteger generation=self.generation;UIAlertController *a=[UIAlertController alertControllerWithTitle:@"眼镜当前已回首页且无任务？" message:@"确认录音、智记、提词、字幕、语音对话均已结束后开启。使用字幕纯文字通道，不发送录音启动；发现字幕音频消息就停止。4分钟保护，仅模拟验收。" preferredStyle:UIAlertControllerStyleAlert];
+    NSUInteger generation=self.generation;BOOL realtime=!self.simulated;UIAlertController *a=[UIAlertController alertControllerWithTitle:@"眼镜当前已回首页且无任务？" message:[NSString stringWithFormat:@"确认录音、智记、提词、字幕、语音对话均已结束后开启。使用字幕纯文字通道，不发送录音启动；发现字幕音频消息就停止。%@。请保持本页面前台，勿边驾驶边操作。",realtime?@"实时导航会话为20分钟保护，到期可重新开启":@"模拟会话为4分钟保护，仅模拟验收"] preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     [a addAction:[UIAlertAction actionWithTitle:@"已确认，开启字幕导航" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){if(generation!=self.generation||![self canStartSubtitle]||!TIOSubtitleConfirmIdle()){self.note=@"未开启：路线或会话状态变化，请先退出已有字幕";[self refresh];return;}[self.subtitleHUD startWithFrame:self.display at:NSProcessInfo.processInfo.systemUptime];[self refresh];[self.scroll setContentOffset:CGPointZero animated:YES];}]];[self presentViewController:a animated:YES completion:nil];
 }

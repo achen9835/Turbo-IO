@@ -3,6 +3,9 @@
 #import "ReaderTransport.h"
 #import "FocusTransport.h"
 #import "TDTransport.h"
+#if TIO_APP_SDK
+#import "AppTransport.h"
+#endif
 #import "ExperimentalOTA.h"
 #import "ExperimentalOTAGuard.h"
 #include <TargetConditionals.h>
@@ -150,8 +153,11 @@ BOOL TIOOTAFlashBlockCall(id call){
     }
     // The pinned files path uses business 9 frames, never sendFile / ZIP mode.
     BOOL scopedImage=NO;
+#if TIO_APP_SDK
+    scopedImage=TAPIsScopedCall(method,args);
+#endif
 #if TIO_IMAGE_RX_LAB
-    scopedImage=TIOImageUploadIsScopedCall(method,args);
+    scopedImage=scopedImage||TIOImageUploadIsScopedCall(method,args);
 #if TIO_DISPLAY_PHONE
     scopedImage=scopedImage||TDPPhoneIsScopedCall(method,args);
 #if TIO_NATIVE_NAV

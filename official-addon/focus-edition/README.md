@@ -4,6 +4,24 @@
 
 [FOCUS-04 固件、风险与升级说明](../../firmware-research/strix-1.0.4.12/native-navigation/focus/README.md) · [完整更新海报](../../docs/screenshots/midautumn-update-20260925.png)
 
+## 2026-10 更新：实时导航投屏修复与 TAP1 应用广场适配
+
+- **实时导航眼镜字幕**：此前字幕直传仅开放模拟导航；现在“实时导航”同样可投眼镜字幕（与 Android GUARD-07 行为对齐）。实时会话为 20 分钟／2400 帧保护（到期可重新开启），定位弱／重新规划时显示安全提示行而不中断会话；模拟会话维持 4 分钟／80 帧验收上限。字幕更新仍要求保持导航页前台，驾车时请勿操作。
+- **TAP1 四槽小应用（可选构建）**：新增 `TIO_APP_SDK=1` 构建宏，集成[公开 App SDK 参考模块](../research/app-runtime-v1/README.md)的应用广场／我的应用／ZIP 导入／四槽查询、安装、启动、停止与卸载。**眼镜必须已刷入含 TAP1/TAX1 运行时的实验固件（如 TAP1-TEST-01）**；旧 FOCUS-04 缺少接收运行时，只停留在手机预览，不会发送未知文件。装好的应用在眼镜“我的应用”打开；相同 ID 仅允许更高版本更新。
+- **TCE1 图形卡片发布（同一可选构建）**：补齐 `dashboard-editor-v1` 参考模块缺失的手机侧实现——草稿校验（EditorModel）、TCE1 编码器（对齐 Android CardCodec，含 16 个内置图标与 6 个模板）、发布通道（读取基线 → 安装/移除 → 回查其他卡片未受影响 → 置顶 → 再回查，全程不重试）与入口页面（模板发布、JSON 草稿粘贴、只读回查、移除本工具卡片）。卡片经既有 A2UI `widget_install` 通道下发，写卡同样需要含 TCE1/TAP1 运行时的实验固件；旧固件只会拒绝或忽略，不会损坏已有卡片。可视化拖拽编辑仍在研究路线，本入口面向“草稿 → 手机确认 → 眼镜”流程。
+
+构建示例（在原完整实验版基础上加 `TIO_APP_SDK=1`）：
+
+```sh
+TIO_AMAP_ENABLED=1 TIO_AMAP_SDK_ROOT=/absolute/Turbo-IO/official-addon/build/amap-sdk \
+TIO_OTA_FLASH_ENABLED=1 TIO_IMAGE_RX_LAB=1 TIO_IMAGE_RX_WIDE=1 \
+TIO_DISPLAY_PHONE=1 TIO_DISPLAY_FLASH=1 TIO_APP_SDK=1 \
+bash official-addon/focus-edition/build.sh embedded com.rayneo.venus.pub
+```
+
+应用广场资源为可选：在 `dashboard-service/` 用 `uv run turbo-app gallery export --out GALLERY` 与 `uv run python -m turbo_dashboard.app_examples --out GALLERY` 生成后，打包时传 `--app-gallery /absolute/GALLERY`（脚本校验目录含 `catalog.json` 并复制 `TurboAppSDK*.zip` 示例）；不传时入口仍可用，仅无内置模板。
+
+
 ## 包含什么
 
 - Turbo IO 插件深色新 UI、首页眼镜入场动画、四张功能卡与底部导航；不修改官方原有业务页面。

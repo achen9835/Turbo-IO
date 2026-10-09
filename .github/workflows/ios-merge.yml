@@ -15,6 +15,12 @@ name: iOS Merge Build
 #   app.aurora7070.potato6444（Apple Distribution · 团队 2KUJ26BT63
 #   · 有效期至 2027-10-03 · 描述文件仅含一台设备）
 # 不要用官方 com.rayneo.venus.pub——被雷鸟团队占用，无法签名安装。
+#
+# 2026-10 更新：
+#   - 实时导航眼镜字幕修复已随源码进入所有构建（模拟/实时均可投屏）
+#   - enable_app_sdk（默认开，随 FOCUS 版）：TAP1 四槽应用广场 + TCE1 仪表盘
+#     卡片，需眼镜已刷 TAP1-TEST-01 等含对应运行时的固件
+#   - enable_app_gallery（默认关）：CI 生成 20 模板 + 4 内置示例打进 App
 
 on:
   workflow_dispatch:
@@ -45,6 +51,16 @@ on:
         default: false
       enable_focus:
         description: 'FOCUS-04 集成版（仅adhoc）。注意：刷机门禁运行时要求宿主Bundle ID为官方 com.rayneo.venus.pub，当前签名材料无法满足（免费Apple ID会被签名工具改写ID，已实测），故此模式只出App、刷机入口不可用'
+        type: boolean
+        required: false
+        default: false
+      enable_app_sdk:
+        description: 'TAP1 应用广场+TCE1仪表盘卡片（随FOCUS版编译，需眼镜已刷TAP1-TEST-01等含TAP1/TCE1运行时的固件；旧固件只停在手机预览不会写入）。实时导航眼镜字幕修复已随源码包含在所有构建中'
+        type: boolean
+        required: false
+        default: true
+      enable_app_gallery:
+        description: '生成应用广场离线资源（20模板目录+4内置示例，联网装uv依赖约2分钟；不勾也能从手机文件App导入ZIP）'
         type: boolean
         required: false
         default: false
@@ -88,6 +104,15 @@ jobs:
             echo "::error::FOCUS-04 仅支持 adhoc 模式（上游 package.mjs 的 OTA 门禁要求官方 Bundle ID，与你的证书描述文件冲突）"
             exit 1
           fi
+          if [[ "${{ inputs.enable_app_sdk }}" == 'true' && "${{ inputs.enable_focus }}" != 'true' ]]; then
+            echo "::warning::TAP1 应用广场只随 FOCUS-04 集成版编译；本次未勾 enable_focus，将忽略 enable_app_sdk"
+          fi
+          if [[ "${{ inputs.enable_app_gallery }}" == 'true' ]]; then
+            if [[ "${{ inputs.enable_focus }}" != 'true' || "${{ inputs.enable_app_sdk }}" != 'true' ]]; then
+              echo "::error::应用广场资源需要同时勾选 enable_focus 与 enable_app_sdk"
+              exit 1
+            fi
+          fi
           echo "Bundle ID 校验通过：$BUNDLE"
 
       - name: 下载高德导航 SDK（优先 fork 的 amap-sdk-cache Release，回退官方源）
@@ -128,6 +153,11 @@ jobs:
             export TIO_AMAP_ENABLED=1 TIO_AMAP_SDK_ROOT="$PWD/official-addon/build/amap-sdk" \
               TIO_OTA_FLASH_ENABLED=1 TIO_IMAGE_RX_LAB=1 TIO_IMAGE_RX_WIDE=1 \
               TIO_DISPLAY_PHONE=1 TIO_DISPLAY_FLASH=1
+            # TAP1 应用广场 + TCE1 卡片模块（AppUI/AppBridge/app*.c/Editor*）
+            if [[ "${{ inputs.enable_app_sdk }}" == 'true' ]]; then
+              export TIO_APP_SDK=1
+              echo "已启用 TIO_APP_SDK：应用广场 + TCE1 仪表盘卡片"
+            fi
             bash official-addon/focus-edition/build.sh embedded "${{ inputs.bundle_id }}"
             echo "ADDON=official-addon/focus-edition/build/image-rx-lab/TurboIOPrivateAddon.dylib" >> "$GITHUB_ENV"
           else
@@ -140,7 +170,27 @@ jobs:
               echo "ADDON=official-addon/build/embedded/TurboIOPrivateAddon.dylib" >> "$GITHUB_ENV"
             fi
           fi
+          # dylib 必须真的带上了 App SDK 符号，勾了开关却没编进去时立刻失败
+          if [[ "${{ inputs.enable_app_sdk }}" == 'true' ]]; then
+            nm -g "$ADDON" | grep -q '_TAPAppsController' || { echo "::error::dylib 缺少 _TAPAppsController：App SDK 没有编入"; exit 1; }
+            nm -g "$ADDON" | grep -q '_TCEEditorController' || { echo "::error::dylib 缺少 _TCEEditorController：TCE1 卡片模块没有编入"; exit 1; }
+            echo "App SDK 符号核验通过（_TAPAppsController / _TCEEditorController）"
+          fi
           echo "使用扩展：$ADDON"
+
+      - name: 生成应用广场离线资源（可选）
+        if: inputs.enable_app_gallery
+        run: |
+          brew install uv
+          RESOURCES="$PWD/app-resources"
+          rm -rf "$RESOURCES" && mkdir -p "$RESOURCES/TurboIOGallery"
+          # 20 个 MCP 离线模板目录 + 4 个内置示例 ZIP，布局与 package.mjs --app-gallery 一致
+          (cd dashboard-service && uv run turbo-app gallery export --out "$RESOURCES/TurboIOGallery")
+          (cd dashboard-service && uv run python -m turbo_dashboard.app_examples --out "$RESOURCES")
+          test -f "$RESOURCES/TurboIOGallery/catalog.json" || { echo "::error::gallery export 未产出 catalog.json"; exit 1; }
+          ls "$RESOURCES"/TurboAppSDK*.zip >/dev/null || { echo "::error::app_examples 未产出内置示例 ZIP"; exit 1; }
+          echo "应用广场资源就绪："
+          ls -la "$RESOURCES" "$RESOURCES/TurboIOGallery" | head -30
 
       - name: 下载并校验原厂砸壳 IPA
         run: |
@@ -179,6 +229,12 @@ jobs:
               "$PWD/focus-firmware.zip" \
               "$PWD/official-addon/build/amap-sdk" \
               "$PWD/merged/experimental-ota-routing.json"
+          fi
+          # 应用广场离线资源（等价 package.mjs --app-gallery：TurboIOGallery/ + 4 个内置示例 ZIP）
+          if [[ "${{ inputs.enable_app_gallery }}" == 'true' ]]; then
+            cp -R app-resources/TurboIOGallery merged/Payload/Runner.app/TurboIOGallery
+            cp app-resources/TurboAppSDK*.zip merged/Payload/Runner.app/
+            echo "应用广场资源已打包进 Runner.app"
           fi
           # 原厂砸壳包被商店按机型裁剪（列表只到 iPhone16,2），新机型会报
           # DeviceNotSupportedByThinning；把目标机型补进 UISupportedDevices
@@ -225,6 +281,13 @@ jobs:
             echo "  5. FOCUS-04 版已内置 TFP1 刷机门禁：App内 诊断→FOCUS-04"
             echo "     刷机流程：只下载验收→核对15成员→输入TFP1授权→手动点安装"
             echo "     刷机前：眼镜电量≥50%、结束所有任务；接受'短期无法回官方'的风险"
+            if [[ "${{ inputs.enable_app_sdk }}" == 'true' ]]; then
+              echo "  6. TAP1 应用广场+TCE1卡片已编入：App内 TurboIO→资料→随身应用"
+              echo "     四槽小应用/卡片安装需眼镜已刷含 TAP1/TCE1 运行时的固件"
+              echo "     （如 TAP1-TEST-01）；旧固件只停在手机预览，不会写入"
+              echo "     导航：模拟与实时导航均可开眼镜字幕；实时为20分钟保护会话，"
+              echo "     需保持导航页前台；先运行官方App一次建立连接再进扩展"
+            fi
           elif [[ "${{ inputs.enable_amap }}" == 'true' ]]; then
             echo "  5. 导航版：高德控制台建 iOS 平台 Key 时，绑定 Bundle ID"
             echo "     ${{ inputs.bundle_id }}（不是官方 com.rayneo.venus.pub！）"

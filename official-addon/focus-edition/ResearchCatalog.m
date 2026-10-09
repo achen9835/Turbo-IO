@@ -14,6 +14,9 @@ NSArray<NSDictionary *> *LegacySections(NSString *page){
         @{@"title":@"音乐随行",@"rows":@[Row(@"music",@"网易云音乐 · 第十项菜单",@"music.note",-2,20)]},
         @{@"title":@"录音与整理",@"rows":@[Row(@"recordings",@"录音与文件分享",@"waveform",-1,0),Row(@"summary",@"转写文字整理",@"text.badge.star",-1,1)]},
         @{@"title":@"全天智记",@"rows":@[Row(@"lifelogText",@"已保存文字",@"doc.text",-1,2),Row(@"lifelogAudio",@"音频保存与分享",@"waveform.circle",-1,3),Row(@"capture",@"保存之后的最终文字",@"square.and.arrow.down",1,0),Row(@"archive",@"导出文字归档",@"square.and.arrow.up",1,1)]},
+#if TIO_APP_SDK
+        @{@"title":@"应用与仪表盘",@"rows":@[Row(@"apps",@"应用广场 · 我的应用",@"square.grid.2x2",-2,23),Row(@"cards",@"仪表盘卡片 · TCE1",@"rectangle.on.rectangle.angled",-2,24)]},
+#endif
         @{@"title":@"出行",@"rows":@[Row(@"navigation",@"步行 / 骑行 / 驾车导航",@"location.north.line",-2,4)]}];
     if([page isEqual:@"diagnostics"])return @[
         @{@"title":@"开发者诊断",@"rows":@[Row(@"diagnosticsRuntime",@"眼镜运行状态 · TDG1",@"gauge.with.dots.needle.67percent",-2,21)]},
@@ -39,8 +42,12 @@ NSArray<NSDictionary *> *TIOResearchSections(NSString *page){
  NSMutableDictionary *lookup=[NSMutableDictionary new];for(NSString *p in @[@"model",@"library",@"diagnostics"])for(NSDictionary *section in LegacySections(p))for(NSDictionary *r in section[@"rows"])lookup[r[@"key"]]=r;
  NSArray *groups=nil;
  if([page isEqual:@"model"])groups=@[@[@"日常对话",@"mode",@"tts",@"search"],@[@"模型与接口",@"api",@"thinking"],@[@"语音设置",@"ttsEngine",@"ttsTest",@"ttsKey",@"exit"],@[@"Agent 与工具",@"agent",@"knowledge",@"tools",@"searchKey"],@[@"提示词与记忆",@"prompt",@"history"]];
- if([page isEqual:@"library"])groups=@[@[@"随身应用",@"music",@"weread",@"navigation",@"localTranslation",@"recordings"],@[@"文字整理",@"summary"],@[@"全天智记",@"lifelogText",@"lifelogAudio",@"capture",@"archive"]];
+ if([page isEqual:@"library"])groups=@[@[@"随身应用",@"music",@"weread",@"navigation",
+#if TIO_APP_SDK
+ @"apps",@"cards",
+#endif
+ @"localTranslation",@"recordings"],@[@"文字整理",@"summary"],@[@"全天智记",@"lifelogText",@"lifelogAudio",@"capture",@"archive"]];
  if([page isEqual:@"diagnostics"])groups=@[@[@"运行与日志",@"diagnosticsRuntime",@"glassesLog",@"status"],@[@"协议实验",@"subtitleHUD",@"a2ui",@"apiTest",@"searchTest",@"todoTest"],@[@"显示实验",@"displayPhone",@"imageRXLab"],@[@"实验固件 · 有风险",@"experimentalOTA"]];
- if(!groups)return @[];NSMutableArray *sections=[NSMutableArray new];NSDictionary *names=@{@"music":@"音乐",@"weread":@"微信读书",@"navigation":@"导航",@"localTranslation":@"本地翻译与字幕",@"recordings":@"录音与分享"};
+ if(!groups)return @[];NSMutableArray *sections=[NSMutableArray new];NSDictionary *names=@{@"music":@"音乐",@"weread":@"微信读书",@"navigation":@"导航",@"apps":@"应用广场",@"cards":@"仪表盘卡片",@"localTranslation":@"本地翻译与字幕",@"recordings":@"录音与分享"};
  for(NSArray *group in groups){NSMutableArray *rows=[NSMutableArray new];for(NSUInteger i=1;i<group.count;i++){NSDictionary *r=lookup[group[i]];if(r){NSMutableDictionary *m=[r mutableCopy];if(names[group[i]])m[@"title"]=names[group[i]];[rows addObject:m];}}if(rows.count)[sections addObject:@{@"title":group[0],@"rows":rows}];}return sections;
 }
