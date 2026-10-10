@@ -28,7 +28,12 @@
  if(now<self.autoNativeHUDNextAt)return;
  self.autoNativeHUDNextAt=now+5;self.autoNativeHUDAttempts++;
  if(self.autoNativeHUDAttempts>24){self.autoNativeHUD=NO;TIOVoiceNavTrace(@"眼镜HUD：自动开启多次未成功，已停止重试（可手动点按钮）");return;}
- if(TDPPhoneNavigationStart([self displayHUDFrame])){self.autoNativeHUD=NO;TIOVoiceNavTrace(@"眼镜HUD：原生导航已开启");return;}
+ if(TDPPhoneNavigationStart([self displayHUDFrame])){self.autoNativeHUD=NO;TIOVoiceNavTrace(@"眼镜HUD：原生导航已开启");
+  // "Start accepted" is not "lens rendered": if the glasses were still busy,
+  // the transfer may complete without the nav page actually showing. Re-check
+  // shortly after; if not active, re-arm the retry loop to self-heal.
+  NSUInteger g=self.generation;dispatch_after(dispatch_time(DISPATCH_TIME_NOW,6*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(g==self.generation&&self.active&&![TDPPhoneNavigationStatus()[@"active"] boolValue]){TIOVoiceNavTrace(@"眼镜HUD：发送后6秒未见激活，恢复自动重试");self.autoNativeHUD=YES;}});
+  return;}
  TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD：开启未成功（第%lu次，5秒后重试；眼镜若有聊天等任务请先关闭）",(unsigned long)self.autoNativeHUDAttempts]);
 }
 - (void)buildDisplayHUD{
