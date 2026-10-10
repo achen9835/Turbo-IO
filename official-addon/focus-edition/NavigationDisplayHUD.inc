@@ -16,15 +16,20 @@
  return self.active&&!self.routeReady&&!self.fixture&&!self.planning&&!self.rerouting&&NSProcessInfo.processInfo.systemUptime-self.lastInfo<=15&&[self.display[@"phase"] isEqual:@"navigating"]&&![self subtitleTrialBlocksNative]&&![self.teleHUD.status[@"enabled"] boolValue]&&![TIONewsTeleStatus()[@"active"] boolValue]&&![t[@"enabled"] boolValue]&&![t[@"pending"] boolValue]&&![t[@"notices"] boolValue]&&![t[@"noticePending"] boolValue];
 }
 // Realtime navigation engages the native HUD by itself once AMap turn guidance
-// exists -- no manual tap. Exactly one attempt per navigation session: if the
-// glasses are busy it falls back to the manual button, and a user who stops
-// the HUD mid-session is never fought with a restart.
+// exists -- no manual tap. The glasses are often briefly busy right after a
+// voice turn (assistant chat window dismissing), so a failed start RETRIES
+// every 5s for ~2 minutes instead of giving up; a user who stops the HUD
+// mid-session is never fought with a restart (toggleDisplayHUD clears the arm).
 - (void)autoStartNativeHUDIfNeeded{
  if(!self.autoNativeHUD)return;
  if([TDPPhoneNavigationStatus()[@"active"] boolValue]){self.autoNativeHUD=NO;return;}
  if(![self canStartDisplayHUD])return;
- self.autoNativeHUD=NO;
- if(!TDPPhoneNavigationStart([self displayHUDFrame]))self.note=@"眼镜原生导航自动开启未成功；可手动点按钮重试。";
+ NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
+ if(now<self.autoNativeHUDNextAt)return;
+ self.autoNativeHUDNextAt=now+5;self.autoNativeHUDAttempts++;
+ if(self.autoNativeHUDAttempts>24){self.autoNativeHUD=NO;TIOVoiceNavTrace(@"眼镜HUD：自动开启多次未成功，已停止重试（可手动点按钮）");return;}
+ if(TDPPhoneNavigationStart([self displayHUDFrame])){self.autoNativeHUD=NO;TIOVoiceNavTrace(@"眼镜HUD：原生导航已开启");return;}
+ TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD：开启未成功（第%lu次，5秒后重试；眼镜若有聊天等任务请先关闭）",(unsigned long)self.autoNativeHUDAttempts]);
 }
 - (void)buildDisplayHUD{
  UILabel *title=[self navLabel:@"眼镜原生导航 · TNV1" size:16 weight:UIFontWeightSemibold];[self.lensCard addArrangedSubview:title];
@@ -52,7 +57,7 @@
  self.tdpPreview.hidden=YES; // Old pixel renderer is not an accurate TNV1 preview.
 }
 - (void)toggleDisplayHUD{
- if([TDPPhoneNavigationStatus()[@"active"] boolValue]){TDPPhoneNavigationStop();[self refreshDisplayHUD];return;}
+ if([TDPPhoneNavigationStatus()[@"active"] boolValue]){self.autoNativeHUD=NO;TDPPhoneNavigationStop();[self refreshDisplayHUD];return;} // Explicit user stop: the auto-engager must never fight back.
  if(![self canStartDisplayHUD]){[self alert:@"先开始高德导航" message:@"等待转向和距离出现，并先结束字幕、提词、录音及其他眼镜任务。"] ;return;}
  NSUInteger g=self.generation;
  // A previous subtitle session (sim or realtime) can leave stopping/uncertain

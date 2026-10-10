@@ -90,6 +90,8 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property UIButton *tdpButton;
 @property UILabel *tdpStatus;
 @property BOOL autoNativeHUD;
+@property NSUInteger autoNativeHUDAttempts;
+@property NSTimeInterval autoNativeHUDNextAt;
 @property UIImageView *tdpPreview;
 @property NSData *hudIconPixels,*crossPixels;
 @property NSInteger hudIconType;
