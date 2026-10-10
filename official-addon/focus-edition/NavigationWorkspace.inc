@@ -98,6 +98,21 @@
     self.manager.pausesLocationUpdatesAutomatically=!self.backgroundLocationEnabled;
      BOOL ok=self.simulated?[self.manager startEmulatorNavi]:[self.manager startGPSNavi];if(!ok){[self fail:@"导航启动失败，可停止后重新规划"];if(self.voiceSession)TIOVoiceNavTrace(@"中止：SDK启动导航失败");return;}self.routeReady=NO;self.navigationStarted=YES;
      if(self.voiceSession)TIOVoiceNavTrace(@"第4步：导航已开始，等待转向指引上眼镜");
+#if TIO_AMAP_ENABLED
+     // AMap emits turn guidance only once the device MOVES; standing at the
+     // origin the lens would stay empty. Synthesize the first frame from the
+     // route itself (origin + next 3 segments, heading-up) so the route shows
+     // immediately -- and the HUD auto-engage has a valid frame to start from.
+     if(!self.simulated&&self.manager.naviRoute){
+      AMapNaviRoute *route=self.manager.naviRoute;NSMutableArray *coords=[NSMutableArray new];
+      for(NSUInteger si=0;si<MIN(route.routeSegments.count,(NSUInteger)4)&&coords.count<512;si++)for(AMapNaviLink *link in route.routeSegments[si].links){for(AMapNaviPoint *p in link.coordinates){if(coords.count>=512)break;[coords addObject:@[@(p.latitude),@(p.longitude)]];}}
+      if(coords.count>=2){
+       NSMutableDictionary *first=[TIONavDisplay(@"navigating",9,@"出发",MIN((NSInteger)route.routeLength,(NSInteger)999999),(NSInteger)route.routeLength,(NSInteger)route.routeTime,NO) mutableCopy];
+       [first addEntriesFromDictionary:TNVNormalizeCoordinates(coords)];self.lastInfo=NSProcessInfo.processInfo.systemUptime;
+       [self setFrame:[first copy]];TIOVoiceNavTrace(@"首帧已发送：静止时镜片也显示前方路线");
+      }
+     }
+#endif
 #if TIO_DISPLAY_PHONE
      self.autoNativeHUD=!self.simulated;self.autoNativeHUDAttempts=0;self.autoNativeHUDNextAt=0; // Realtime: the native HUD engages itself on first guidance (with retries while the glasses are briefly busy).
 #endif
