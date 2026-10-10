@@ -84,7 +84,14 @@
 - (void)beginRoute{
 #if TIO_AMAP_ENABLED
     if(!self.routeReady||!self.manager||self.planning)return;
-    if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive){[self alert:@"请在前台开始导航" message:@"后台不会自动开始新的定位会话。"];return;}
+    // Hands-free rule: a voice session starts wherever the user is -- phone
+    // locked in a pocket is the NORMAL voice case, and the alert below is
+    // invisible on a headless panel anyway. Manual starts keep the
+    // foreground requirement.
+    if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive){
+        if(self.voiceSession)TIOVoiceNavTrace(@"后台/锁屏状态：语音会话照样启动导航");
+        else{[self alert:@"请在前台开始导航" message:@"后台不会自动开始新的定位会话。"];return;}
+    }
     if(!self.simulated&&![self navigationLocationAuthorized]){[self alert:@"需要定位权限" message:@"请允许使用期间定位后重试；不自动申请始终定位。"];return;}
     self.backgroundLocationEnabled=!self.simulated&&[self navigationLocationModeAvailable]&&[self navigationLocationAuthorized];
     self.manager.allowsBackgroundLocationUpdates=self.backgroundLocationEnabled;

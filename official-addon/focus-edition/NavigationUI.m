@@ -261,6 +261,14 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     // order: 定位 → 终点 → 规划 → 导航.
     CLAuthorizationStatus auth=self.permission.authorizationStatus;
     if(auth==kCLAuthorizationStatusNotDetermined||auth==kCLAuthorizationStatusDenied||auth==kCLAuthorizationStatusRestricted){[self fail:@"语音实时导航需要定位授权：请在系统设置允许定位后重试"];TIOVoiceNavTrace(@"中止：定位未授权");return;}
+    // Positioning robustness for the hands-free case (phone possibly locked
+    // in a pocket): best accuracy for a fast first fix; background delivery
+    // ONLY when the host declares the location background mode -- setting the
+    // flag without that entitlement crashes CLLocationManager.
+    self.permission.desiredAccuracy=kCLLocationAccuracyBest;
+    id bgModes=[NSBundle.mainBundle objectForInfoDictionaryKey:@"UIBackgroundModes"];
+    if([bgModes isKindOfClass:NSArray.class]&&[bgModes containsObject:@"location"])self.permission.allowsBackgroundLocationUpdates=YES;
+    TIOVoiceNavTrace(UIApplication.sharedApplication.applicationState==UIApplicationStateActive?@"App在前台：定位回调应正常送达":@"App在后台/锁屏：定位依赖后台模式，请保持眼镜连接");
     self.voiceLocating=YES;[self.permission startUpdatingLocation];
     self.note=@"语音导航 第1步：正在定位当前位置（最多15秒）…";TIOVoiceNavTrace(@"第1步：正在定位（最多15秒）");[self refresh];
     NSUInteger g=self.generation;
@@ -274,23 +282,23 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 - (void)voiceSearchDestination{
     if(!self.voiceSession||!self.voiceQuery.length)return;
     AMapPOIKeywordsSearchRequest *r=[AMapPOIKeywordsSearchRequest new];r.keywords=self.voiceQuery;r.offset=10;r.page=1;self.voiceRequest=r;
-    self.note=[NSString stringWithFormat:@”第2步：已定位。搜索目的地“%@”…”,self.voiceQuery];TIOVoiceNavTrace([NSString stringWithFormat:@”第2步：搜索「%@」”,self.voiceQuery]);[self refresh];
+    self.note=[NSString stringWithFormat:@"第2步：已定位。搜索目的地“%@”…",self.voiceQuery];TIOVoiceNavTrace([NSString stringWithFormat:@"第2步：搜索「%@」",self.voiceQuery]);[self refresh];
     [self.voiceSearch AMapPOIKeywordsSearch:r];
 }
 - (void)onPOISearchDone:(AMapPOISearchBaseRequest *)request response:(AMapPOISearchResponse *)response{
     dispatch_async(dispatch_get_main_queue(),^{
         if(request!=self.voiceRequest||!self.voiceSession)return;self.voiceRequest=nil;
         NSArray<AMapPOI *> *pois=response.pois;AMapPOI *first=nil;for(AMapPOI *poi in pois)if(poi.location){first=poi;break;}
-        if(!first){[self fail:[NSString stringWithFormat:@”语音没找到“%@”：请说更完整的名称，或手动搜索”,self.voiceQuery?:@””] ];TIOVoiceNavTrace(@”中止：搜索无结果”);return;}
-        TIOVoiceNavTrace([NSString stringWithFormat:@”第2步完成：选定「%@」，第3步算路”,first.name?:@””]);
-        [self selectPlace:@{@”name”:first.name?:@”目的地”,@”address”:[NSString stringWithFormat:@”%@ %@ %@”,first.city?:@””,first.district?:@””,first.address?:@””],@”lat”:@(first.location.latitude),@”lon”:@(first.location.longitude)}];
+        if(!first){[self fail:[NSString stringWithFormat:@"语音没找到“%@”：请说更完整的名称，或手动搜索",self.voiceQuery?:@""] ];TIOVoiceNavTrace(@"中止：搜索无结果");return;}
+        TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：选定「%@」，第3步算路",first.name?:@""]);
+        [self selectPlace:@{@"name":first.name?:@"目的地",@"address":[NSString stringWithFormat:@"%@ %@ %@",first.city?:@"",first.district?:@"",first.address?:@""],@"lat":@(first.location.latitude),@"lon":@(first.location.longitude)}];
         self.travelMode.selectedSegmentIndex=1; // Position is already confirmed; plan now, auto-begin follows.
-        self.note=[NSString stringWithFormat:@”第2步：选定终点「%@」（搜索第一位）。第3步：规划实时路线…”,first.name?:@””];
+        self.note=[NSString stringWithFormat:@"第2步：选定终点「%@」（搜索第一位）。第3步：规划实时路线…",first.name?:@""];
         [self refresh];[self startWalking];
     });
 }
 - (void)AMapSearchRequest:(id)request didFailWithError:(NSError *)error{
-    dispatch_async(dispatch_get_main_queue(),^{if(request!=self.voiceRequest||!self.voiceSession)return;self.voiceRequest=nil;[self fail:[NSString stringWithFormat:@”语音搜索失败（code=%ld）：检查网络与Key搜索权限”,(long)error.code] ];TIOVoiceNavTrace([NSString stringWithFormat:@”中止：搜索失败 code=%ld”,(long)error.code]);});
+    dispatch_async(dispatch_get_main_queue(),^{if(request!=self.voiceRequest||!self.voiceSession)return;self.voiceRequest=nil;[self fail:[NSString stringWithFormat:@"语音搜索失败（code=%ld）：检查网络与Key搜索权限",(long)error.code] ];TIOVoiceNavTrace([NSString stringWithFormat:@"中止：搜索失败 code=%ld",(long)error.code]);});
 }
 #endif
 #include "NavigationBackground.inc"
@@ -428,7 +436,7 @@ void TIOVoiceNavMaybeStart(NSString *text){
     if(![text isKindOfClass:NSString.class])return;
     if([NSUserDefaults.standardUserDefaults boolForKey:@"voiceNavDisabled"]){TIOVoiceNavTrace(@"忽略：语音导航开关已关闭（导航页-更多里可重新开启）");return;}
     NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
-    if(now-LastVoiceNavAt<8)return;
+    if(now-LastVoiceNavAt<8){TIOVoiceNavTrace(@"8秒内重复指令，忽略（前一次已处理）");return;}
     NSString *t=[text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     while(t.length){unichar c=[t characterAtIndex:t.length-1];if(c==0x3002||c==0xFF01||c==0xFF1F||c==0xFF0C||c==','||c=='.'||c=='!'||c=='?')t=[t substringToIndex:t.length-1];else break;}
     // Strip common speech prefixes so "帮我导航去X" and "请导航去X" also match.
@@ -444,7 +452,7 @@ void TIOVoiceNavMaybeStart(NSString *text){
             if(d.length>=2&&d.length<=40){destination=d;break;}
         }
     }
-    if(!destination)return;
+    if(!destination){TIOVoiceNavTrace([NSString stringWithFormat:@"未命中导航关键词：%@",t]);return;}
     LastVoiceNavAt=now;
     TIOVoiceNavTraceReset();
     TIOVoiceNavTrace([NSString stringWithFormat:@"语音命中，终点「%@」",destination]);
