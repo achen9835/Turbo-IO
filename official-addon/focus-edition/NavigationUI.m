@@ -74,7 +74,8 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property NSInteger selectedTransport,sessionTransport;
 @property BOOL routeReady,locating;
 @property BOOL navigationStarted,backgroundLocationEnabled;
-@property BOOL voiceSession,voiceLifelogWasOn,voiceLocating;
+@property BOOL voiceSession,voiceLifelogWasOn,voiceLocating,hasVoiceFix;
+@property CLLocationCoordinate2D voiceFix; // Fresh CLLocationManager fix from voice step 1; used as the explicit route origin so background planning never waits on the SDK's own (paused) location engine.
 #if TIO_AMAP_ENABLED
 @property AMapSearchAPI *voiceSearch;
 @property AMapPOIKeywordsSearchRequest *voiceRequest;
@@ -356,11 +357,17 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     self.active=YES;self.planning=YES;self.simulated=sim;self.fixture=NO;self.gpsWeak=NO;self.staleShown=NO;NSUInteger generation=++self.generation;
     self.note=[NSString stringWithFormat:@"%@%@算路中（%@）",TIONavigationModeTitle(self.sessionTransport),sim?@"模拟":@"实时",sim?@"联网，不使用实际定位":@"使用手机定位，开始后支持后台"];[self setFrame:TIONavDisplay(@"planning",0,@"",-1,-1,-1,sim)];
     AMapNaviPoint *end=[AMapNaviPoint locationWithLatitude:self.destination.latitude longitude:self.destination.longitude];
-    BOOL submitted=TIONavigationCalculate(manager,self.sessionTransport,sim,[AMapNaviPoint locationWithLatitude:self.simulationStart.latitude longitude:self.simulationStart.longitude],end);
+    // Voice realtime passes its step-1 fix as the explicit origin so background
+    // planning never waits on the SDK's (pausable) internal location engine;
+    // sim keeps its simulation start; manual realtime lets the SDK use the
+    // current position (WithEndPoints) as before.
+    BOOL voiceOrigin=!sim&&self.voiceSession&&self.hasVoiceFix;
+    AMapNaviPoint *start=sim?[AMapNaviPoint locationWithLatitude:self.simulationStart.latitude longitude:self.simulationStart.longitude]:(voiceOrigin?[AMapNaviPoint locationWithLatitude:self.voiceFix.latitude longitude:self.voiceFix.longitude]:nil);
+    BOOL submitted=TIONavigationCalculate(manager,self.sessionTransport,sim,start,end);
     if(!sim)self.map.showsUserLocation=YES;
     if(!submitted){[self fail:@"SDK 未接受算路请求，请核对 Key、网络和定位"];if(self.voiceSession)TIOVoiceNavTrace(@"中止：SDK未接受算路请求");return;}
-    if(self.voiceSession)TIOVoiceNavTrace(@"第3步：算路请求已提交，等待结果");
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,45*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(self.generation==generation&&self.planning)[self fail:@"45 秒未收到算路结果；已停止，本次结果未知"] ;});
+    if(self.voiceSession)TIOVoiceNavTrace(voiceOrigin?@"第3步：算路已提交（以第1步定位为起点，后台安全）":@"第3步：算路请求已提交，等待结果");
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,45*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(self.generation==generation&&self.planning){[self fail:@"45 秒未收到算路结果；已停止，本次结果未知"];if(self.voiceSession)TIOVoiceNavTrace(@"中止：45秒未收到算路结果（引擎内部定位可能被暂停）");}});
 }
 - (void)fail:(NSString *)message{[self halt];self.note=message;[self setFrame:TIONavDisplay(@"error",0,@"",-1,-1,-1,self.simulated)];}
 - (void)navigationRouteSuccess:(id<TIONavigationManager>)manager{dispatch_async(dispatch_get_main_queue(),^{if(manager!=self.manager||!self.active)return;BOOL first=self.planning;self.planning=NO;self.rerouting=NO;self.lastInfo=NSProcessInfo.processInfo.systemUptime;self.staleShown=NO;[self drawRoute:manager.naviRoute];if(first){self.routeReady=YES;self.note=@"路线已准备，核对地图后点击开始。尚未向眼镜发送导航。";self.routeSummary.text=[NSString stringWithFormat:@"%.1f 公里   ·   约 %ld 分钟",manager.naviRoute.routeLength/1000.0,(long)MAX(1,(manager.naviRoute.routeTime+59)/60)];self.display=TIONavDisplay(@"ready",0,@"",-1,manager.naviRoute.routeLength,manager.naviRoute.routeTime,self.simulated);
