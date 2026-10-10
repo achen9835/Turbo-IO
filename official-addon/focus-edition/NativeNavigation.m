@@ -31,9 +31,18 @@ NSDictionary *TNVNormalizeCoordinates(NSArray *coords){
   double lat=[p[0] doubleValue],lon=[p[1] doubleValue];if(!isfinite(lat)||!isfinite(lon)||fabs(lat)>85||fabs(lon)>180)return @{};
   double ref=[coords[0][0] doubleValue];xs[i]=(lon-[coords[0][1] doubleValue])*cos(ref*M_PI/180);ys[i]=-(lat-ref);loX=MIN(loX,xs[i]);hiX=MAX(hiX,xs[i]);loY=MIN(loY,ys[i]);hiY=MAX(hiY,ys[i]);
  }
+ // Heading-up mini-map: rotate every point around the current position by the
+ // travel bearing so the user's direction always points UP on the lens, no
+ // matter how the firmware interprets the heading field (north-up renderer
+ // gets an already-rotated frame).
+ double h=0;
+ if(coords.count>=2){h=atan2(xs[1]-xs[0],-(ys[1]-ys[0]));if(h<0)h+=2*M_PI;}
+ double ch=cos(-h),sh=sin(-h);
+ loX=loY=DBL_MAX;hiX=hiY=-DBL_MAX; // recompute bounds on the rotated frame
+ for(NSUInteger i=0;i<coords.count;i++){double rx=xs[i]*ch-ys[i]*sh,ry=xs[i]*sh+ys[i]*ch;xs[i]=rx;ys[i]=ry;loX=MIN(loX,xs[i]);hiX=MAX(hiX,xs[i]);loY=MIN(loY,ys[i]);hiY=MAX(hiY,ys[i]);}
  double span=MAX(hiX-loX,hiY-loY);if(span<1e-10)return @{};NSMutableArray *out=[NSMutableArray new];NSUInteger count=MIN(coords.count,32);
  for(NSUInteger i=0;i<count;i++){NSUInteger at=i*(coords.count-1)/(count-1);double x=511.5+(xs[at]-(loX+hiX)*.5)*900/span,y=511.5+(ys[at]-(loY+hiY)*.5)*900/span;[out addObject:@[@((unsigned)lround(x)),@((unsigned)lround(y))]];}
- double h=atan2(xs[1]-xs[0],-(ys[1]-ys[0]))*180/M_PI;if(h<0)h+=360;return @{@"navPoints":out,@"navHeading":@((unsigned)lround(h)%360)};
+ return @{@"navPoints":out,@"navHeading":@((unsigned)lround(h*180/M_PI)%360)};
 }
 BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
  if(!s||![d isKindOfClass:NSDictionary.class]||![d[@"phase"] isEqual:@"navigating"]||!Number(d[@"meters"],1000000)||!Number(d[@"remainingMeters"],10000000)||!Number(d[@"remainingSeconds"],604800)||!Number(d[@"icon"],255))return NO;

@@ -397,7 +397,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
  dispatch_async(dispatch_get_main_queue(),^{if(manager!=self.manager||!self.active||self.routeReady||self.planning||self.rerouting)return;
   NSArray<AMapNaviSegment *> *segments=manager.naviRoute.routeSegments;NSMutableArray *coords=[NSMutableArray new];
   if(segment>=0&&segment<(NSInteger)segments.count&&link>=0&&point>=0){
-   for(NSUInteger si=(NSUInteger)segment;si<MIN(segments.count,(NSUInteger)segment+2)&&coords.count<512;si++){
+   for(NSUInteger si=(NSUInteger)segment;si<MIN(segments.count,(NSUInteger)segment+4)&&coords.count<512;si++){ // current + 3 ahead: the lens mini-map reads as "more of the route", not just the next turn
     NSArray<AMapNaviLink *> *links=segments[si].links;
     for(NSUInteger li=si==(NSUInteger)segment?(NSUInteger)link:0;li<links.count&&coords.count<512;li++){
      NSArray<AMapNaviPoint *> *points=links[li].coordinates;

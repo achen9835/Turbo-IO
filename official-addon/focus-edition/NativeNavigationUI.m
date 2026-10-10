@@ -9,7 +9,7 @@
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
 static TNVSession *Session;static TNVTransport *Transport;static NSTimer *Timer;static NSString *Peer;static NSTimeInterval LastSave;
-BOOL TNVAlways(void){return [NSUserDefaults.standardUserDefaults boolForKey:@"TurboNavigationAlwaysOnV1"];}
+BOOL TNVAlways(void){NSUserDefaults *d=NSUserDefaults.standardUserDefaults;id v=[d objectForKey:@"TurboNavigationAlwaysOnV1"];return [v isKindOfClass:NSNumber.class]?[v boolValue]:YES;} // Default ON per product decision; the settings toggle still overrides.
 void TNVSetAlways(BOOL value){[NSUserDefaults.standardUserDefaults setBool:value forKey:@"TurboNavigationAlwaysOnV1"];[Session setAlways:value];}
 NSDictionary *TNVStatus(void){return Session.status?:@{@"active":@NO,@"busy":@NO,@"snapshots":@0,@"note":@"TNV1专用固件：手机开始导航后可自动打开眼镜页面"};}
 BOOL TNVConsume(NSDictionary *e){if(Peer&&![Peer isEqual:TIOProtocolDevice()])[Session disconnect];return [Session consume:e];}
@@ -26,6 +26,7 @@ void TNVPump(void){
 // background rejection says WHICH door was closed instead of a generic NO.
 static NSString *TNVRefusal=@"";
 NSString *TNVRefusalReason(void){return TNVRefusal;}
+void TNVSetRefusal(NSString *reason){TNVRefusal=[reason copy];}
 BOOL TNVStart(NSDictionary *frame){
  NSCAssert(NSThread.isMainThread,@"main only");
  if(!TMMusicPauseForOTA()){TNVRefusal=@"音乐桥未就绪（playing/active/busy）";return NO;}

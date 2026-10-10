@@ -98,7 +98,8 @@ BOOL TDPPhoneNavigationStart(NSDictionary *frame){
  // Background degradation is handled by the session's 8s deadline plus the
  // caller's retry/verify loop, instead of a hard foreground-only refusal that
  // made hands-free voice navigation need a manual phone unlock.
- if(NavFeed.active||Session.busy)return NO;
+ if(NavFeed.active){TNVSetRefusal(@"旧手机镜像导航流(NavFeed)仍活跃");return NO;}
+ if(Session.busy){TNVSetRefusal(@"TDP显示会话有在途传输(busy)");return NO;}
  [Session setForegroundActive:NO];return TNVStart(frame);
 }
 void TDPPhoneNavigationOffer(NSDictionary *frame){TNVOffer(frame);}
