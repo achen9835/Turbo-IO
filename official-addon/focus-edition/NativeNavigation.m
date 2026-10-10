@@ -41,7 +41,15 @@ NSDictionary *TNVNormalizeCoordinates(NSArray *coords){
  loX=loY=DBL_MAX;hiX=hiY=-DBL_MAX; // recompute bounds on the rotated frame
  for(NSUInteger i=0;i<coords.count;i++){double rx=xs[i]*ch-ys[i]*sh,ry=xs[i]*sh+ys[i]*ch;xs[i]=rx;ys[i]=ry;loX=MIN(loX,xs[i]);hiX=MAX(hiX,xs[i]);loY=MIN(loY,ys[i]);hiY=MAX(hiY,ys[i]);}
  double span=MAX(hiX-loX,hiY-loY);if(span<1e-10)return @{};NSMutableArray *out=[NSMutableArray new];NSUInteger count=MIN(coords.count,32);
- for(NSUInteger i=0;i<count;i++){NSUInteger at=i*(coords.count-1)/(count-1);double x=511.5+(xs[at]-(loX+hiX)*.5)*900/span,y=511.5+(ys[at]-(loY+hiY)*.5)*900/span;[out addObject:@[@((unsigned)lround(x)),@((unsigned)lround(y))]];}
+ // Perspective sampling: the 32-point protocol budget goes where detail pays
+ // off -- dense near the user (exact shape of the next turns), sparse far away
+ // (still visible). t^2.2 concentrates half the points in the first ~20% of
+ // the covered distance; uniform sampling wasted the budget far away.
+ double arc[512];arc[0]=0;for(NSUInteger i=1;i<coords.count;i++)arc[i]=arc[i-1]+hypot(xs[i]-xs[i-1],ys[i]-ys[i-1]);
+ double total=arc[coords.count-1];NSUInteger cursor=0;
+ for(NSUInteger i=0;i<count;i++){double t=count>1?(double)i/(count-1):0;double target=total*pow(t,2.2);
+  while(cursor+1<coords.count&&arc[cursor+1]<target)cursor++;
+  double x=511.5+(xs[cursor]-(loX+hiX)*.5)*900/span,y=511.5+(ys[cursor]-(loY+hiY)*.5)*900/span;[out addObject:@[@((unsigned)lround(x)),@((unsigned)lround(y))]];}
  return @{@"navPoints":out,@"navHeading":@((unsigned)lround(h*180/M_PI)%360)};
 }
 BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
