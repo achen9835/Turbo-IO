@@ -236,7 +236,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     self.map.showsUserLocation=NO;
 #endif
 }
-- (void)stopUser{[self halt];TIONavEnableNotices(NO);self.note=@"导航更新已停止并请求退出。字幕退出仍需镜片确认；未关闭时用实体按钮。不会自动重新开启。";self.routeSummary.text=@"导航已结束 · 可重新规划路线";self.display=TIONavDisplay(@"stopped",0,@"",-1,-1,-1,self.simulated);TIONavEnableDisplay(NO);[self refresh];}
+- (void)stopUser{BOOL wasRunning=self.navigationStarted;[self halt];TIONavEnableNotices(NO);self.note=@"导航更新已停止并请求退出。字幕退出仍需镜片确认；未关闭时用实体按钮。不会自动重新开启。";self.routeSummary.text=@"导航已结束 · 可重新规划路线";self.display=TIONavDisplay(@"stopped",0,@"",-1,-1,-1,self.simulated);TIONavEnableDisplay(NO);if(wasRunning)TIOVoiceNavTrace(@"导航已结束：镜片导航页60秒无更新会自动息屏（或用眼镜返回键立即退出）；期间立即重测可能需要重试");[self refresh];}
 - (void)voiceDismiss{
     // Exiting the page never stops a running session (the shared panel keeps
     // feeding the glasses off-screen); 结束导航 or reopening the page stops it.
