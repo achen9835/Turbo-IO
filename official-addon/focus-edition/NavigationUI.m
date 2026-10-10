@@ -470,8 +470,9 @@ void TIOVoiceNavMaybeStart(NSString *text){
 // Returns the SAME shared panel every time: opening the page during or after a
 // voice navigation reattaches to the live session (visible on the map, and
 // 结束导航 actually stops it). Closing the page never stops the session.
+// No manual lifecycle calls here: the push itself drives viewWillAppear, and
+// headless-created panels already got theirs from the voice flow.
 UIViewController *TIONavigationController(void){
     if(!SharedNavPanel)SharedNavPanel=[TIONavigationPanel new];
-    [SharedNavPanel viewWillAppear:NO]; // Panels created headless by the voice flow need the tick timer before first push.
     return SharedNavPanel;
 }
