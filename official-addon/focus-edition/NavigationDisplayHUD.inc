@@ -46,7 +46,9 @@
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(8.5*NSEC_PER_SEC)),dispatch_get_main_queue(),verify); // 8.5s covers the protocol's 8s reply deadline.
   return;}
  NSString *st=s[@"note"]?:@"未知";
- if(!TIOProtocolDevice().length)st=@"眼镜通道未就绪：息屏时文件通道不可用，点亮手机/打开App后自动重试";
+ if(!TIOProtocolDevice().length)st=@"眼镜通道未就绪：设备号未知，点亮手机/打开App后自动重试";
+ NSString *why=TNVRefusalReason();
+ if(why.length)st=[st stringByAppendingFormat:@"；具体原因：%@",why];
  TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD：开启请求被拒（第%lu次，2秒后重试；状态：%@）",(unsigned long)self.autoNativeHUDAttempts,st]);
 }
 - (void)buildDisplayHUD{

@@ -22,9 +22,19 @@ void TNVPump(void){
  NSMutableDictionary *d=[TNVStatus() mutableCopy];d[@"build"]=@"NAVIGATION-PHONE-02-BG";d[@"physicalVerified"]=@NO;d[@"timestamp"]=@(NSDate.date.timeIntervalSince1970);d[@"appState"]=@(UIApplication.sharedApplication.applicationState);
  NSString *file=[root stringByAppendingPathComponent:@"native-navigation-status.json"];[[NSJSONSerialization dataWithJSONObject:d options:NSJSONWritingSortedKeys error:nil] writeToFile:file options:NSDataWritingAtomic error:nil];[NSFileManager.defaultManager setAttributes:@{NSFilePosixPermissions:@0600} ofItemAtPath:file error:nil];
 }
+// Last refusal reason from TNVStart's gates, surfaced in HUD breadcrumbs so a
+// background rejection says WHICH door was closed instead of a generic NO.
+static NSString *TNVRefusal=@"";
+NSString *TNVRefusalReason(void){return TNVRefusal;}
 BOOL TNVStart(NSDictionary *frame){
- NSCAssert(NSThread.isMainThread,@"main only");if(!TMMusicPauseForOTA()||!TWReaderPauseForOTA()||Session.active||Session.busy||[TIOOTAFlashStatus()[@"stage"] unsignedIntegerValue])return NO;
- NSString *device=TIOProtocolDevice();if(!device.length)return NO;TNScene scene;if(!TNVScene(frame,TNVAlways(),&scene))return NO;
+ NSCAssert(NSThread.isMainThread,@"main only");
+ if(!TMMusicPauseForOTA()){TNVRefusal=@"音乐桥未就绪（playing/active/busy）";return NO;}
+ if(!TWReaderPauseForOTA()){TNVRefusal=@"提词桥占线（已请求关闭，2秒后重试可自愈）";return NO;}
+ if(Session.active||Session.busy){TNVRefusal=@"上一导航会话仍占用（active/busy）";return NO;}
+ if([TIOOTAFlashStatus()[@"stage"] unsignedIntegerValue]){TNVRefusal=@"实验OTA进行中";return NO;}
+ NSString *device=TIOProtocolDevice();if(!device.length){TNVRefusal=@"设备号未知（协议缓存为空）";return NO;}
+ TNScene scene;if(!TNVScene(frame,TNVAlways(),&scene)){TNVRefusal=@"转向帧无效（等待指引数据）";return NO;}
+ TNVRefusal=@"";
  NSUserDefaults *defaults=NSUserDefaults.standardUserDefaults;uint64_t last=[[defaults objectForKey:@"TurboNavigationSessionCounterV1"] unsignedLongLongValue];
  uint64_t epoch=(uint64_t)MAX(1,NSDate.date.timeIntervalSince1970);uint64_t sid=MAX(last+1,epoch);if(sid>UINT32_MAX)return NO;
  [defaults setObject:@(sid) forKey:@"TurboNavigationSessionCounterV1"];if(![defaults synchronize])return NO;
