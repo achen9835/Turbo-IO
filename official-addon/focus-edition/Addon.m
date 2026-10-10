@@ -60,6 +60,10 @@ static NSString *Diagnostic=@"尚未收到回调";
 // every step appends here and the 适配与回调 cell shows the tail. This is the
 // only way to see where a failed voice trigger stopped.
 static NSString *VoiceNavTrace=@"";
+// Set when a voice navigation was dispatched this turn; CompleteHook closes the
+// assistant session afterwards so the glasses chat window yields the display
+// to the incoming navigation page (TNV expects the lens free of chat tasks).
+static BOOL VoiceNavClosePending=NO;
 void TIOVoiceNavTrace(NSString *step){
     void (^work)(void)=^{VoiceNavTrace=[VoiceNavTrace stringByAppendingFormat:@"\n· %@",step?:@""];if(VoiceNavTrace.length>1600)VoiceNavTrace=[VoiceNavTrace substringFromIndex:VoiceNavTrace.length-1600];};
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
@@ -329,12 +333,17 @@ static void NlpHook(id self,SEL cmd,id value) {
         // the query text is final. Match navigation keywords and trigger if hit.
         // The 8s throttle in TIOVoiceNavMaybeStart deduplicates across deltas.
         NSString *voiceQuery=Get(value,@"query");
-        if([voiceQuery isKindOfClass:NSString.class])TIOVoiceNavMaybeStart(voiceQuery);
+        if([voiceQuery isKindOfClass:NSString.class]&&TIOVoiceNavMaybeStart(voiceQuery))VoiceNavClosePending=YES;
     };
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 static void CompleteHook(id self,SEL cmd) {
-    void (^work)(void)=^{CompletionEvents++;if(Controller.voiceExited)return;[Controller completeOfficialVoice];if(![Prefs integerForKey:@"mode"]||!(Controller.listener==self&&Controller.ownsTurn))OriginalComplete(self,cmd);};
+    void (^work)(void)=^{CompletionEvents++;if(Controller.voiceExited)return;[Controller completeOfficialVoice];if(![Prefs integerForKey:@"mode"]||!(Controller.listener==self&&Controller.ownsTurn))OriginalComplete(self,cmd);
+        // A voice navigation was dispatched this turn: once the assistant's
+        // reply finishes (plus a beat for the last syllable), close the voice
+        // session via the official stop entry so the glasses chat window
+        // dismisses and the lens is free for the incoming navigation page.
+        if(VoiceNavClosePending){VoiceNavClosePending=NO;dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{if(!Controller.voiceExited)[Controller exitVoice];});}};
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 static void AlwaysOnHook(id self,SEL cmd,id value) {

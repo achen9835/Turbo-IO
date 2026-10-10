@@ -438,11 +438,11 @@ static TIONavigationPanel *SharedNavPanel=nil;
 // Every step appends to TIOVoiceNavTrace (shown in 适配与回调) so a silent
 // off-screen failure is still diagnosable.
 void TIOVoiceNavStop(void){[SharedNavPanel stopUser];}
-void TIOVoiceNavMaybeStart(NSString *text){
-    if(![text isKindOfClass:NSString.class])return;
-    if([NSUserDefaults.standardUserDefaults boolForKey:@"voiceNavDisabled"]){TIOVoiceNavTrace(@"忽略：语音导航开关已关闭（导航页-更多里可重新开启）");return;}
+BOOL TIOVoiceNavMaybeStart(NSString *text){
+    if(![text isKindOfClass:NSString.class])return NO;
+    if([NSUserDefaults.standardUserDefaults boolForKey:@"voiceNavDisabled"]){TIOVoiceNavTrace(@"忽略：语音导航开关已关闭（导航页-更多里可重新开启）");return NO;}
     NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
-    if(now-LastVoiceNavAt<8)return; // Same turn's NLP deltas repeat the query; silently throttled.
+    if(now-LastVoiceNavAt<8)return NO; // Same turn's NLP deltas repeat the query; silently throttled.
     NSString *t=[text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     while(t.length){unichar c=[t characterAtIndex:t.length-1];if(c==0x3002||c==0xFF01||c==0xFF1F||c==0xFF0C||c==','||c=='.'||c=='!'||c=='?')t=[t substringToIndex:t.length-1];else break;}
     // Strip common speech prefixes so "帮我导航去X" and "请导航去X" also match.
@@ -461,7 +461,7 @@ void TIOVoiceNavMaybeStart(NSString *text){
     if(!destination){ // Ordinary chat turns miss too; log each distinct text once.
         static NSString *lastMiss=@"";
         if(![t isEqual:lastMiss]){lastMiss=[t copy];TIOVoiceNavTrace([NSString stringWithFormat:@"未命中导航关键词：%@",t]);}
-        return;
+        return NO;
     }
     LastVoiceNavAt=now;
     TIOVoiceNavTraceReset();
@@ -476,6 +476,7 @@ void TIOVoiceNavMaybeStart(NSString *text){
         [SharedNavPanel voiceStart:destination];
         // No presentViewController. No UI. Glasses HUD appearing is the feedback.
     });
+    return YES;
 }
 // Returns the SAME shared panel every time: opening the page during or after a
 // voice navigation reattaches to the live session (visible on the map, and
