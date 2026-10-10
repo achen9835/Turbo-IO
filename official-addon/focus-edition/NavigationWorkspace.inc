@@ -104,8 +104,7 @@
      // route itself (origin + next 3 segments, heading-up) so the route shows
      // immediately -- and the HUD auto-engage has a valid frame to start from.
      if(!self.simulated&&self.manager.naviRoute){
-      AMapNaviRoute *route=self.manager.naviRoute;NSMutableArray *coords=[NSMutableArray new];
-      for(NSUInteger si=0;si<MIN(route.routeSegments.count,(NSUInteger)4)&&coords.count<512;si++)for(AMapNaviLink *link in route.routeSegments[si].links){for(AMapNaviPoint *p in link.coordinates){if(coords.count>=512)break;[coords addObject:@[@(p.latitude),@(p.longitude)]];}}
+      AMapNaviRoute *route=self.manager.naviRoute;NSMutableArray *coords=TIONavAheadCoords(route.routeSegments,0,0,0);
       if(coords.count>=2){
        NSMutableDictionary *first=[TIONavDisplay(@"navigating",9,@"出发",MIN((NSInteger)route.routeLength,(NSInteger)999999),(NSInteger)route.routeLength,(NSInteger)route.routeTime,NO) mutableCopy];
        [first addEntriesFromDictionary:TNVNormalizeCoordinates(coords)];self.lastInfo=NSProcessInfo.processInfo.systemUptime;

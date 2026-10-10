@@ -45,13 +45,16 @@
 }
 // Voice headless flow: CLLocationManager delivers the fix directly; MAMapView's
 // didUpdateUserLocation is unreliable when the view is not in any window.
-- (void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray<CLLocation *> *)locations{
-    if(manager!=self.permission||!self.voiceLocating)return;
-    CLLocation *loc=[locations lastObject];if(!loc)return;
-    if(loc.horizontalAccuracy<0||loc.horizontalAccuracy>200||fabs(loc.timestamp.timeIntervalSinceNow)>15)return;
+- (void)voiceFixAcquired:(CLLocation *)loc{
     self.voiceLocating=NO;[self.permission stopUpdatingLocation];
     self.note=[NSString stringWithFormat:@"第1步完成：已确认当前位置（±%.0f米）。",loc.horizontalAccuracy];
     self.voiceFix=loc.coordinate;self.hasVoiceFix=YES;
     TIOVoiceNavTrace([NSString stringWithFormat:@"第1步完成：已定位（±%.0f米），坐标将作为算路起点",loc.horizontalAccuracy]);
     [self refresh];[self voiceSearchDestination];
+}
+- (void)locationManager:(CLLocationManager *)manager didUpdateLocations:(NSArray<CLLocation *> *)locations{
+    if(manager!=self.permission||!self.voiceLocating)return;
+    CLLocation *loc=[locations lastObject];if(!loc)return;
+    if(loc.horizontalAccuracy<0||loc.horizontalAccuracy>200||fabs(loc.timestamp.timeIntervalSinceNow)>15)return;
+    [self voiceFixAcquired:loc];
 }

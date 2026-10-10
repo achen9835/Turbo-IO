@@ -172,7 +172,14 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     TDPPhoneNavigationPump();[self refreshDisplayHUD];
 #endif
     TIONavPump();[self.subtitleHUD pumpAt:NSProcessInfo.processInfo.systemUptime];[self.teleHUD pumpAt:NSProcessInfo.processInfo.systemUptime];[self refresh];if(self.fixture&&self.active){self.fixtureStep++;NSArray *icons=@[@9,@2,@3,@29,@15];NSUInteger i=MIN(self.fixtureStep/4,4);[self setFrame:TIONavDisplay(i==4?@"arrived":@"navigating",[icons[i] integerValue],@"模拟测试道路",MAX(0,160-(NSInteger)self.fixtureStep*10),850,720,YES)];if(i==4){self.fixture=NO;self.active=NO;self.note=@"离线夹具结束；手动停止以清理卡片";[self refresh];}}
-    if(self.active&&!self.routeReady&&!self.fixture&&!self.planning&&!self.staleShown&&NSProcessInfo.processInfo.systemUptime-self.lastInfo>15){self.staleShown=YES;[self setFrame:TIONavDisplay(@"stale",0,@"",-1,-1,-1,self.simulated)];}}
+    if(self.active&&!self.routeReady&&!self.fixture&&!self.planning&&!self.staleShown&&NSProcessInfo.processInfo.systemUptime-self.lastInfo>15){
+      // AMap only speaks when the device moves. For REALTIME nav a standstill
+      // (waiting at a light) is normal: keep the last guidance alive -- it
+      // preserves HUD-engage freshness AND feeds the lens -- instead of
+      // freezing the frame as "stale" and blocking the glasses retry loop.
+      if(!self.simulated){self.lastInfo=NSProcessInfo.processInfo.systemUptime;[self setFrame:self.display];}
+      else{self.staleShown=YES;[self setFrame:TIONavDisplay(@"stale",0,@"",-1,-1,-1,self.simulated)];}
+    }}
 - (void)alert:(NSString *)title message:(NSString *)message{UIAlertController *a=[UIAlertController alertControllerWithTitle:title message:message preferredStyle:UIAlertControllerStyleAlert];[a addAction:[UIAlertAction actionWithTitle:@"知道了" style:UIAlertActionStyleCancel handler:nil]];[self presentViewController:a animated:YES completion:nil];}
 - (void)configureKey{if(self.initialized){[self alert:@"先重启 App" message:@"SDK 已初始化。本轮不热替换 Key，避免影响已有导航实例；请重启后配置。"] ;return;}UIAlertController *a=[UIAlertController alertControllerWithTitle:@"高德 iOS Key" message:@"绑定当前 App 的 Bundle ID；仅保存于本机钥匙串，不回显旧值。" preferredStyle:UIAlertControllerStyleAlert];[a addTextFieldWithConfigurationHandler:^(UITextField *f){f.placeholder=@"32 位 iOS Key";f.secureTextEntry=YES;f.autocorrectionType=UITextAutocorrectionTypeNo;f.autocapitalizationType=UITextAutocapitalizationTypeNone;}];[a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[a addAction:[UIAlertAction actionWithTitle:@"保存" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){self.note=WriteNavKey(a.textFields.firstObject.text)?@"Key 已保存，尚未进行 SDK 鉴权":@"保存失败：检查格式与钥匙串权限";[self refresh];}]];[self presentViewController:a animated:YES completion:nil];}
 - (void)consent{
@@ -273,6 +280,10 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     id bgModes=[NSBundle.mainBundle objectForInfoDictionaryKey:@"UIBackgroundModes"];
     if([bgModes isKindOfClass:NSArray.class]&&[bgModes containsObject:@"location"])self.permission.allowsBackgroundLocationUpdates=YES;
     TIOVoiceNavTrace(UIApplication.sharedApplication.applicationState==UIApplicationStateActive?@"App在前台：定位回调应正常送达":@"App在后台/锁屏：定位依赖后台模式，请保持眼镜连接");
+    // Cold-start speed-up: a fresh cached fix (<60s, <=100m) skips waiting for
+    // a new GPS search entirely; only cold starts actually run the locator.
+    CLLocation *cached=self.permission.location;
+    if(cached&&cached.horizontalAccuracy>0&&cached.horizontalAccuracy<=100&&fabs(cached.timestamp.timeIntervalSinceNow)<60){TIOVoiceNavTrace(@"定位：使用60秒内缓存位置，跳过GPS等待");[self voiceFixAcquired:cached];return;}
     self.voiceLocating=YES;[self.permission startUpdatingLocation];
     self.note=@"语音导航 第1步：正在定位当前位置（最多15秒）…";TIOVoiceNavTrace(@"第1步：正在定位（最多15秒）");[self refresh];
     NSUInteger g=self.generation;
@@ -391,20 +402,30 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
         }}else{self.note=@"已重新规划路线，请以手机指引为准；眼镜显示若已停止需手动开启。";}[self refresh];});}
 - (void)navigationManager:(id<TIONavigationManager>)manager onCalculateRouteFailure:(NSError *)error{dispatch_async(dispatch_get_main_queue(),^{if(manager==self.manager&&self.active){[self fail:[NSString stringWithFormat:@"高德算路失败（code=%ld），检查 Key 服务权限／Bundle 绑定、网络与路线",(long)error.code]];if(self.voiceSession)TIOVoiceNavTrace([NSString stringWithFormat:@"中止：算路失败 code=%ld",(long)error.code]);}});}
 - (void)navigationManager:(id<TIONavigationManager>)manager error:(NSError *)error{dispatch_async(dispatch_get_main_queue(),^{if(manager==self.manager&&self.active){[self fail:[NSString stringWithFormat:@"高德引擎错误 code=%ld",(long)error.code]];if(self.voiceSession)TIOVoiceNavTrace([NSString stringWithFormat:@"中止：引擎错误 code=%ld",(long)error.code]);}});}
+#if TIO_AMAP_ENABLED
+// Route-ahead coordinate collection with a DISTANCE budget (~900m): everything
+// within reach of the next few turns is included (up to 10 segments / 512
+// points), so the lens minimap reads as "the route around here" rather than a
+// fixed small number of segments. Rough straight-line cutoff keeps it cheap.
+static NSMutableArray *TIONavAheadCoords(NSArray<AMapNaviSegment *> *segments,NSUInteger seg,NSUInteger link,NSUInteger point){
+ NSMutableArray *coords=[NSMutableArray new];double lat0=0,lon0=0;BOOL anchored=NO;
+ for(NSUInteger si=seg;si<segments.count&&coords.count<512&&si<seg+10;si++){
+  NSArray<AMapNaviLink *> *links=segments[si].links;
+  for(NSUInteger li=(si==seg?link:0);li<links.count&&coords.count<512;li++){
+   NSArray<AMapNaviPoint *> *points=links[li].coordinates;
+   for(NSUInteger pi=(si==seg&&li==link?point:0);pi<points.count&&coords.count<512;pi++){AMapNaviPoint *p=points[pi];[coords addObject:@[@(p.latitude),@(p.longitude)]];if(!anchored){anchored=YES;lat0=p.latitude;lon0=p.longitude;}}
+  }
+  if(coords.count>=8){id c=coords.lastObject;double lat=[c[0] doubleValue],lon=[c[1] doubleValue];if(hypot((lat-lat0)*111000,(lon-lon0)*111000*cos(lat0*M_PI/180))>=900)break;}
+ }
+ return coords;
+}
+#endif
 - (void)navigationManager:(id<TIONavigationManager>)manager updateNaviInfo:(AMapNaviInfo *)info{
  if(!info)return;NSMutableDictionary *frame=[TIONavDisplay(@"navigating",info.iconType,info.nextRoadName,info.segmentRemainDistance,info.routeRemainDistance,info.routeRemainTime,self.simulated) mutableCopy];frame[@"segment"]=@(info.currentSegmentIndex);frame[@"remainingMeters"]=@(info.routeRemainDistance);frame[@"remainingSeconds"]=@(info.routeRemainTime);
  NSInteger segment=info.currentSegmentIndex,link=info.currentLinkIndex,point=info.currentPointIndex;
  dispatch_async(dispatch_get_main_queue(),^{if(manager!=self.manager||!self.active||self.routeReady||self.planning||self.rerouting)return;
   NSArray<AMapNaviSegment *> *segments=manager.naviRoute.routeSegments;NSMutableArray *coords=[NSMutableArray new];
-  if(segment>=0&&segment<(NSInteger)segments.count&&link>=0&&point>=0){
-   for(NSUInteger si=(NSUInteger)segment;si<MIN(segments.count,(NSUInteger)segment+4)&&coords.count<512;si++){ // current + 3 ahead: the lens mini-map reads as "more of the route", not just the next turn
-    NSArray<AMapNaviLink *> *links=segments[si].links;
-    for(NSUInteger li=si==(NSUInteger)segment?(NSUInteger)link:0;li<links.count&&coords.count<512;li++){
-     NSArray<AMapNaviPoint *> *points=links[li].coordinates;
-     for(NSUInteger pi=si==(NSUInteger)segment&&li==(NSUInteger)link?(NSUInteger)point:0;pi<points.count&&coords.count<512;pi++){AMapNaviPoint *p=points[pi];[coords addObject:@[@(p.latitude),@(p.longitude)]];}
-    }
-   }
-  }
+  if(segment>=0&&segment<(NSInteger)segments.count&&link>=0&&point>=0)coords=TIONavAheadCoords(segments,(NSUInteger)segment,(NSUInteger)link,(NSUInteger)point);
   [frame addEntriesFromDictionary:TNVNormalizeCoordinates(coords)];self.lastInfo=NSProcessInfo.processInfo.systemUptime;self.staleShown=NO;[self setFrame:frame];
  });
 }
