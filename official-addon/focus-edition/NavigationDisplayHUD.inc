@@ -16,25 +16,36 @@
  return self.active&&!self.routeReady&&!self.fixture&&!self.planning&&!self.rerouting&&NSProcessInfo.processInfo.systemUptime-self.lastInfo<=15&&[self.display[@"phase"] isEqual:@"navigating"]&&![self subtitleTrialBlocksNative]&&![self.teleHUD.status[@"enabled"] boolValue]&&![TIONewsTeleStatus()[@"active"] boolValue]&&![t[@"enabled"] boolValue]&&![t[@"pending"] boolValue]&&![t[@"notices"] boolValue]&&![t[@"noticePending"] boolValue];
 }
 // Realtime navigation engages the native HUD by itself once AMap turn guidance
-// exists -- no manual tap. The glasses are often briefly busy right after a
-// voice turn (assistant chat window dismissing), so a failed start RETRIES
-// every 5s for ~2 minutes instead of giving up; a user who stops the HUD
-// mid-session is never fought with a restart (toggleDisplayHUD clears the arm).
+// exists -- no manual tap. "Start accepted" is only "START sent": the glasses'
+// verdict (q.active) arrives asynchronously and a rejection used to die in the
+// session note. So this loop checks the LIVE session status every 2s, re-pushes
+// until the glasses actually render (up to ~90s, covering the 60s lens cooldown
+// after a previous navigation), and surfaces the glasses' own rejection reason.
+// A user who stops the HUD mid-session is never fought (toggleDisplayHUD clears).
 - (void)autoStartNativeHUDIfNeeded{
  if(!self.autoNativeHUD)return;
- if([TDPPhoneNavigationStatus()[@"active"] boolValue]){self.autoNativeHUD=NO;return;}
+ NSDictionary *s=TDPPhoneNavigationStatus();
+ if([s[@"active"] boolValue]){self.autoNativeHUD=NO;return;}
  if(![self canStartDisplayHUD])return;
  NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
  if(now<self.autoNativeHUDNextAt)return;
- self.autoNativeHUDNextAt=now+5;self.autoNativeHUDAttempts++;
- if(self.autoNativeHUDAttempts>24){self.autoNativeHUD=NO;TIOVoiceNavTrace(@"眼镜HUD：自动开启多次未成功，已停止重试（可手动点按钮）");return;}
- if(TDPPhoneNavigationStart([self displayHUDFrame])){self.autoNativeHUD=NO;TIOVoiceNavTrace(@"眼镜HUD：原生导航已开启");
-  // "Start accepted" is not "lens rendered": if the glasses were still busy,
-  // the transfer may complete without the nav page actually showing. Re-check
-  // shortly after; if not active, re-arm the retry loop to self-heal.
-  NSUInteger g=self.generation;dispatch_after(dispatch_time(DISPATCH_TIME_NOW,6*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(g==self.generation&&self.active&&![TDPPhoneNavigationStatus()[@"active"] boolValue]){TIOVoiceNavTrace(@"眼镜HUD：发送后6秒未见激活，恢复自动重试");self.autoNativeHUD=YES;}});
+ self.autoNativeHUDNextAt=now+2;self.autoNativeHUDAttempts++;
+ if(self.autoNativeHUDAttempts>45){self.autoNativeHUD=NO;TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD：自动开启放弃（45次未激活，最后状态：%@）",s[@"note"]?:@"未知"]);return;}
+ if(TDPPhoneNavigationStart([self displayHUDFrame])){
+  TIOVoiceNavTrace(@"眼镜HUD：START已发送，2秒后核实眼镜是否激活");
+  // The verdict lands asynchronously (the session is "active" while in flight
+  // and flips off on a glasses rejection), so verify twice: at 2s and 5s.
+  // Anything not live re-arms the loop for another push.
+  NSUInteger g=self.generation;
+  void(^verify)(void)=^{
+   if(g!=self.generation||!self.active)return;
+   NSDictionary *v=TDPPhoneNavigationStatus();
+   if(![v[@"active"] boolValue]){TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD：未上镜（%@），重新上镜",v[@"note"]?:@"原因未知"]);self.autoNativeHUD=YES;}};
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,2*NSEC_PER_SEC),dispatch_get_main_queue(),verify);
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC),dispatch_get_main_queue(),verify);
+  dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(8.5*NSEC_PER_SEC)),dispatch_get_main_queue(),verify); // 8.5s covers the protocol's 8s reply deadline.
   return;}
- TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD：开启未成功（第%lu次，5秒后重试；眼镜若有聊天等任务请先关闭）",(unsigned long)self.autoNativeHUDAttempts]);
+ TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD：开启请求被拒（第%lu次，2秒后重试；状态：%@）",(unsigned long)self.autoNativeHUDAttempts,s[@"note"]?:@"未知"]);
 }
 - (void)buildDisplayHUD{
  UILabel *title=[self navLabel:@"眼镜原生导航 · TNV1" size:16 weight:UIFontWeightSemibold];[self.lensCard addArrangedSubview:title];
