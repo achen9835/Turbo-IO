@@ -74,7 +74,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property NSInteger selectedTransport,sessionTransport;
 @property BOOL routeReady,locating;
 @property BOOL navigationStarted,backgroundLocationEnabled;
-@property BOOL voiceSession,voiceLifelogWasOn,voiceLocating,hasVoiceFix;
+@property BOOL voiceSession,voiceLifelogWasOn,voiceLocating,hasVoiceFix,voiceSearchAround;
 @property CLLocationCoordinate2D voiceFix; // Fresh CLLocationManager fix from voice step 1; used as the explicit route origin so background planning never waits on the SDK's own (paused) location engine.
 #if TIO_AMAP_ENABLED
 @property AMapSearchAPI *voiceSearch;
@@ -279,19 +279,30 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 #endif
 }
 #if TIO_AMAP_ENABLED
-// Step 2 (after the position fix): search the spoken destination.
+// Step 2 (after the position fix): search the spoken destination, LOCAL FIRST.
+// Tier 1 searches AROUND the step-1 fix (50km) so nearby POIs outrank same-name
+// ones in other cities; tier 2 ( nationwide keyword search) only runs when
+// nothing local matches -- which is exactly the "user explicitly named a
+// distant place" case, so no city-name parsing is needed.
 - (void)voiceSearchDestination{
     if(!self.voiceSession||!self.voiceQuery.length)return;
-    AMapPOIKeywordsSearchRequest *r=[AMapPOIKeywordsSearchRequest new];r.keywords=self.voiceQuery;r.offset=10;r.page=1;self.voiceRequest=r;
-    self.note=[NSString stringWithFormat:@"第2步：已定位。搜索目的地“%@”…",self.voiceQuery];TIOVoiceNavTrace([NSString stringWithFormat:@"第2步：搜索「%@」",self.voiceQuery]);[self refresh];
+    if(!self.hasVoiceFix){[self voiceSearchKeywordsNationwide];return;}
+    AMapPOIAroundSearchRequest *r=[AMapPOIAroundSearchRequest new];r.keywords=self.voiceQuery;r.location=[AMapGeoPoint locationWithLatitude:self.voiceFix.latitude longitude:self.voiceFix.longitude];r.radius=50000;r.offset=10;r.page=1;self.voiceRequest=r;self.voiceSearchAround=YES;
+    self.note=[NSString stringWithFormat:@"第2步：已定位。本地搜索「%@」（周边50公里）…",self.voiceQuery];TIOVoiceNavTrace([NSString stringWithFormat:@"第2步：本地搜索「%@」（当前位置周边）",self.voiceQuery]);[self refresh];
+    [self.voiceSearch AMapPOIAroundSearch:r];
+}
+- (void)voiceSearchKeywordsNationwide{
+    AMapPOIKeywordsSearchRequest *r=[AMapPOIKeywordsSearchRequest new];r.keywords=self.voiceQuery;r.offset=10;r.page=1;self.voiceRequest=r;self.voiceSearchAround=NO;
+    self.note=[NSString stringWithFormat:@"第2步：全国搜索目的地“%@”…",self.voiceQuery];TIOVoiceNavTrace([NSString stringWithFormat:@"第2步：全国搜索「%@」",self.voiceQuery]);[self refresh];
     [self.voiceSearch AMapPOIKeywordsSearch:r];
 }
 - (void)onPOISearchDone:(AMapPOISearchBaseRequest *)request response:(AMapPOISearchResponse *)response{
     dispatch_async(dispatch_get_main_queue(),^{
         if(request!=self.voiceRequest||!self.voiceSession)return;self.voiceRequest=nil;
         NSArray<AMapPOI *> *pois=response.pois;AMapPOI *first=nil;for(AMapPOI *poi in pois)if(poi.location){first=poi;break;}
+        if(!first&&self.voiceSearchAround){TIOVoiceNavTrace(@"本地无结果，改为全国搜索");[self voiceSearchKeywordsNationwide];return;}
         if(!first){[self fail:[NSString stringWithFormat:@"语音没找到“%@”：请说更完整的名称，或手动搜索",self.voiceQuery?:@""] ];TIOVoiceNavTrace(@"中止：搜索无结果");return;}
-        TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：选定「%@」，第3步算路",first.name?:@""]);
+        TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：选定「%@」（%@），第3步算路",first.name?:@"",first.city.length?first.city:@"未知城市"]);
         [self selectPlace:@{@"name":first.name?:@"目的地",@"address":[NSString stringWithFormat:@"%@ %@ %@",first.city?:@"",first.district?:@"",first.address?:@""],@"lat":@(first.location.latitude),@"lon":@(first.location.longitude)}];
         self.travelMode.selectedSegmentIndex=1; // Position is already confirmed; plan now, auto-begin follows.
         self.note=[NSString stringWithFormat:@"第2步：选定终点「%@」（搜索第一位）。第3步：规划实时路线…",first.name?:@""];
