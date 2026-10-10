@@ -334,14 +334,20 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 - (void)mapView:(MAMapView *)map didSingleTappedAtCoordinate:(CLLocationCoordinate2D)c{[self selectMapCoordinate:c];}
 - (void)mapView:(MAMapView *)map didLongPressedAtCoordinate:(CLLocationCoordinate2D)c{[self selectMapCoordinate:c];}
 - (void)start:(BOOL)sim{
-    if(!self.initialized){[self consent];return;}
-    if(self.active||self.planning){[self alert:@"请先停止当前导航" message:@"避免两条路线的异步回调互相覆盖。"] ;return;}
-    if(!self.hasDestination){[self alert:@"先选择终点" message:@"搜索目的地、长按地图选点，或使用更多中的北京演示路线。"] ;return;}
+    if(!self.initialized){[self consent];TIOVoiceNavTrace(@"算路未提交：地图未初始化");return;}
+    if(self.active||self.planning){[self alert:@"请先停止当前导航" message:@"避免两条路线的异步回调互相覆盖。"] ;TIOVoiceNavTrace(@"算路未提交：已有导航进行中");return;}
+    if(!self.hasDestination){[self alert:@"先选择终点" message:@"搜索目的地、长按地图选点，或使用更多中的北京演示路线。"] ;TIOVoiceNavTrace(@"算路未提交：终点未生效");return;}
     if(sim){if(!self.hasSimulationStart){[self alert:@"请选择模拟起点" message:@"切换地图上方的“选模拟起点”，然后点击地图。"] ;return;}CLLocation *a=[[CLLocation alloc]initWithLatitude:self.simulationStart.latitude longitude:self.simulationStart.longitude],*b=[[CLLocation alloc]initWithLatitude:self.destination.latitude longitude:self.destination.longitude];if([a distanceFromLocation:b]<30){[self alert:@"起终点距离不足30米" message:@"切换“选模拟起点”后点击另一个位置，或重新选择终点。拖动地图本身不会改变起点。"] ;return;}}
-    if(!sim){CLAuthorizationStatus auth=self.permission.authorizationStatus;if(auth==kCLAuthorizationStatusNotDetermined){[self.permission requestWhenInUseAuthorization];self.note=@"允许定位后，请再次规划实时路线";[self refresh];return;}if(auth==kCLAuthorizationStatusDenied||auth==kCLAuthorizationStatusRestricted){[self alert:@"定位未授权" message:@"请在系统设置允许定位，或者先使用不需要实际定位的模拟导航。"] ;return;}}
-    if(self.retiringManagerClass){[self alert:@"正在释放旧导航引擎" message:@"请稍后再规划，不会带着旧路线切换模式。"] ;return;}
-    Class cls=TIONavigationManagerClass(self.selectedTransport);if(!cls){[self alert:@"未知出行方式" message:@"请重新选择步行、骑行或驾车。"] ;return;}
-    id<TIONavigationManager> manager=[(id<TIONavigationManagerFactory>)cls sharedInstance];if(!manager||manager.naviMode!=AMapNaviModeNone||(manager.delegate&&manager.delegate!=self)){[self alert:@"导航引擎被占用" message:@"请先结束其他导航。本扩展不会停止宿主已有导航，也不会偷偷退回步行算路。"] ;return;}
+    if(!sim){CLAuthorizationStatus auth=self.permission.authorizationStatus;if(auth==kCLAuthorizationStatusNotDetermined){[self.permission requestWhenInUseAuthorization];self.note=@"允许定位后，请再次规划实时路线";TIOVoiceNavTrace(@"算路未提交：定位权限待授权");[self refresh];return;}if(auth==kCLAuthorizationStatusDenied||auth==kCLAuthorizationStatusRestricted){[self alert:@"定位未授权" message:@"请在系统设置允许定位，或者先使用不需要实际定位的模拟导航。"] ;TIOVoiceNavTrace(@"算路未提交：定位被拒绝");return;}}
+    if(self.retiringManagerClass){[self alert:@"正在释放旧导航引擎" message:@"请稍后再规划，不会带着旧路线切换模式。"] ;TIOVoiceNavTrace(@"算路未提交：旧引擎释放中，请稍候再试");return;}
+    Class cls=TIONavigationManagerClass(self.selectedTransport);if(!cls){[self alert:@"未知出行方式" message:@"请重新选择步行、骑行或驾车。"] ;TIOVoiceNavTrace(@"算路未提交：出行方式无效");return;}
+    id<TIONavigationManager> manager=[(id<TIONavigationManagerFactory>)cls sharedInstance];
+    // Reclaim OUR OWN leftovers only: a stale panel still holding the delegate
+    // (previous session halted dirty), or a naviMode that never reset. A
+    // host-owned delegate (any other class) is never touched -- by design.
+    if(manager&&manager.delegate&&(id)manager.delegate!=self&&[manager.delegate isKindOfClass:TIONavigationPanel.class]){TIOVoiceNavTrace(@"引擎被上一导航面板占用，自动回收中");[(TIONavigationPanel *)(id)manager.delegate stopUser];}
+    if(manager&&manager.naviMode!=AMapNaviModeNone&&!manager.delegate){TIOVoiceNavTrace(@"引擎导航模式未复位，补发停止指令");[(id<TIONavigationManager>)manager stopNavi];}
+    if(!manager||manager.naviMode!=AMapNaviModeNone||(manager.delegate&&(id)manager.delegate!=self)){[self alert:@"导航引擎被占用" message:@"请先结束其他导航。本扩展不会停止宿主已有导航，也不会偷偷退回步行算路。"] ;TIOVoiceNavTrace([NSString stringWithFormat:@"算路未提交：引擎被占用（模式=%ld，委托=%@）",(long)(manager?manager.naviMode:-1),manager.delegate?@"其他对象":@"空"]);return;}
     self.sessionTransport=self.selectedTransport;
     self.manager=manager;manager.delegate=self;[manager addDataRepresentative:self];manager.isUseInternalTTS=NO;manager.screenAlwaysBright=NO;manager.allowsBackgroundLocationUpdates=NO;
 #if TIO_DISPLAY_PHONE
@@ -436,7 +442,7 @@ void TIOVoiceNavMaybeStart(NSString *text){
     if(![text isKindOfClass:NSString.class])return;
     if([NSUserDefaults.standardUserDefaults boolForKey:@"voiceNavDisabled"]){TIOVoiceNavTrace(@"忽略：语音导航开关已关闭（导航页-更多里可重新开启）");return;}
     NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
-    if(now-LastVoiceNavAt<8){TIOVoiceNavTrace(@"8秒内重复指令，忽略（前一次已处理）");return;}
+    if(now-LastVoiceNavAt<8)return; // Same turn's NLP deltas repeat the query; silently throttled.
     NSString *t=[text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     while(t.length){unichar c=[t characterAtIndex:t.length-1];if(c==0x3002||c==0xFF01||c==0xFF1F||c==0xFF0C||c==','||c=='.'||c=='!'||c=='?')t=[t substringToIndex:t.length-1];else break;}
     // Strip common speech prefixes so "帮我导航去X" and "请导航去X" also match.
@@ -452,7 +458,11 @@ void TIOVoiceNavMaybeStart(NSString *text){
             if(d.length>=2&&d.length<=40){destination=d;break;}
         }
     }
-    if(!destination){TIOVoiceNavTrace([NSString stringWithFormat:@"未命中导航关键词：%@",t]);return;}
+    if(!destination){ // Ordinary chat turns miss too; log each distinct text once.
+        static NSString *lastMiss=@"";
+        if(![t isEqual:lastMiss]){lastMiss=[t copy];TIOVoiceNavTrace([NSString stringWithFormat:@"未命中导航关键词：%@",t]);}
+        return;
+    }
     LastVoiceNavAt=now;
     TIOVoiceNavTraceReset();
     TIOVoiceNavTrace([NSString stringWithFormat:@"语音命中，终点「%@」",destination]);
@@ -462,8 +472,8 @@ void TIOVoiceNavMaybeStart(NSString *text){
         SharedNavPanel=[TIONavigationPanel new];
         [SharedNavPanel view]; // Force viewDidLoad: initializes AMap SDK, map, and location.
         [SharedNavPanel viewWillAppear:NO]; // Force the 1s tick timer (lifecycle method never fires off-screen).
-        [SharedNavPanel voiceStart:destination];
         TIOVoiceNavTrace(@"无头导航已启动：定位→搜索→算路→导航");
+        [SharedNavPanel voiceStart:destination];
         // No presentViewController. No UI. Glasses HUD appearing is the feedback.
     });
 }
