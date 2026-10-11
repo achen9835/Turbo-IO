@@ -113,6 +113,6 @@ echo "==> [6/6] 打包"
 ditto -c -k --norsrc --keepParent merged/Payload merged/TurboIO-merged-adhoc.ipa
 echo "=============================================="
 echo "完成：merged/TurboIO-merged-adhoc.ipa"
-echo "Bundle ID：$BUNDLE_ID（爱思签名时保持原值勿改）"
+echo "Bundle ID：${BUNDLE_ID:-app.aurora7070.potato6444}（爱思签名时保持原值勿改）"
 shasum -a 256 merged/TurboIO-merged-adhoc.ipa
 echo "回 Windows：爱思助手 → 导入证书（p12+mobileprovision）→ 安装 → 设置→通用→VPN与设备管理→信任"
