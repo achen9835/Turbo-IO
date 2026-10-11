@@ -7,7 +7,6 @@
 #import "Core.h"
 #import "Profile.h"
 #import "ProfileUI.h"
-#import "LocalTranslationEntry.h"
 #import "RecordingExports.h"
 #import "RecordingText.h"
 #import "AlwaysOnAudio.h"
@@ -132,7 +131,9 @@ static void Alert(NSString *title,NSString *message) {
     // Optional provider extension, sent only when explicitly selected by user.
     NSMutableDictionary *body=[payload mutableCopy];if([Prefs boolForKey:@"deepseekDisableThinking"])body[@"thinking"]=@{@"type":@"disabled"};
     NSString *searchKey=([Prefs boolForKey:@"tinyfishEnabled"]||self.newsMode)?ReadKey(@"https://api.search.tinyfish.ai"):@"";
-    TIOImportKnowledgeConnection();if(!self.newsMode&&TIOKnowledgeEnabled()){TIOKnowledgeClient *client=[TIOKnowledgeClient new];self.cancelKnowledge=^{[client cancel];};self.knowledgeQuery=^(NSDictionary *input,BOOL statusOnly,void(^done)(NSDictionary *)){void(^completion)(NSDictionary *,NSString *)=^(NSDictionary *j,NSString *e){done(j?:@{@"status":@"failed"});};if(statusOnly)[client refreshLast:completion];else [client query:input completion:completion];};}
+    // Feishu webhook notification is a simple send-only path; the LLM tools
+    // (knowledge_query) are no longer wired to a Codex bridge. The webhook
+    // sends the final answer as a Feishu group notification.
     [self startEndpoint:url key:key payload:body searchKey:searchKey];
 }
 @end
@@ -214,7 +215,13 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
         Diagnostic=@"模型输出不是追加流，已提交错误收尾";return;
     }
     if(delta.length||done){id wrapper=CopyResponse(_responseTemplate,delta,done);if(!wrapper){[_request cancel];_request=nil;_responseDone=YES;OriginalComplete(_listener,NSSelectorFromString(@"onResponseComplete"));Diagnostic=@"回复模板复制失败，已提交收尾";return;}OriginalNlp(_listener,NSSelectorFromString(@"onNlpResult:"),wrapper);_emitted=[text copy];}
-    if(done){_responseDone=YES;if(!error&&_request&&text.length)[_history appendQuestion:_requestQuestion answer:text];Diagnostic=error?@"自定义回复失败，已提交错误收尾":@"自定义回复结束，已提交官方收尾回调";OriginalComplete(_listener,NSSelectorFromString(@"onResponseComplete"));}
+    if(done){_responseDone=YES;if(!error&&_request&&text.length)[_history appendQuestion:_requestQuestion answer:text];Diagnostic=error?@"自定义回复失败，已提交错误收尾":@"自定义回复结束，已提交官方收尾回调";
+        // Feishu webhook: forward the Q&A pair as a group notification.
+        if(!error&&text.length&&TIOFeishuEnabled()&&_requestQuestion.length){
+            NSString *feishu=[NSString stringWithFormat:@"Q: %@\nA: %@",_requestQuestion,text];
+            TIOFeishuSend(feishu,^(NSString *e){if(e)Diagnostic=[@"飞书通知失败：" stringByAppendingString:e];});
+        }
+        OriginalComplete(_listener,NSSelectorFromString(@"onResponseComplete"));}
 }
 - (BOOL)receiveNlp:(id)response listener:(id)listener {
     NSString *domain=String(Get(response,@"domain")),*intent=String(Get(response,@"intent")),*sub=String(Get(response,@"sub"));
@@ -372,7 +379,7 @@ static void AlwaysOnHook(id self,SEL cmd,id value) {
 
 - (NSString *)tableView:(UITableView *)tableView titleForFooterInSection:(NSInteger)section {
     if(![self.expanded containsIndex:section]||section==0)return nil;
-    if(section==0&&[self.page isEqual:@"model"])return [TIOSelectedAgent() isEqual:@"Codex"]?@"Codex · 只读知识库查询，连接状态见知识库。":@"当前 Agent 未连接执行器；切换选择不会自动发起任务。";
+    if(section==0&&[self.page isEqual:@"model"])return @"飞书通知：语音回答发送到飞书群，眼镜通过通知看到。配置在「飞书通知」页。";
     if(section==0)return [@{@"model":@"TURBO IO · 选择回答方式，管理自己的模型与搜索服务。",@"library":@"音频、转写集中管理；分享只创建副本，不删除原件。",@"diagnostics":@"手动测试与协议状态，不与日常操作混放。"} objectForKey:self.page];
     if(section!=self.sections.count-1)return nil;
     if([self.page isEqual:@"model"])return @"官方 ASR 保留，语音仍可能经过官方云。回答默认由 iOS 本机朗读，也可切换云端 Flash；语音经眼镜蓝牙音频输出。历史仅保留本次进程最近50条成功消息。";
@@ -384,7 +391,7 @@ static void AlwaysOnHook(id self,SEL cmd,id value) {
     UITableViewCell *c=section>=0?[self legacyCell:tableView at:[NSIndexPath indexPathForRow:row inSection:section]]:[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];
     c.textLabel.text=r[@"title"];c.textLabel.numberOfLines=0;c.textLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];c.textLabel.adjustsFontForContentSizeCategory=YES;c.detailTextLabel.font=[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote];c.detailTextLabel.adjustsFontForContentSizeCategory=YES;c.detailTextLabel.numberOfLines=0;c.detailTextLabel.textColor=UIColor.secondaryLabelColor;c.imageView.image=[UIImage systemImageNamed:r[@"icon"]];c.imageView.tintColor=TIOAccent();
     c.accessibilityIdentifier=[@"research-" stringByAppendingString:r[@"key"]];c.contentView.directionalLayoutMargins=NSDirectionalEdgeInsetsMake(15,16,15,16);
-    if([r[@"key"] isEqual:@"agent"]){__weak typeof(self) weak=self;c.accessoryView=TIOAgentPicker(^{[weak.tableView reloadData];});c.detailTextLabel.text=[TIOSelectedAgent() isEqual:@"Codex"]?@"Mac · projectmanager":@"未连接执行器";}
+    if([r[@"key"] isEqual:@"agent"])c.detailTextLabel.text=@"飞书通知 · 配置见「飞书通知」页";
     if([r[@"key"] isEqual:@"knowledge"])c.detailTextLabel.text=@"微信归档 · 项目文档 · 学习资料";
     if([r[@"key"] isEqual:@"a2ui"])c.detailTextLabel.text=@"文字7392 → 排版8642 → 单卡卸载；需镜片验收";
     if([r[@"key"] isEqual:@"navigation"])c.detailTextLabel.text=@"地点搜索 · 路线总览 · 眼镜字幕导航（模拟与实时）";
@@ -406,7 +413,7 @@ static void AlwaysOnHook(id self,SEL cmd,id value) {
     if(ip.section==0){
         c.textLabel.text=@[@"选择回答模型",@"配置自有 API",@"测试 API（合成问题）",@"DeepSeek：关闭思考扩展参数",@"对话历史（点此清空）",@"查看系统提示词",@"语音退出指令",@"联网搜索 · TinyFish",@"配置 TinyFish Key",@"测试联网搜索（公开问题）",@"待办协议验收",@"模型 Tools",@"AI 新闻订阅"][ip.row];
         if(ip.row==12)c.detailTextLabel.text=@"默认AI · TinyFish · 提词器匀速阅读 · 不启动录音";
-        if(ip.row==11)c.detailTextLabel.text=TIOKnowledgeEnabled()?@"knowledge_query · knowledge_query_status · create_todo · web_search":@"create_todo · web_search · 知识库工具需开启";
+        if(ip.row==11)c.detailTextLabel.text=@"create_todo · web_search";
         if(ip.row==0){NSInteger m=[Prefs integerForKey:@"mode"];c.detailTextLabel.text=@[@"官方默认",@"随机字符串验收",@"自定义 OpenAI 兼容接口"][MAX(0,MIN(m,2))];}
         if(ip.row==1)c.detailTextLabel.text=[Prefs stringForKey:@"model"]?:@"尚未配置，未内置任何 Key";
         if(ip.row==3){UISwitch *s=[UISwitch new];s.on=[Prefs boolForKey:@"deepseekDisableThinking"];[s addTarget:self action:@selector(thinking:) forControlEvents:UIControlEventValueChanged];c.accessoryView=s;}
@@ -463,7 +470,6 @@ static void AlwaysOnHook(id self,SEL cmd,id value) {
 #endif
 #endif
 #endif
-    if([r[@"key"] isEqual:@"localTranslation"]){TIOOpenLocalTranslation(self);return;}
     if([r[@"key"] isEqual:@"diagnosticsRuntime"]){[self.navigationController pushViewController:TDDiagnosticsController() animated:YES];return;}
     if([r[@"key"] isEqual:@"weread"]){[self.navigationController pushViewController:TWReaderController() animated:YES];return;}
     if([r[@"key"] isEqual:@"music"]){[self.navigationController pushViewController:TMMusicController() animated:YES];return;}
@@ -495,7 +501,7 @@ static void AlwaysOnHook(id self,SEL cmd,id value) {
     else if(ip.section==0&&ip.row==9)[self testSearch];
     else if(ip.section==0&&ip.row==10)TIOOpenTodoRuntime(self);
     else if(ip.section==0&&ip.row==12)TIOOpenNewsReader(self);
-    else if(ip.section==0&&ip.row==11)Alert(@"当前语音模型 Tools",[NSString stringWithFormat:@"knowledge_query / knowledge_query_status：%@。Codex只读检索微信归档、项目与学习资料，引用来源；不修改知识库。\n\ncreate_todo：标题新增，交给官方入口；等待列表新ID才确认，超时不重试。\nweb_search：TinyFish公开搜索，需开启联网。\n\n待办工具不支持修改、删除、完成、提醒时间，暂不写入知识库网页。只有真实语音会话拥有待办执行上下文。",TIOKnowledgeEnabled()?@"已开启":@"未开启，请在知识库配置连接"]);
+    else if(ip.section==0&&ip.row==11)Alert(@"当前语音模型 Tools",@"create_todo：标题新增，交给官方入口。\nweb_search：TinyFish公开搜索，需开启联网。");
     else if(ip.section==0&&ip.row==4){UIAlertController *a=[UIAlertController alertControllerWithTitle:@"清空自有模型上下文？" message:@"仅清空本扩展内存中的聊天历史，不删除官方记录。正在进行的自有请求会取消并恢复官方模式。" preferredStyle:UIAlertControllerStyleAlert];[a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[a addAction:[UIAlertAction actionWithTitle:@"清空" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x){[Controller cancel];[Controller.history clear];[Prefs setInteger:0 forKey:@"mode"];[self.tableView reloadData];}]];[self presentViewController:a animated:YES completion:nil];}
     else if(ip.section==0&&ip.row==5)TIOOpenProfile(self);
     else if(ip.section==0&&ip.row==2){[_testRequest cancel];_testRequest=[TIORequest new];__weak typeof(self) weakSelf=self;_testRequest.update=^(NSString *text,BOOL done,NSString *error){if(done){Alert(error?@"API 测试失败":@"API 测试结果",error?:text);weakSelf.testRequest=nil;}};[_testRequest startQuestion:@"只回复：私用接口测试通过。"];
