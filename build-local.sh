@@ -57,12 +57,21 @@ fi
 echo "$FIRMWARE_SHA256  focus-firmware.zip" | shasum -a 256 -c -
 
 echo "==> [4/6] 编译 TurboIOPrivateAddon.dylib"
-export TIO_AMAP_ENABLED=1 TIO_AMAP_SDK_ROOT="$PWD/official-addon/build/amap-sdk" \
-  TIO_OTA_FLASH_ENABLED=1 TIO_IMAGE_RX_LAB=1 TIO_IMAGE_RX_WIDE=1 \
-  TIO_DISPLAY_PHONE=1 TIO_DISPLAY_FLASH=1 TIO_APP_SDK=1
+export TIO_AMAP_ENABLED=1
+export TIO_AMAP_SDK_ROOT="$PWD/official-addon/build/amap-sdk"
+export TIO_OTA_FLASH_ENABLED=1
+export TIO_IMAGE_RX_LAB=1
+export TIO_IMAGE_RX_WIDE=1
+export TIO_DISPLAY_PHONE=1
+export TIO_DISPLAY_FLASH=1
+export TIO_APP_SDK=1
+echo "    开关回显：AMap=$TIO_AMAP_ENABLED APP_SDK=$TIO_APP_SDK PHONE=$TIO_DISPLAY_PHONE RX_LAB=$TIO_IMAGE_RX_LAB FLASH=$TIO_DISPLAY_FLASH OTA=$TIO_OTA_FLASH_ENABLED"
 bash official-addon/focus-edition/build.sh embedded "$BUNDLE_ID"
 ADDON=official-addon/focus-edition/build/image-rx-lab/TurboIOPrivateAddon.dylib
-nm -g "$ADDON" | grep -q '_TAPAppsController'  || { echo "错误：dylib 缺少 _TAPAppsController（App SDK 没编入）"; exit 1; }
+if ! nm -g "$ADDON" | grep -q '_TAPAppsController'; then
+  echo "符号诊断：TAP匹配数=$(nm -g "$ADDON" | grep -c TAPApps) TCE匹配数=$(nm -g "$ADDON" | grep -c TCEEditor) APP_SDK环境变量=$TIO_APP_SDK"
+  echo "错误：dylib 缺少 _TAPAppsController（App SDK 没编入）"; exit 1
+fi
 nm -g "$ADDON" | grep -q '_TCEEditorController' || { echo "错误：dylib 缺少 _TCEEditorController（TCE1 没编入）"; exit 1; }
 echo "    扩展就绪：$ADDON"
 
