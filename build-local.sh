@@ -32,11 +32,14 @@ command -v node >/dev/null || { echo "缺少 node（建议 22+）：brew install
 xcode-select -p >/dev/null 2>&1 || { echo "缺少 Xcode 命令行工具：xcode-select --install"; exit 1; }
 
 echo "==> [1/6] 高德 SDK（缓存：official-addon/build/amap-sdk）"
+# SDK 不走 git 仓库，从高德官方 CDN（a.amap.com，国内直连）下载；版本与哈希由
+# setup-amap.mjs 锁定（Navi 11.3.100 / Search 9.8.1）。下载失败时从 Windows 手动
+# 上传两个 zip 到 amap-archives/ 后重跑即可（本机 D:\Downloads\amap-sdk\ 有备份）。
 if [[ ! -d official-addon/build/amap-sdk/navi ]]; then
   mkdir -p amap-archives
-  [[ -f amap-archives/AMap_iOS_Navi_ALL.zip ]] || curl -fL --max-time 600 -o amap-archives/AMap_iOS_Navi_ALL.zip https://a.amap.com/lbs/static/zip/AMap_iOS_Navi_ALL.zip
-  [[ -f amap-archives/search-9.8.1.zip ]] || curl -fL --max-time 600 -o amap-archives/search-9.8.1.zip https://a.amap.com/lbs/static/zip/AMap_iOS_Search_Lib_V9.8.1.zip
-  node official-addon/setup-amap.mjs --accept-sdk-terms --archives-dir "$PWD/amap-archives"
+  [[ -f amap-archives/AMap_iOS_Navi_ALL.zip ]] || curl -fL --max-time 600 -o amap-archives/AMap_iOS_Navi_ALL.zip https://a.amap.com/lbs/static/zip/AMap_iOS_Navi_ALL.zip || { echo "错误：高德 Navi 包下载失败；从 Windows 上传该 zip 到 $PWD/amap-archives/ 后重跑"; exit 1; }
+  [[ -f amap-archives/search-9.8.1.zip ]] || curl -fL --max-time 600 -o amap-archives/search-9.8.1.zip https://a.amap.com/lbs/static/zip/AMap_iOS_Search_Lib_V9.8.1.zip || { echo "错误：高德 Search 包下载失败；从 Windows 上传（可改名前为 AMap_iOS_Search_Lib_V9.8.1.zip）到 $PWD/amap-archives/ 后重跑"; exit 1; }
+  node official-addon/setup-amap.mjs --accept-sdk-terms --archives-dir "$PWD/amap-archives" || { echo "错误：SDK 校验/安装失败（若为 hash mismatch 说明高德更新了包）；可从 Windows 上传两个 zip 到 amap-archives/ 重试"; exit 1; }
 else
   echo "    已缓存，跳过"
 fi
