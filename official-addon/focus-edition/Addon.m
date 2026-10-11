@@ -316,11 +316,20 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
 }
 @end
 
+static NSInteger TIOParseVoiceChoice(NSString *text,NSUInteger count); // defined with the NLP choice handler below
 static void AsrHook(id self,SEL cmd,id text,BOOL final,id sid) {
     NSString *copy=String(text),*session=String(sid);
     void (^work)(void)=^{
         if(final&&[Prefs boolForKey:@"voiceExitCommands"]&&TIOIsVoiceExitCommand(copy)&&[Controller exitVoice])return;
         if(Controller.voiceExited)return;
+        // Candidate-dialog answers ("去第二个") are consumed at the ASR layer:
+        // the instant the utterance is recognized -- before any NLP round trip,
+        // and WITHOUT forwarding it, so the official assistant does not start
+        // its own reply on top of our navigation dialog.
+        if(final&&TIOVoiceNavPendingChoices()){
+            NSInteger pick=TIOParseVoiceChoice(copy,TIOVoiceNavPendingChoices());
+            if(pick>0){TIOVoiceNavTrace([NSString stringWithFormat:@"语音选择（ASR直取）：第%ld个",(long)pick]);TIOVoiceNavChoose((NSUInteger)pick);return;}
+        }
         // The official app reopens the microphone automatically after a
         // response. Only recognized user speech, not audio-start, is a barge-in.
         if(copy.length&&[Prefs boolForKey:@"ttsEnabled"]){[Prefs setObject:@"user.asr" forKey:@"ttsLastReset"];[VoiceTTS cancel];}
@@ -360,24 +369,31 @@ static void NlpHook(id self,SEL cmd,id value) {
         if(![Controller receiveNlp:value listener:self])
             OriginalNlp(self,cmd,[Controller observeOfficialVoice:value]);
         // Voice navigation at the NLP layer, two layers: (1) a pending
-        // candidate dialog consumes "去第几个" style answers; (2) otherwise
-        // the trigger keywords ("导航去X") run the full pipeline.
+        // candidate dialog consumes "去第几个" style answers (also handled at
+        // the ASR layer for immediacy); (2) otherwise the trigger keywords
+        // ("导航去X") run the full pipeline.
         NSString *voiceQuery=Get(value,@"query");
         if([voiceQuery isKindOfClass:NSString.class]){
+            static NSUInteger lastPending=UINT_MAX;
             NSUInteger pending=TIOVoiceNavPendingChoices();
             if(pending){
                 NSInteger pick=TIOParseVoiceChoice(voiceQuery,pending);
-                if(pick>0){TIOVoiceNavTrace([NSString stringWithFormat:@"语音选择：第%ld个（共%lu个候选）",(long)pick,(unsigned long)pending]);TIOVoiceNavChoose((NSUInteger)pick);return;}
-                TIOVoiceNavTrace(@"候选等待中：未识别到选择指令（说 去第几个）；继续尝试导航关键词");
+                if(pick>0){TIOVoiceNavTrace([NSString stringWithFormat:@"语音选择（NLP）：第%ld个（共%lu个候选）",(long)pick,(unsigned long)pending]);TIOVoiceNavChoose((NSUInteger)pick);lastPending=pending;return;}
+                if(lastPending!=pending){TIOVoiceNavTrace(@"候选等待中：说 去第几个（助手自己的回复也会流经这里，属正常）");lastPending=pending;} // log once per dialog, not per reply delta
                 // Fall through: the user may have switched to a fresh "导航去Y".
-            }
+            }else lastPending=UINT_MAX;
             TIOVoiceNavMaybeStart(voiceQuery);
         }
     };
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 static void CompleteHook(id self,SEL cmd) {
-    void (^work)(void)=^{CompletionEvents++;if(Controller.voiceExited)return;[Controller completeOfficialVoice];if(![Prefs integerForKey:@"mode"]||!(Controller.listener==self&&Controller.ownsTurn))OriginalComplete(self,cmd);};
+    void (^work)(void)=^{CompletionEvents++;if(Controller.voiceExited)return;[Controller completeOfficialVoice];if(![Prefs integerForKey:@"mode"]||!(Controller.listener==self&&Controller.ownsTurn))OriginalComplete(self,cmd);
+        // Play the queued candidate announcement NOW: the official assistant
+        // has finished its own reply to the nav command, so the dialog reads
+        // serialized instead of two voices talking over each other.
+        NSString *announcement=TIOVoiceNavPendingAnnouncement();
+        if(announcement.length){TIOVoiceNavClearAnnouncement();dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.8*NSEC_PER_SEC)),dispatch_get_main_queue(),^{TIOTTSAnnounce(announcement);TIOVoiceNavTrace(@"候选播报：开始（已排在助手回复之后）");});}};
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 static void AlwaysOnHook(id self,SEL cmd,id value) {

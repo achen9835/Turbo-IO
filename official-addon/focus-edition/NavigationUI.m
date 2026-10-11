@@ -78,6 +78,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property BOOL voiceSession,voiceLifelogWasOn,voiceLocating,hasVoiceFix,voiceSearchAround;
 @property NSArray<NSDictionary *> *voiceCandidates; // pending multi-choice dialog: name/lat/lon/meters
 @property NSTimeInterval voiceCandidatesExpire;
+@property(copy) NSString *voiceAnnouncement; // queued candidate announcement, played when the official reply finishes
 @property CLLocationCoordinate2D voiceFix; // Fresh CLLocationManager fix from voice step 1; used as the explicit route origin so background planning never waits on the SDK's own (paused) location engine.
 #if TIO_AMAP_ENABLED
 @property AMapSearchAPI *voiceSearch;
@@ -337,9 +338,16 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
             NSMutableString *say=[NSMutableString stringWithFormat:@"找到%lu个%@。",(unsigned long)cands.count,self.voiceQuery?:@"地点"];
             for(NSUInteger i=0;i<cands.count;i++){NSDictionary *c=cands[i];double m=[c[@"meters"] doubleValue];[say appendFormat:@"第%lu个%@",(unsigned long)i+1,m<1000?[NSString stringWithFormat:@"约%.0f米",m]:[NSString stringWithFormat:@"约%.1f公里",m/1000]];if(i+1<cands.count)[say appendString:@"，"];}
             [say appendString:@"。说，去第几个。三十秒后默认去最近的。"];
-            TIOTTSAnnounce(say);
-            self.note=[NSString stringWithFormat:@"第2步：找到%lu个候选，等待语音选择（说 去第几个，30秒后默认最近的）",(unsigned long)cands.count];
-            TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：%lu个候选（%@），语音播报中，等待选择",(unsigned long)cands.count,[cands valueForKeyPath:@"name"]]);
+            // QUEUE the announcement instead of talking over the official assistant's
+            // own reply to the nav command; CompleteHook plays it serialized. A
+            // short fallback timer covers the case where the reply already finished
+            // (no further completion event would ever come).
+            self.voiceAnnouncement=[say copy];
+            NSUInteger g=self.generation;
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,4*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(g==self.generation&&self.voiceAnnouncement.length){NSString *a=self.voiceAnnouncement;self.voiceAnnouncement=@"";TIOVoiceNavTrace(@"候选播报：助手已说完，现在播报");TIOTTSAnnounce(a);}});
+            NSMutableString *names=[NSMutableString new];for(NSUInteger i=0;i<cands.count;i++){[names appendString:cands[i][@"name"]?:@""];if(i+1<cands.count)[names appendString:@" / "];}
+            self.note=[NSString stringWithFormat:@"第2步：找到%lu个候选（%@），等待语音选择（说 去第几个，30秒后默认最近的）",(unsigned long)cands.count,names];
+            TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：%lu个候选（%@），播报已排队（等助手说完），等待选择",(unsigned long)cands.count,names]);
             [self refresh];return;
         }
         [self voicePickCandidate:first announced:cands.count>1?@"（未开朗读，自动选最近）":@""];
@@ -347,7 +355,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 }
 // Chosen (or auto-picked) candidate → destination → realtime planning.
 - (void)voicePickCandidate:(NSDictionary *)candidate announced:(NSString *)suffix{
-    self.voiceCandidates=nil;
+    self.voiceCandidates=nil;self.voiceAnnouncement=@"";
     TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：选定「%@」%@（%@），第3步算路",candidate[@"name"]?:@"",suffix,candidate[@"city"]?:@""]);
     TIOTTSAnnounce([NSString stringWithFormat:@"好，导航去%@。",candidate[@"name"]?:@""]);
     [self selectPlace:@{@"name":candidate[@"name"]?:@"目的地",@"address":candidate[@"city"]?:@"",@"lat":candidate[@"lat"],@"lon":candidate[@"lon"]}];
@@ -521,6 +529,8 @@ static TIONavigationPanel *SharedNavPanel=nil;
 void TIOVoiceNavStop(void){[SharedNavPanel stopUser];}
 // Pending candidate dialog state, consumed by Addon.m's NLP choice parser.
 NSUInteger TIOVoiceNavPendingChoices(void){return SharedNavPanel.voiceCandidates.count;}
+NSString *TIOVoiceNavPendingAnnouncement(void){return SharedNavPanel.voiceAnnouncement?:@"";}
+void TIOVoiceNavClearAnnouncement(void){SharedNavPanel.voiceAnnouncement=@"";}
 BOOL TIOVoiceNavChoose(NSUInteger oneBasedIndex){
     if(!oneBasedIndex)return NO;
     __block BOOL ok=NO;
