@@ -6,11 +6,11 @@
 // notification, which the glasses relay natively.
 static NSUserDefaults *Settings(void){return [[NSUserDefaults alloc]initWithSuiteName:@"io.turboio.official-knowledge"];}
 static NSDictionary *KeyQuery(void){return @{(__bridge id)kSecClass:(__bridge id)kSecClassGenericPassword,(__bridge id)kSecAttrService:@"io.turboio.official-knowledge",(__bridge id)kSecAttrAccount:@"feishu-webhook"};}
-static NSString *StoredWebhook(void){NSMutableDictionary *q=[KeyQuery mutableCopy];q[(__bridge id)kSecReturnData]=@YES;CFTypeRef out=NULL;if(SecItemCopyMatching((__bridge CFDictionaryRef)q,&out)!=errSecSuccess)return @"";return [[NSString alloc]initWithData:CFBridgingRelease(out) encoding:NSUTF8StringEncoding]?:@"";}
+static NSString *StoredWebhook(void){NSMutableDictionary *q=[KeyQuery() mutableCopy];q[(__bridge id)kSecReturnData]=@YES;CFTypeRef out=NULL;if(SecItemCopyMatching((__bridge CFDictionaryRef)q,&out)!=errSecSuccess)return @"";return [[NSString alloc]initWithData:CFBridgingRelease(out) encoding:NSUTF8StringEncoding]?:@"";}
 static BOOL StoreWebhook(NSString *url){
     NSDictionary *attrs=@{(__bridge id)kSecValueData:[url dataUsingEncoding:NSUTF8StringEncoding],(__bridge id)kSecAttrAccessible:(__bridge id)kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly};
     OSStatus s=SecItemUpdate((__bridge CFDictionaryRef)KeyQuery(),(__bridge CFDictionaryRef)attrs);
-    if(s==errSecItemNotFound){NSMutableDictionary *all=[KeyQuery mutableCopy];[all addEntriesFromDictionary:attrs];s=SecItemAdd((__bridge CFDictionaryRef)all,NULL);}
+    if(s==errSecItemNotFound){NSMutableDictionary *all=[KeyQuery() mutableCopy];[all addEntriesFromDictionary:attrs];s=SecItemAdd((__bridge CFDictionaryRef)all,NULL);}
     return s==errSecSuccess;
 }
 NSString *TIOFeishuWebhookURL(void){return StoredWebhook();}
