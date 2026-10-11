@@ -68,11 +68,14 @@ export TIO_APP_SDK=1
 echo "    开关回显：AMap=$TIO_AMAP_ENABLED APP_SDK=$TIO_APP_SDK PHONE=$TIO_DISPLAY_PHONE RX_LAB=$TIO_IMAGE_RX_LAB FLASH=$TIO_DISPLAY_FLASH OTA=$TIO_OTA_FLASH_ENABLED"
 bash official-addon/focus-edition/build.sh embedded "$BUNDLE_ID"
 ADDON=official-addon/focus-edition/build/image-rx-lab/TurboIOPrivateAddon.dylib
-if ! nm -g "$ADDON" | grep -q '_TAPAppsController'; then
-  echo "符号诊断：TAP匹配数=$(nm -g "$ADDON" | grep -c TAPApps) TCE匹配数=$(nm -g "$ADDON" | grep -c TCEEditor) APP_SDK环境变量=$TIO_APP_SDK"
-  echo "错误：dylib 缺少 _TAPAppsController（App SDK 没编入）"; exit 1
+# 注意：不要用 `nm | grep -q`——本脚本开了 pipefail，grep -q 提前退出会让 nm 吃到
+# SIGPIPE(141)，管道整体被判失败，明明匹配到了也误报缺失。用 grep -c 读完整个输出。
+TAP_COUNT=$(nm -g "$ADDON" | grep -c TAPAppsController || true)
+TCE_COUNT=$(nm -g "$ADDON" | grep -c TCEEditorController || true)
+echo "    符号核验：TAPAppsController×$TAP_COUNT TCEEditorController×$TCE_COUNT"
+if [[ "$TAP_COUNT" -eq 0 || "$TCE_COUNT" -eq 0 ]]; then
+  echo "错误：App SDK 符号缺失（TAP=$TAP_COUNT TCE=$TCE_COUNT，APP_SDK=$TIO_APP_SDK）"; exit 1
 fi
-nm -g "$ADDON" | grep -q '_TCEEditorController' || { echo "错误：dylib 缺少 _TCEEditorController（TCE1 没编入）"; exit 1; }
 echo "    扩展就绪：$ADDON"
 
 echo "==> [5/6] 合并 + 高德资源 + FOCUS 固件注入 + adhoc 签名"
@@ -88,16 +91,17 @@ node --input-type=module -e "
   copyAMapResources(amapResources(process.argv[1]), process.argv[2]);
 " "$PWD/official-addon/build/amap-sdk" "$PWD/merged/Payload/Runner.app"
 PLIST="merged/Payload/Runner.app/Info.plist"
-plutil -convert json -o - "$PLIST" | grep -q NSLocationWhenInUseUsageDescription || \
+if [[ $(plutil -convert json -o - "$PLIST" | grep -c NSLocationWhenInUseUsageDescription || true) -eq 0 ]]; then
   plutil -insert NSLocationWhenInUseUsageDescription -string '用于用户主动选择的地图定位和前台步行导航。' "$PLIST"
+fi
 node .github/scripts/focus-adhoc-package.mjs \
   "$PWD/merged/Payload/Runner.app" \
   "$PWD/focus-firmware.zip" \
   "$PWD/official-addon/build/amap-sdk" \
   "$PWD/merged/experimental-ota-routing.json"
 # 原厂包按机型裁剪（列表只到 iPhone16,2），补进当前机型避免安装报错
-if plutil -convert json -o - "$PLIST" | grep -q UISupportedDevices \
-   && ! plutil -convert json -o - "$PLIST" | grep -q "\"$PRODUCT\""; then
+if [[ $(plutil -convert json -o - "$PLIST" | grep -c UISupportedDevices || true) -gt 0 \
+   && $(plutil -convert json -o - "$PLIST" | grep -c "\"$PRODUCT\"" || true) -eq 0 ]]; then
   plutil -insert UISupportedDevices.0 -string "$PRODUCT" "$PLIST"
   echo "    已把 $PRODUCT 加入 UISupportedDevices"
 fi
