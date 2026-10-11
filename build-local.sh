@@ -17,6 +17,16 @@ EXPECTED_IPA_SHA256="39d12aff8f2b312dc3b40ce784a444e52c536e61378434005255177548d
 FIRMWARE_URL="https://github.com/Turbo1123/Turbo-IO/releases/download/firmware-strix-1.0.4.12-tfp1-focus04/StrixOS-1.0.4.12-TurboFocus-TFP1-FOCUS04-EXPERIMENTAL.zip"
 FIRMWARE_SHA256="ad5054e3d7bda90e94d293bea882bd8dd5a125bcc8f42c13a59b2e149313c9e3"
 
+# GitHub 直连失败时（国内云Mac常见）自动走公共镜像前缀；SHA-256 校验兜底，镜像被污染也进不来。
+fetch_github() { # $1=输出文件 $2=github URL
+  if curl -fL --max-time 40 -o "$1" "$2"; then echo "    $1 ← GitHub 直连"; return 0; fi
+  for M in "https://ghproxy.net/" "https://gh-proxy.com/" "https://mirror.ghproxy.com/"; do
+    echo "    直连失败，尝试镜像：$M"
+    if curl -fL --max-time 300 -o "$1" "${M}${2}"; then echo "    $1 ← ${M}镜像"; return 0; fi
+  done
+  echo "错误：$2 直连与镜像均失败。可手动下载该文件放到 $PWD/$1 后重跑" >&2; return 1
+}
+
 echo "==> [0/6] 环境检查"
 command -v node >/dev/null || { echo "缺少 node（建议 22+）：brew install node"; exit 1; }
 xcode-select -p >/dev/null 2>&1 || { echo "缺少 Xcode 命令行工具：xcode-select --install"; exit 1; }
@@ -33,13 +43,13 @@ fi
 
 echo "==> [2/6] 原厂砸壳 IPA（缓存：original.ipa）"
 if [[ ! -f original.ipa ]]; then
-  curl -fL --max-time 600 -o original.ipa "$UPSTREAM_IPA_URL"
+  fetch_github original.ipa "$UPSTREAM_IPA_URL"
 fi
 echo "$EXPECTED_IPA_SHA256  original.ipa" | shasum -a 256 -c -
 
 echo "==> [3/6] FOCUS-04 固件（缓存：focus-firmware.zip）"
 if [[ ! -f focus-firmware.zip ]]; then
-  curl -fL --max-time 600 -o focus-firmware.zip "$FIRMWARE_URL"
+  fetch_github focus-firmware.zip "$FIRMWARE_URL"
 fi
 echo "$FIRMWARE_SHA256  focus-firmware.zip" | shasum -a 256 -c -
 
