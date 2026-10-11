@@ -60,10 +60,6 @@ static NSString *Diagnostic=@"尚未收到回调";
 // every step appends here and the 适配与回调 cell shows the tail. This is the
 // only way to see where a failed voice trigger stopped.
 static NSString *VoiceNavTrace=@"";
-// Set when a voice navigation was dispatched this turn; CompleteHook closes the
-// assistant session afterwards so the glasses chat window yields the display
-// to the incoming navigation page (TNV expects the lens free of chat tasks).
-static BOOL VoiceNavClosePending=NO;
 void TIOVoiceNavTrace(NSString *step){
     void (^work)(void)=^{VoiceNavTrace=[VoiceNavTrace stringByAppendingFormat:@"\n· %@",step?:@""];if(VoiceNavTrace.length>1600)VoiceNavTrace=[VoiceNavTrace substringFromIndex:VoiceNavTrace.length-1600];};
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
@@ -88,6 +84,14 @@ static NSString *ReadKey(NSString *host) {
     return [[NSString alloc]initWithData:CFBridgingRelease(out) encoding:NSUTF8StringEncoding]?:@"";
 }
 static BOOL TTSOn(void){return [Prefs boolForKey:@"ttsEnabled"]&&([[Prefs stringForKey:@"ttsEngine"] isEqual:@"local"]||ReadKey(TIOVoiceTTSService()).length>0);}
+// Speak through the glasses audio route with the reply-TTS engine (local
+// AVSpeech or cloud Flash). Used by the voice-nav candidate dialog.
+BOOL TIOTTSAvailable(void){return TTSOn();}
+void TIOTTSAnnounce(NSString *text){
+    if(!TTSOn()||![text isKindOfClass:NSString.class]||!text.length)return;
+    void (^work)(void)=^{[VoiceTTS beginTurn];[VoiceTTS appendFullText:text finished:YES];};
+    if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
+}
 static BOOL StoreKey(NSString *host,NSString *key) {
     NSDictionary *q=KeyQuery(host);
     if(!key.length){OSStatus s=SecItemDelete((__bridge CFDictionaryRef)q);return s==errSecSuccess||s==errSecItemNotFound;}
@@ -176,6 +180,14 @@ static void Alert(NSString *title,NSString *message) {
 - (BOOL)exitVoice;
 @end
 static TIOController *Controller;
+// Close the assistant session via the verified official stop entry -- same
+// path as the 语音退出 command. Frees the lens for the navigation page; the
+// voice-nav flow calls this once navigation actually starts (a candidate
+// dialog needs the mic to stay open until the user chooses).
+void TIOVoiceCloseAssistantSession(void){
+    void (^work)(void)=^{if(!Controller.voiceExited)[Controller exitVoice];};
+    if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
+}
 
 static id CopyResponse(id source,NSString *answer,BOOL final) {
     // Only use the observed wrapper class. Do not call guessed Swift addresses.
@@ -321,6 +333,24 @@ static void AudioStartHook(id self,SEL cmd) {
     void (^work)(void)=^{TWReaderPauseForVoice();TMMusicPauseForVoice();Controller.voiceExited=NO;[Controller.taskGate beginTurn];OriginalAudioStart(self,cmd);};
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
+// Parse a spoken candidate choice: 第一个/第2个/去第三个/就要第二个/最近/短句裸数字.
+// Returns the 1-based index, 0 = not a choice. Bare numbers only match very
+// short utterances so ordinary chat sentences never accidentally select.
+static NSInteger TIOParseVoiceChoice(NSString *text,NSUInteger count){
+    if(![text isKindOfClass:NSString.class]||!count)return 0;
+    if([text rangeOfString:@"最近"].location!=NSNotFound)return 1;
+    NSArray *digits=@[@[@"一",@"1"],@[@"二",@"两",@"2"],@[@"三",@"3"]];
+    for(NSUInteger n=1;n<=digits.count&&n<=count;n++)for(NSString *d in digits[n-1]){
+        if([text rangeOfString:[NSString stringWithFormat:@"第%@个",d]].location!=NSNotFound)return (NSInteger)n;
+        if([text rangeOfString:[NSString stringWithFormat:@"第%@",d]].location!=NSNotFound)return (NSInteger)n;
+    }
+    NSString *t=[text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    while(t.length){unichar c=[t characterAtIndex:t.length-1];if(c==0x3002||c==0xFF01||c==0xFF1F||c==0xFF0C||c==','||c=='.'||c=='!'||c=='?'||c==0x5427)t=[t substringToIndex:t.length-1];else break;}
+    if(t.length&&t.length<=6)for(NSUInteger n=1;n<=digits.count&&n<=count;n++)for(NSString *d in digits[n-1]){
+        if([t isEqualToString:d]||[t isEqualToString:[@"去" stringByAppendingString:d]]||[t isEqualToString:[@"要" stringByAppendingString:d]])return (NSInteger)n;
+    }
+    return 0;
+}
 static void NlpHook(id self,SEL cmd,id value) {
     // Route decisions on the main queue to serialize ASR, cancellation and stream completion.
     void (^work)(void)=^{
@@ -329,21 +359,25 @@ static void NlpHook(id self,SEL cmd,id value) {
         TIOTodoObserveNlp(self,value);
         if(![Controller receiveNlp:value listener:self])
             OriginalNlp(self,cmd,[Controller observeOfficialVoice:value]);
-        // Voice navigation at the NLP layer: the assistant has finished its turn,
-        // the query text is final. Match navigation keywords and trigger if hit.
-        // The 8s throttle in TIOVoiceNavMaybeStart deduplicates across deltas.
+        // Voice navigation at the NLP layer, two layers: (1) a pending
+        // candidate dialog consumes "去第几个" style answers; (2) otherwise
+        // the trigger keywords ("导航去X") run the full pipeline.
         NSString *voiceQuery=Get(value,@"query");
-        if([voiceQuery isKindOfClass:NSString.class]&&TIOVoiceNavMaybeStart(voiceQuery))VoiceNavClosePending=YES;
+        if([voiceQuery isKindOfClass:NSString.class]){
+            NSUInteger pending=TIOVoiceNavPendingChoices();
+            if(pending){
+                NSInteger pick=TIOParseVoiceChoice(voiceQuery,pending);
+                if(pick>0){TIOVoiceNavTrace([NSString stringWithFormat:@"语音选择：第%ld个（共%lu个候选）",(long)pick,(unsigned long)pending]);TIOVoiceNavChoose((NSUInteger)pick);return;}
+                TIOVoiceNavTrace(@"候选等待中：未识别到选择指令（说 去第几个）；继续尝试导航关键词");
+                // Fall through: the user may have switched to a fresh "导航去Y".
+            }
+            TIOVoiceNavMaybeStart(voiceQuery);
+        }
     };
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 static void CompleteHook(id self,SEL cmd) {
-    void (^work)(void)=^{CompletionEvents++;if(Controller.voiceExited)return;[Controller completeOfficialVoice];if(![Prefs integerForKey:@"mode"]||!(Controller.listener==self&&Controller.ownsTurn))OriginalComplete(self,cmd);
-        // A voice navigation was dispatched this turn: once the assistant's
-        // reply finishes (plus a beat for the last syllable), close the voice
-        // session via the official stop entry so the glasses chat window
-        // dismisses and the lens is free for the incoming navigation page.
-        if(VoiceNavClosePending){VoiceNavClosePending=NO;dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{if(!Controller.voiceExited)[Controller exitVoice];});}};
+    void (^work)(void)=^{CompletionEvents++;if(Controller.voiceExited)return;[Controller completeOfficialVoice];if(![Prefs integerForKey:@"mode"]||!(Controller.listener==self&&Controller.ownsTurn))OriginalComplete(self,cmd);};
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 static void AlwaysOnHook(id self,SEL cmd,id value) {
