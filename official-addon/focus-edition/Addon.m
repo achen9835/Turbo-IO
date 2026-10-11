@@ -275,6 +275,32 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
         [self cancel];Diagnostic=@"官方待办接管本轮；自有回复已取消，完成回调交回官方";
     }
     if(_taskGate.official)return NO;
+    // Official mode + voice navigation: behave like a DEVICE-CONTROL command.
+    // A nav trigger ("导航去X") has no official intent, so it would fall into the
+    // chat domain and the assistant would ramble a conversational answer right
+    // over our pipeline. Instead, seize this response as the template and speak
+    // ONE short confirmation of our own through the same channel the custom
+    // model uses (chat window + glasses TTS); later official deltas of the same
+    // turn are swallowed by _ownsTurn below.
+    if(![Prefs integerForKey:@"mode"]){
+        if(_ownsTurn)return YES;
+        if(listener==_listener&&_asr.length&&!offline){
+            NSString *sid=String(Get(response,@"sessionId"));
+            if(!(_sid.length&&sid.length&&![_sid isEqual:sid])
+               &&TIOIsEligibleChat(domain,intent,sub,NO,Get(response,@"command")!=nil)){
+                NSString *navDest=TIOVoiceNavMatchDestination(_asr);
+                if(navDest.length){
+                    _responseTemplate=response;_ownsTurn=YES;_started=YES;_emitted=@"";
+                    NSUInteger gen=_generation;
+                    NSString *say=[NSString stringWithFormat:@"好，正在搜索附近的「%@」。",navDest];
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.3*NSEC_PER_SEC)),dispatch_get_main_queue(),^{[self emitText:say done:YES error:nil generation:gen];});
+                    Diagnostic=[NSString stringWithFormat:@"导航指令接管本轮回复：%@",navDest];
+                    return YES;
+                }
+            }
+        }
+        return NO;
+    }
     BOOL eligible=TIOIsEligibleChat(domain,intent,sub,offline,Get(response,@"command")!=nil);
     if(eligible)
         [Prefs setObject:@"chat" forKey:@"verifiedChatDomain"];

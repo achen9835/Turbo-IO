@@ -538,18 +538,16 @@ BOOL TIOVoiceNavChoose(NSUInteger oneBasedIndex){
     if(NSThread.isMainThread)work();else dispatch_sync(dispatch_get_main_queue(),work);
     return ok;
 }
-BOOL TIOVoiceNavMaybeStart(NSString *text){
-    if(![text isKindOfClass:NSString.class])return NO;
-    if([NSUserDefaults.standardUserDefaults boolForKey:@"voiceNavDisabled"]){TIOVoiceNavTrace(@"忽略：语音导航开关已关闭（导航页-更多里可重新开启）");return NO;}
-    NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
-    if(now-LastVoiceNavAt<8)return NO; // Same turn's NLP deltas repeat the query; silently throttled.
+// Pure matcher shared by the NLP trigger and the reply hijack: normalize the
+// utterance (trim, strip trailing punctuation/speech prefixes) and return the
+// destination (with trailing travel-mode words removed), or nil if no trigger.
+// No side effects, no throttle -- callers decide what to do with a match.
+NSString *TIOVoiceNavMatchDestination(NSString *text){
+    if(![text isKindOfClass:NSString.class])return nil;
+    if([NSUserDefaults.standardUserDefaults boolForKey:@"voiceNavDisabled"])return nil;
     NSString *t=[text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
     while(t.length){unichar c=[t characterAtIndex:t.length-1];if(c==0x3002||c==0xFF01||c==0xFF1F||c==0xFF0C||c==','||c=='.'||c=='!'||c=='?')t=[t substringToIndex:t.length-1];else break;}
-    // Strip common speech prefixes so "帮我导航去X" and "请导航去X" also match.
     for(NSString *pre in @[@"帮我",@"请你",@"请",@"给我",@"我要帮我"])if([t hasPrefix:pre]){t=[t substringFromIndex:pre.length];break;}
-    // Match if any trigger word appears anywhere in the utterance (not just prefix),
-    // then take everything after the trigger word as the destination. Mode-specific
-    // verbs ("骑车去X") are triggers too, so they work without saying 导航.
     NSString *destination=nil;
     for(NSString *p in @[@"导航到",@"导航去",@"导航至",@"带我去",@"我要去",@"步行去",@"步行到",@"骑行去",@"骑行到",@"骑车去",@"骑车到",@"自行车去",@"驾车去",@"驾车到",@"开车去",@"开车到",@"自驾去"]){
         NSRange r=[t rangeOfString:p];
@@ -559,27 +557,31 @@ BOOL TIOVoiceNavMaybeStart(NSString *text){
             if(d.length>=2&&d.length<=40){destination=d;break;}
         }
     }
+    if(!destination)return nil;
+    NSArray *trailing=@[@"步行",@"步行方式",@"骑行",@"骑车",@"自行车",@"单车",@"电动车",@"驾车",@"开车",@"自驾",@"打车"];
+    for(NSString *w in trailing)while([destination hasSuffix:w])destination=[[destination substringToIndex:destination.length-w.length] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+    return destination.length>=2?destination:nil;
+}
+BOOL TIOVoiceNavMaybeStart(NSString *text){
+    if(![text isKindOfClass:NSString.class])return NO;
+    if([NSUserDefaults.standardUserDefaults boolForKey:@"voiceNavDisabled"]){TIOVoiceNavTrace(@"忽略：语音导航开关已关闭（导航页-更多里可重新开启）");return NO;}
+    NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
+    if(now-LastVoiceNavAt<8)return NO; // Same turn's NLP deltas repeat the query; silently throttled.
+    NSString *destination=TIOVoiceNavMatchDestination(text);
     if(!destination){ // Ordinary chat turns miss too; log each distinct text once.
         static NSString *lastMiss=@"";
-        if(![t isEqual:lastMiss]){lastMiss=[t copy];TIOVoiceNavTrace([NSString stringWithFormat:@"未命中导航关键词：%@",t]);}
+        if(![text isEqual:lastMiss]){lastMiss=[text copy];TIOVoiceNavTrace([NSString stringWithFormat:@"未命中导航关键词：%@",text]);}
         return NO;
     }
-    // Travel mode: default WALK unless the utterance names ride/drive explicitly.
-    // (Walk words only matter when they trail the destination, where they are
-    // stripped below -- "步行街" as a POI name still searches correctly.)
+    // Travel mode: default WALK unless the utterance names ride/drive explicitly
+    // (scanned on the raw text; trailing mode words were stripped by the matcher).
     NSInteger voiceMode=TIONavigationWalk;
     NSArray *rides=@[@"骑行",@"骑车",@"自行车",@"单车",@"电动车"],*drives=@[@"驾车",@"开车",@"自驾",@"打车"];
-    for(NSString *w in rides)if([t rangeOfString:w].location!=NSNotFound){voiceMode=TIONavigationRide;break;}
-    if(voiceMode==TIONavigationWalk)for(NSString *w in drives)if([t rangeOfString:w].location!=NSNotFound){voiceMode=TIONavigationDrive;break;}
-    // Strip TRAILING mode words from the destination so they never pollute the
-    // POI search ("金九公寓步行" → "金九公寓"; trailing only, 步行街 stays intact).
-    NSArray *trailing=@[@"步行",@"步行方式",@"骑行",@"骑车",@"自行车",@"单车",@"电动车",@"驾车",@"开车",@"自驾",@"打车"];
-    BOOL stripped=NO;
-    for(NSString *w in trailing)while([destination hasSuffix:w]){destination=[[destination substringToIndex:destination.length-w.length] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];stripped=YES;}
-    if(destination.length<2){TIOVoiceNavTrace(@"未命中：剥离开行方式后终点过短");return NO;}
+    for(NSString *w in rides)if([text rangeOfString:w].location!=NSNotFound){voiceMode=TIONavigationRide;break;}
+    if(voiceMode==TIONavigationWalk)for(NSString *w in drives)if([text rangeOfString:w].location!=NSNotFound){voiceMode=TIONavigationDrive;break;}
     LastVoiceNavAt=now;
     TIOVoiceNavTraceReset();
-    TIOVoiceNavTrace([NSString stringWithFormat:@"语音命中，终点「%@」%@，%@（%@）",destination,stripped?@"（已剥离开行方式词）":@"",TIONavigationModeTitle(voiceMode),voiceMode==TIONavigationWalk?@"默认":@"语音指定"]);
+    TIOVoiceNavTrace([NSString stringWithFormat:@"语音命中，终点「%@」，%@（%@）",destination,TIONavigationModeTitle(voiceMode),voiceMode==TIONavigationWalk?@"默认":@"语音指定"]);
     dispatch_async(dispatch_get_main_queue(),^{
         if(SharedNavPanel.active||SharedNavPanel.planning){TIOVoiceNavTrace(@"忽略：已有导航进行中");return;}
         [SharedNavPanel stopUser];

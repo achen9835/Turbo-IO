@@ -13,6 +13,7 @@ NSString *TIOVoiceNavTraceStatus(void);
 // candidates the panel announces them and waits for "去第几个".
 NSUInteger TIOVoiceNavPendingChoices(void); // 0 = nothing awaiting a choice
 BOOL TIOVoiceNavChoose(NSUInteger oneBasedIndex); // YES = consumed a live pending choice
+NSString *TIOVoiceNavMatchDestination(NSString *text); // pure matcher: destination after normalization, nil = no nav trigger
 // Candidate announcement is QUEUED while the official assistant finishes its
 // own reply to the nav command; the Complete hook plays it once, serialized.
 NSString *TIOVoiceNavPendingAnnouncement(void); // "" = nothing queued
