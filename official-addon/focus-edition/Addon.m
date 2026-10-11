@@ -88,8 +88,9 @@ static BOOL TTSOn(void){return [Prefs boolForKey:@"ttsEnabled"]&&([[Prefs string
 // AVSpeech or cloud Flash). Used by the voice-nav candidate dialog.
 BOOL TIOTTSAvailable(void){return TTSOn();}
 void TIOTTSAnnounce(NSString *text){
-    if(!TTSOn()||![text isKindOfClass:NSString.class]||!text.length)return;
-    void (^work)(void)=^{[VoiceTTS beginTurn];[VoiceTTS appendFullText:text finished:YES];};
+    if(![text isKindOfClass:NSString.class]||!text.length)return;
+    if(!TTSOn()){TIOVoiceNavTrace(@"播报跳过：回答同步朗读未开启（TurboIO→语音设置）");return;}
+    void (^work)(void)=^{TIOVoiceNavTrace([NSString stringWithFormat:@"播报执行（音频路由：%@）",[TIOVoiceTTS audioRoute]);[VoiceTTS beginTurn];[VoiceTTS appendFullText:text finished:YES];};
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 static BOOL StoreKey(NSString *host,NSString *key) {
@@ -284,17 +285,21 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
     // turn are swallowed by _ownsTurn below.
     if(![Prefs integerForKey:@"mode"]){
         if(_ownsTurn)return YES;
-        if(listener==_listener&&_asr.length&&!offline){
+        if(listener==_listener&&!offline){
             NSString *sid=String(Get(response,@"sessionId"));
             if(!(_sid.length&&sid.length&&![_sid isEqual:sid])
                &&TIOIsEligibleChat(domain,intent,sub,NO,Get(response,@"command")!=nil)){
-                NSString *navDest=TIOVoiceNavMatchDestination(_asr);
+                // Match on the NLP query first (always present) with the final ASR
+                // as fallback -- the ASR final can arrive after the first reply delta,
+                // which used to make the hijack miss while the trigger still fired.
+                NSString *navDest=TIOVoiceNavMatchDestination(nlpQuery.length?nlpQuery:_asr);
                 if(navDest.length){
                     _responseTemplate=response;_ownsTurn=YES;_started=YES;_emitted=@"";
                     NSUInteger gen=_generation;
                     NSString *say=[NSString stringWithFormat:@"好，正在搜索附近的「%@」。",navDest];
                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.3*NSEC_PER_SEC)),dispatch_get_main_queue(),^{[self emitText:say done:YES error:nil generation:gen];});
                     Diagnostic=[NSString stringWithFormat:@"导航指令接管本轮回复：%@",navDest];
+                    TIOVoiceNavTrace([NSString stringWithFormat:@"回复接管：助手只说一句确认（终点「%@」，音频路由：%@）",navDest,[TIOVoiceTTS audioRoute]]);
                     return YES;
                 }
             }
