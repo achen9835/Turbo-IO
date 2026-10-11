@@ -6,7 +6,6 @@ NSArray<NSDictionary *> *LegacySections(NSString *page){
         @{@"title":@"自定义 Agents 控制",@"rows":@[Row(@"agent",@"执行 Agent",@"cpu",-2,0),Row(@"knowledge",@"知识库与来源",@"books.vertical",-2,1)]},
         @{@"title":@"回答方式",@"rows":@[Row(@"mode",@"当前回答方式",@"square.stack.3d.up",0,0)]},
         @{@"title":@"自有模型",@"rows":@[Row(@"api",@"接口与密钥",@"cube",0,1),Row(@"thinking",@"关闭深度思考",@"bolt",0,3)]},
-        @{@"title":@"眼镜语音播报 · 实验",@"rows":@[Row(@"tts",@"回答同步朗读",@"waveform.circle",-2,13),Row(@"ttsEngine",@"朗读引擎",@"slider.horizontal.3",-2,16),Row(@"ttsKey",@"阿里 Flash TTS 配置",@"key",-2,14),Row(@"ttsTest",@"播放测试语音",@"play.circle",-2,15)]},
         @{@"title":@"联网与工具",@"rows":@[Row(@"search",@"允许联网搜索",@"globe",0,7),Row(@"searchKey",@"搜索服务配置",@"key",0,8),Row(@"tools",@"模型可用工具",@"wrench.and.screwdriver",0,11)]},
         @{@"title":@"语音与上下文",@"rows":@[Row(@"exit",@"语音退出",@"waveform",0,6),Row(@"prompt",@"系统提示词",@"text.bubble",0,5),Row(@"history",@"本次对话上下文",@"clock.arrow.circlepath",0,4)]}];
     if([page isEqual:@"library"])return @[
@@ -41,7 +40,7 @@ NSArray<NSDictionary *> *LegacySections(NSString *page){
 NSArray<NSDictionary *> *TIOResearchSections(NSString *page){
  NSMutableDictionary *lookup=[NSMutableDictionary new];for(NSString *p in @[@"model",@"library",@"diagnostics"])for(NSDictionary *section in LegacySections(p))for(NSDictionary *r in section[@"rows"])lookup[r[@"key"]]=r;
  NSArray *groups=nil;
- if([page isEqual:@"model"])groups=@[@[@"日常对话",@"mode",@"tts",@"search"],@[@"模型与接口",@"api",@"thinking"],@[@"语音设置",@"ttsEngine",@"ttsTest",@"ttsKey",@"exit"],@[@"Agent 与工具",@"agent",@"knowledge",@"tools",@"searchKey"],@[@"提示词与记忆",@"prompt",@"history"]];
+ if([page isEqual:@"model"])groups=@[@[@"日常对话",@"mode",@"search"],@[@"模型与接口",@"api",@"thinking"],@[@"语音设置",@"exit"],@[@"Agent 与工具",@"agent",@"knowledge",@"tools",@"searchKey"],@[@"提示词与记忆",@"prompt",@"history"]];
  if([page isEqual:@"library"])groups=@[@[@"随身应用",@"music",@"weread",@"navigation",
 #if TIO_APP_SDK
  @"apps",@"cards",
