@@ -90,7 +90,7 @@ BOOL TIOTTSAvailable(void){return TTSOn();}
 void TIOTTSAnnounce(NSString *text){
     if(![text isKindOfClass:NSString.class]||!text.length)return;
     if(!TTSOn()){TIOVoiceNavTrace(@"播报跳过：回答同步朗读未开启（TurboIO→语音设置）");return;}
-    void (^work)(void)=^{TIOVoiceNavTrace([NSString stringWithFormat:@"播报执行（音频路由：%@）",[TIOVoiceTTS audioRoute]);[VoiceTTS beginTurn];[VoiceTTS appendFullText:text finished:YES];};
+    void (^work)(void)=^{TIOVoiceNavTrace([NSString stringWithFormat:@"播报执行（音频路由：%@）",[TIOVoiceTTS audioRoute]]);[VoiceTTS beginTurn];[VoiceTTS appendFullText:text finished:YES];};
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 static BOOL StoreKey(NSString *host,NSString *key) {
