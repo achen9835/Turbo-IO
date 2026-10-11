@@ -335,7 +335,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
         if(cands.count>1&&TIOTTSAvailable()){
             self.voiceCandidates=[cands copy];self.voiceCandidatesExpire=NSProcessInfo.processInfo.systemUptime+30;
             NSMutableString *say=[NSMutableString stringWithFormat:@"找到%lu个%@。",(unsigned long)cands.count,self.voiceQuery?:@"地点"];
-            for(NSUInteger i=0;i<cands.count;i++){NSDictionary *c=cands[i];double m=[c[@"meters"] doubleValue];[say appendFormat:@"第%lu个%@",(unsigned long)i+1,m<1000?[NSString stringWithFormat:@"约%.0f米",m]:[NSString stringWithFormat:@"约%.1f公里",m/1000];if(i+1<cands.count)[say appendString:@"，"];}
+            for(NSUInteger i=0;i<cands.count;i++){NSDictionary *c=cands[i];double m=[c[@"meters"] doubleValue];[say appendFormat:@"第%lu个%@",(unsigned long)i+1,m<1000?[NSString stringWithFormat:@"约%.0f米",m]:[NSString stringWithFormat:@"约%.1f公里",m/1000]];if(i+1<cands.count)[say appendString:@"，"];}
             [say appendString:@"。说，去第几个。三十秒后默认去最近的。"];
             TIOTTSAnnounce(say);
             self.note=[NSString stringWithFormat:@"第2步：找到%lu个候选，等待语音选择（说 去第几个，30秒后默认最近的）",(unsigned long)cands.count];
@@ -569,7 +569,7 @@ BOOL TIOVoiceNavMaybeStart(NSString *text){
     if(destination.length<2){TIOVoiceNavTrace(@"未命中：剥离开行方式后终点过短");return NO;}
     LastVoiceNavAt=now;
     TIOVoiceNavTraceReset();
-    TIOVoiceNavTrace([NSString stringWithFormat:@"语音命中，终点「%@」，%@（%@）",destination,TIONavigationModeTitle(voiceMode),voiceMode==TIONavigationWalk?@"默认":@"语音指定"]);
+    TIOVoiceNavTrace([NSString stringWithFormat:@"语音命中，终点「%@」%@，%@（%@）",destination,stripped?@"（已剥离开行方式词）":@"",TIONavigationModeTitle(voiceMode),voiceMode==TIONavigationWalk?@"默认":@"语音指定"]);
     dispatch_async(dispatch_get_main_queue(),^{
         if(SharedNavPanel.active||SharedNavPanel.planning){TIOVoiceNavTrace(@"忽略：已有导航进行中");return;}
         [SharedNavPanel stopUser];
