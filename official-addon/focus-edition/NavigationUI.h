@@ -11,14 +11,6 @@ void TIOVoiceNavTraceReset(void);
 NSString *TIOVoiceNavTraceStatus(void);
 // Multi-turn voice destination choice: when a search yields several local
 // candidates the panel announces them and waits for "去第几个".
-NSUInteger TIOVoiceNavPendingChoices(void); // 0 = nothing awaiting a choice
-BOOL TIOVoiceNavChoose(NSUInteger oneBasedIndex); // YES = consumed a live pending choice
 NSString *TIOVoiceNavMatchDestination(NSString *text); // pure matcher: destination after normalization, nil = no nav trigger
-// Candidate announcement is QUEUED while the official assistant finishes its
-// own reply to the nav command; the Complete hook plays it once, serialized.
-NSString *TIOVoiceNavPendingAnnouncement(void); // "" = nothing queued
-void TIOVoiceNavClearAnnouncement(void);
 // Assistant-session lifecycle helpers (implemented in Addon.m).
 void TIOVoiceCloseAssistantSession(void); // official stop entry; frees the lens
-BOOL TIOTTSAvailable(void);               // the reply-TTS engine is usable
-void TIOTTSAnnounce(NSString *text);      // speak through the glasses audio route
