@@ -155,6 +155,7 @@ static void Alert(NSString *title,NSString *message) {
 @property(nonatomic,copy) NSString *requestQuestion;
 @property(nonatomic) BOOL voiceExited;
 @property(nonatomic) TIOTodoTurnGate *taskGate;
+@property(nonatomic) BOOL feishuForward; // "飞书X" prefix armed this turn: forward Q&A to webhook
 - (BOOL)exitVoice;
 @end
 static TIOController *Controller;
@@ -198,6 +199,18 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
     NSString *identity=[NSString stringWithFormat:@"%@|%@",sid,text];if([_seenFinals containsObject:identity])return;
     if(_seenFinals.count>=256)[_seenFinals removeAllObjects];[_seenFinals addObject:identity];
     [self cancel];[_taskGate beginTurn];_listener=listener;_asr=text;_sid=sid;
+    // Feishu trigger: "飞书X" / "发飞书X" / "问飞书X" prefixes arm this turn so
+    // the custom model's Q&A is forwarded to the Feishu webhook on completion.
+    // The prefix is stripped so the model sees only the real question.
+    _feishuForward=NO;
+    if(TIOFeishuEnabled()){
+        for(NSString *pre in @[@"飞书",@"发飞书",@"问飞书"]){
+            if([text hasPrefix:pre]){
+                NSString *rest=[[text substringFromIndex:pre.length] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                if(rest.length>=2){_feishuForward=YES;_asr=rest;break;}
+            }
+        }
+    }
     // Do not seize an unknown response shape. Wait for an eligible official template.
     Diagnostic=@"ASR final 已到达，等待官方聊天回包模板";
 }
@@ -216,10 +229,11 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
     }
     if(delta.length||done){id wrapper=CopyResponse(_responseTemplate,delta,done);if(!wrapper){[_request cancel];_request=nil;_responseDone=YES;OriginalComplete(_listener,NSSelectorFromString(@"onResponseComplete"));Diagnostic=@"回复模板复制失败，已提交收尾";return;}OriginalNlp(_listener,NSSelectorFromString(@"onNlpResult:"),wrapper);_emitted=[text copy];}
     if(done){_responseDone=YES;if(!error&&_request&&text.length)[_history appendQuestion:_requestQuestion answer:text];Diagnostic=error?@"自定义回复失败，已提交错误收尾":@"自定义回复结束，已提交官方收尾回调";
-        // Feishu webhook: forward the Q&A pair as a group notification.
-        if(!error&&text.length&&TIOFeishuEnabled()&&_requestQuestion.length){
+        // Feishu forwarding: ONLY when the user prefixed their question with
+        // "飞书X" -- not every custom model turn, just the triggered ones.
+        if(!error&&text.length&&_feishuForward&&_requestQuestion.length){
             NSString *feishu=[NSString stringWithFormat:@"Q: %@\nA: %@",_requestQuestion,text];
-            TIOFeishuSend(feishu,^(NSString *e){if(e)Diagnostic=[@"飞书通知失败：" stringByAppendingString:e];});
+            TIOFeishuSend(feishu,^(NSString *e){if(e)Diagnostic=[@"飞书通知失败：" stringByAppendingString:e];else Diagnostic=@"已发送到飞书群 ✅";});
         }
         OriginalComplete(_listener,NSSelectorFromString(@"onResponseComplete"));}
 }
