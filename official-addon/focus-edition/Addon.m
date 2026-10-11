@@ -155,9 +155,7 @@ static void Alert(NSString *title,NSString *message) {
 @property(nonatomic,copy) NSString *requestQuestion;
 @property(nonatomic) BOOL voiceExited;
 @property(nonatomic) TIOTodoTurnGate *taskGate;
-@property(nonatomic) BOOL feishuForward; // "飞书X" prefix armed this turn: forward Q&A to webhook
 - (BOOL)exitVoice;
-@end
 static TIOController *Controller;
 // Close the assistant session via the verified official stop entry -- same
 // path as the 语音退出 command. Frees the lens for the navigation page; the
@@ -193,24 +191,41 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
     Diagnostic=@"语音退出已调用官方停止入口；等待镜片确认";
     return YES;
 }
+// Background: call the configured OpenAI-compatible endpoint with the stripped
+// question, then send the Q&A to the Feishu webhook. Completely independent of
+// the streaming reply (which was hijacked to "已发送到飞书").
+- (void)feishuBackgroundQuery:(NSString *)question {
+    NSString *endpoint=[Prefs stringForKey:@"endpoint"]?:@"";
+    NSString *model=[Prefs stringForKey:@"model"]?:@"";
+    NSString *key=ReadKey(endpoint);
+    if(!endpoint.length||!model.length||!key.length){
+        // No custom model configured → just forward the raw question.
+        TIOFeishuSend([NSString stringWithFormat:@"Q: %@\nA:（未配置自定义模型，仅转发问题）",question],nil);
+        return;
+    }
+    NSDictionary *body=@{@"model":model,@"messages":@[@{@"role":@"user",@"content":question}],@"stream":@NO};
+    NSMutableURLRequest *r=[NSMutableURLRequest requestWithURL:[NSURL URLWithString:endpoint]];
+    r.HTTPMethod=@"POST";r.HTTPBody=[NSJSONSerialization dataWithJSONObject:body options:0 error:nil];r.timeoutInterval=60;
+    [r setValue:[@"Bearer " stringByAppendingString:key] forHTTPHeaderField:@"Authorization"];
+    [r setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];
+    [[[NSURLSession sessionWithConfiguration:NSURLSessionConfiguration.ephemeralSessionConfiguration] dataTaskWithRequest:r completionHandler:^(NSData *data,NSURLResponse *resp,NSError *err){
+        dispatch_async(dispatch_get_main_queue(),^{
+            if(err){TIOFeishuSend([NSString stringWithFormat:@"Q: %@\nA:（模型调用失败：%@）",question,err.localizedDescription],nil);return;}
+            NSDictionary *j=data.length<=262144?[NSJSONSerialization JSONObjectWithData:data options:0 error:nil]:nil;
+            NSString *answer=[j isKindOfClass:NSDictionary.class]&&[j[@"choices"] isKindOfClass:NSArray.class]&&((NSArray *)j[@"choices"]).count?[NSString stringWithFormat:@"%@",((NSArray *)j[@"choices"]).firstObject[@"message"][@"content"]?:@""]:@"";
+            TIOFeishuSend([NSString stringWithFormat:@"Q: %@\nA: %@",question,answer.length?answer:@"（模型无回复）"],^(NSString *e){
+                if(e)Diagnostic=[@"飞书通知失败：" stringByAppendingString:e];
+                else Diagnostic=@"已发送到飞书群 ✅";
+            });
+        });
+    }] resume];
+}
 - (void)acceptAsr:(NSString *)text finished:(BOOL)final session:(NSString *)sid listener:(id)listener {
     if(![Prefs integerForKey:@"mode"]||!text.length)return;
     if(!final){if(_ownsTurn&&_started){[self cancel];}_asr=text;return;}
     NSString *identity=[NSString stringWithFormat:@"%@|%@",sid,text];if([_seenFinals containsObject:identity])return;
     if(_seenFinals.count>=256)[_seenFinals removeAllObjects];[_seenFinals addObject:identity];
     [self cancel];[_taskGate beginTurn];_listener=listener;_asr=text;_sid=sid;
-    // Feishu trigger: "飞书X" / "发飞书X" / "问飞书X" prefixes arm this turn so
-    // the custom model's Q&A is forwarded to the Feishu webhook on completion.
-    // The prefix is stripped so the model sees only the real question.
-    _feishuForward=NO;
-    if(TIOFeishuEnabled()){
-        for(NSString *pre in @[@"飞书",@"发飞书",@"问飞书"]){
-            if([text hasPrefix:pre]){
-                NSString *rest=[[text substringFromIndex:pre.length] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
-                if(rest.length>=2){_feishuForward=YES;_asr=rest;break;}
-            }
-        }
-    }
     // Do not seize an unknown response shape. Wait for an eligible official template.
     Diagnostic=@"ASR final 已到达，等待官方聊天回包模板";
 }
@@ -229,12 +244,6 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
     }
     if(delta.length||done){id wrapper=CopyResponse(_responseTemplate,delta,done);if(!wrapper){[_request cancel];_request=nil;_responseDone=YES;OriginalComplete(_listener,NSSelectorFromString(@"onResponseComplete"));Diagnostic=@"回复模板复制失败，已提交收尾";return;}OriginalNlp(_listener,NSSelectorFromString(@"onNlpResult:"),wrapper);_emitted=[text copy];}
     if(done){_responseDone=YES;if(!error&&_request&&text.length)[_history appendQuestion:_requestQuestion answer:text];Diagnostic=error?@"自定义回复失败，已提交错误收尾":@"自定义回复结束，已提交官方收尾回调";
-        // Feishu forwarding: ONLY when the user prefixed their question with
-        // "飞书X" -- not every custom model turn, just the triggered ones.
-        if(!error&&text.length&&_feishuForward&&_requestQuestion.length){
-            NSString *feishu=[NSString stringWithFormat:@"Q: %@\nA: %@",_requestQuestion,text];
-            TIOFeishuSend(feishu,^(NSString *e){if(e)Diagnostic=[@"飞书通知失败：" stringByAppendingString:e];else Diagnostic=@"已发送到飞书群 ✅";});
-        }
         OriginalComplete(_listener,NSSelectorFromString(@"onResponseComplete"));}
 }
 - (BOOL)receiveNlp:(id)response listener:(id)listener {
@@ -273,6 +282,26 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
         [self cancel];Diagnostic=@"官方待办接管本轮；自有回复已取消，完成回调交回官方";
     }
     if(_taskGate.official)return NO;
+    // Feishu trigger: "飞书X" prefix → hijack the ENTIRE reply (both modes) to
+    // a one-liner, call the custom model in the BACKGROUND, and send the Q&A
+    // to the Feishu webhook. The answer appears as a Feishu notification, not
+    // as a streamed assistant reply.
+    if(TIOFeishuEnabled()&&listener==_listener&&_asr.length&&!offline&&TIOIsEligibleChat(domain,intent,sub,NO,Get(response,@"command")!=nil)){
+        for(NSString *pre in @[@"飞书",@"发飞书",@"问飞书"]){
+            if([_asr hasPrefix:pre]){
+                NSString *rest=[[_asr substringFromIndex:pre.length] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                if(rest.length>=2){
+                    _responseTemplate=response;_ownsTurn=YES;_started=YES;_emitted=@"";
+                    NSUInteger gen=_generation;
+                    NSString *say=@"已发送到飞书，请查看通知。";
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.3*NSEC_PER_SEC)),dispatch_get_main_queue(),^{[self emitText:say done:YES error:nil generation:gen];});
+                    Diagnostic=@"飞书指令接管本轮回复";
+                    [self feishuBackgroundQuery:rest];
+                    return YES;
+                }
+            }
+        }
+    }
     // Official mode + voice navigation: behave like a DEVICE-CONTROL command.
     // A nav trigger ("导航去X") has no official intent, so it would fall into the
     // chat domain and the assistant would ramble a conversational answer right
