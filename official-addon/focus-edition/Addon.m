@@ -156,6 +156,7 @@ static void Alert(NSString *title,NSString *message) {
 @property(nonatomic) BOOL voiceExited;
 @property(nonatomic) TIOTodoTurnGate *taskGate;
 - (BOOL)exitVoice;
+@end
 static TIOController *Controller;
 // Close the assistant session via the verified official stop entry -- same
 // path as the 语音退出 command. Frees the lens for the navigation page; the
@@ -606,7 +607,7 @@ __attribute__((constructor)) static void Load(void) {
         @autoreleasepool {
             if(![NSBundle.mainBundle.bundleIdentifier isEqual:TargetBundle])return;
             TIOStartExperimentalOTAFeedIfMarked();
-            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC),dispatch_get_main_queue(),^{TIOCaptionRunFixedProbeIfRequested();TWReaderProbeIfRequested();});
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC),dispatch_get_main_queue(),^{TWReaderProbeIfRequested();});
             Prefs=[[NSUserDefaults alloc]initWithSuiteName:Domain];
             [Prefs registerDefaults:@{@"voiceExitCommands":@YES}];
             Controller=[TIOController new];
