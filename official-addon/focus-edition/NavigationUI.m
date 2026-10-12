@@ -446,6 +446,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
             self.voiceAwaitingMode=NO;TIOVoiceNavTrace(@"聊天框接管不可用：按默认方式直接算路（兜底）");
             [self voicePickMode:self.voiceModeFallback announced:@"（聊天框不可用，自动默认）"];
         }
+        else TIOVoiceNavTrace(@"追问已发入聊天框（若眼镜端无文字，说明镜片聊天页已先于回答关闭）");
     });
 }
 // Chosen (or defaulted) travel mode → realtime planning → auto-begin.

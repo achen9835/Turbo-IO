@@ -739,6 +739,7 @@ __attribute__((constructor)) static void Load(void) {
             if(VoiceExitReady)OriginalAudioStart=(void *)method_setImplementation(class_getInstanceMethod(voice,NSSelectorFromString(@"onAudioRecordStart")),(IMP)AudioStartHook);
             if(valid)TIOInstallTodoRuntime();
             TIOOTAFlashDisableAutoUpdateIfRequested();
+            TIOOTAAutoUpdateDisableForSilence();
             // Explicit developer launch, not a stored preference or automatic restore.
             // armArchive additionally requires the installed preparation interlock.
             if([NSProcessInfo.processInfo.environment[@"TIO_OTA_PREPARE_ONCE"] isEqual:@"R3_DOWNLOAD_ONLY"]){NSError *prepareError=nil;TIOBeginExperimentalOTAPreparation(&prepareError);}

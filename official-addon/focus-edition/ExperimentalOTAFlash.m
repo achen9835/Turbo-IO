@@ -135,6 +135,23 @@ void TIOOTAFlashDisableAutoUpdateIfRequested(void){
     else if([v isKindOfClass:NSNumber.class]&&CFGetTypeID((__bridge CFTypeRef)v)==CFBooleanGetTypeID())[p setBool:NO forKey:keys[0]];
     [p synchronize];
 }
+// Second layer of the update-check silence (see TIOOTAUpdateCheckBlockCall):
+// force the official "firmware auto-update" switch off, so even a version
+// cached before the read-block existed cannot trigger a background download or
+// prompt. Runs at every launch while silencing is enabled; flash builds manage
+// the switch themselves. The official settings page can turn it back on, but
+// the next launch will turn it off again while the silence toggle is on.
+void TIOOTAAutoUpdateDisableForSilence(void){
+    if(TIOOTAFlashBuild())return;
+    id toggle=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];if(toggle&&![toggle boolValue])return;
+    NSUserDefaults *p=NSUserDefaults.standardUserDefaults;NSMutableArray *keys=[NSMutableArray new];
+    for(NSString *key in p.dictionaryRepresentation)if([key hasSuffix:@"_ota_firmware_auto_update"])[keys addObject:key];
+    if(keys.count!=1)return;id v=[p objectForKey:keys[0]];
+    if([v isKindOfClass:NSString.class]&&[v isEqual:@"true"])[p setObject:@"false" forKey:keys[0]];
+    else if([v isKindOfClass:NSNumber.class]&&CFGetTypeID((__bridge CFTypeRef)v)==CFBooleanGetTypeID()&&[v boolValue])[p setBool:NO forKey:keys[0]];
+    else return;
+    [p synchronize];
+}
 static id Get(id obj,NSString *key){@try{return [obj valueForKey:key];}@catch(NSException *e){return nil;}}
 BOOL TIOOTAFlashBlockCall(id call){
     if(!TIOOTAFlashBuild())return NO;
