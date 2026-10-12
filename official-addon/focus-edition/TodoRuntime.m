@@ -75,6 +75,10 @@ static void MethodHook(id self,SEL cmd,id call,id result){
 #endif
     if(otaBlocked){if(result)((void(^)(id))result)(@{@"success":@NO,@"message":@"Turbo IO transfer gate: not authorized or packet mismatch"});return;}
     if(TIOOTABlockPreparationCall(call)){if(result)((void(^)(id))result)(@{@"success":@NO,@"message":@"Turbo IO OTA preparation only: outbound traffic blocked"});return;}
+    // Swallowed version reads report success: the Dart side then waits for a
+    // version reply that never arrives and quietly times out -- a failure result
+    // could surface a toast or a retry loop instead.
+    if(TIOOTAUpdateCheckBlockCall(call)){if(result)((void(^)(id))result)(@{@"success":@YES});return;}
     if(TIOGlassesLogBlockCall(call)){if(result)((void(^)(id))result)(@{@"success":@NO,@"message":@"本机日志研究任务隔离中，未重复请求"});return;}
     {NSString *method=Get(call,@"method");id args=Get(call,@"arguments");if([args isKindOfClass:NSDictionary.class]){void(^work)(void)=^{TIOProtocolObserveCall(self,method,args);TIONewsTeleObserveCall(self,method,args);TIOA2UIObserveCall(self,method,args);TIOGlassesLogObserveCall(self,method,args);TIONavObserveCall(self,method,args);TIOSubtitleObserveCall(self,method,args);
 #if TIO_APP_SDK

@@ -1,7 +1,8 @@
 #import "ExperimentalOTAGuard.h"
+#import "ExperimentalOTAFlash.h"
 #include <TargetConditionals.h>
 static BOOL HookReady;
-static NSUInteger Blocked,VersionQueries;
+static NSUInteger Blocked,VersionQueries,SilencedVersionReads;
 static BOOL Var(const uint8_t *bytes,NSUInteger length,NSUInteger *at,uint64_t *value){
     *value=0;for(unsigned i=0;i<5;i++){if(*at>=length)return NO;uint8_t b=bytes[(*at)++];if(i==4&&(b&0xf0))return NO;*value|=(uint64_t)(b&127)<<(7*i);if(!(b&128))return i==0||b!=0;}return NO;
 }
@@ -47,4 +48,23 @@ BOOL TIOOTABlockPreparationCall(id call){
     @synchronized(NSProcessInfo.processInfo){if(blocked)Blocked++;else if([method isEqual:@"rayneonet_sendMessage"])VersionQueries++;}
     return blocked;
 }
-NSDictionary *TIOOTAGuardStatus(void){@synchronized(NSProcessInfo.processInfo){return @{@"preparationBuild":@(TIOOTAPreparationBuild()),@"transportHookReady":@(HookReady),@"blockedCalls":@(Blocked),@"versionReadCalls":@(VersionQueries),@"releaseSupported":@NO};}}
+NSDictionary *TIOOTAGuardStatus(void){@synchronized(NSProcessInfo.processInfo){return @{@"preparationBuild":@(TIOOTAPreparationBuild()),@"transportHookReady":@(HookReady),@"blockedCalls":@(Blocked),@"versionReadCalls":@(VersionQueries),@"silencedVersionReads":@(SilencedVersionReads),@"releaseSupported":@NO};}}
+// Silence the official firmware update check: after pairing, the app learns the
+// glasses OS version through a business-9 empty version read (type=1,
+// message=null) and only then queries the gray/upgrade HTTP endpoint. Swallowing
+// the read leaves the Dart side without a version to compare, so no update
+// prompt is ever built. Default ON; standardUserDefaults TIOUpdateCheckSilence=NO
+// restores the official behavior. Flash builds keep the read: the experimental
+// flash flow observes the same reply.
+BOOL TIOOTAUpdateCheckBlockCall(id call){
+    if(TIOOTAFlashBuild())return NO;
+    id toggle=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];if(toggle&&![toggle boolValue])return NO;
+    id method=nil,args=nil;@try{method=[call valueForKey:@"method"];args=[call valueForKey:@"arguments"];}@catch(NSException *e){return NO;}
+    if(![method isEqual:@"rayneonet_sendMessage"]||![args isKindOfClass:NSDictionary.class])return NO;
+    id business=args[@"businessId"];
+    if(![business isKindOfClass:NSNumber.class]||CFGetTypeID((__bridge CFTypeRef)business)==CFBooleanGetTypeID()||[business doubleValue]!=9)return NO;
+    id data=args[@"payload"];if(![data isKindOfClass:NSData.class]){@try{data=[data valueForKey:@"data"];}@catch(NSException *e){data=nil;}}
+    if(!TIOOTAIsEmptyVersionQuery(data))return NO;
+    @synchronized(NSProcessInfo.processInfo){SilencedVersionReads++;}
+    return YES;
+}

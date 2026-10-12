@@ -7,3 +7,6 @@ FOUNDATION_EXPORT void TIOOTARecordTransportHookReady(void);
 FOUNDATION_EXPORT BOOL TIOOTAPreparationProtected(void);
 FOUNDATION_EXPORT BOOL TIOOTABlockPreparationCall(id call);
 FOUNDATION_EXPORT NSDictionary *TIOOTAGuardStatus(void);
+// Silences the official firmware update check by swallowing the business-9
+// empty version read (default ON; TIOUpdateCheckSilence=NO restores official).
+FOUNDATION_EXPORT BOOL TIOOTAUpdateCheckBlockCall(id call);
