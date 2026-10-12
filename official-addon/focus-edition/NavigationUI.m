@@ -78,6 +78,10 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property BOOL voiceSession,voiceLifelogWasOn,voiceLocating,hasVoiceFix,voiceSearchAround;
 @property NSArray<NSDictionary *> *voiceCandidates; // pending multi-choice dialog: name/lat/lon/meters/city (meters=-1 without a step-1 fix)
 @property NSTimeInterval voiceCandidatesExpire;
+@property BOOL voiceAwaitingMode; // destination picked, waiting for a spoken 步行/骑行/驾车
+@property NSTimeInterval voiceModeExpire;
+@property NSInteger voiceModeFallback; // distance-aware timeout default: walk nearby, drive far/unknown
+@property BOOL voiceModeExplicit; // the trigger utterance already named the mode ("骑车去X") → skip the follow-up
 @property CLLocationCoordinate2D voiceFix; // Fresh CLLocationManager fix from voice step 1; used as the explicit route origin so background planning never waits on the SDK's own (paused) location engine.
 #if TIO_AMAP_ENABLED
 @property AMapSearchAPI *voiceSearch;
@@ -173,6 +177,9 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     // Candidate dialog timeout: never leave the user stranded -- default to the
     // nearest candidate and keep navigating.
     if(self.voiceCandidates.count&&NSProcessInfo.processInfo.systemUptime>self.voiceCandidatesExpire){TIOVoiceNavTrace(@"候选30秒未选择：默认最近的，继续导航");[self voicePickCandidate:self.voiceCandidates[0] announced:@"（超时默认最近）"];}
+    // Travel-mode follow-up timeout: never leave the user stranded -- apply the
+    // distance-aware default (walk nearby, drive far) and keep navigating.
+    if(self.voiceAwaitingMode&&NSProcessInfo.processInfo.systemUptime>self.voiceModeExpire){TIOVoiceNavTrace([NSString stringWithFormat:@"出行方式15秒未选择：默认%@，继续算路",TIONavigationModeTitle(self.voiceModeFallback)]);[self voicePickMode:self.voiceModeFallback announced:@"（超时默认）"];}
 #if TIO_DISPLAY_PHONE
     if(self.crossPixels&&NSProcessInfo.processInfo.systemUptime-self.crossReceived>12){self.crossPixels=nil;if([self.display[@"phase"] isEqual:@"navigating"])TDPPhoneNavigationOffer([self displayHUDFrame]);}
     TDPPhoneNavigationPump();[self refreshDisplayHUD];
@@ -238,6 +245,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 - (void)halt{
     self.voiceLifelogWasOn=NO;self.voiceSession=NO;self.voiceLocating=NO;
     self.voiceCandidates=nil; // a stopped pipeline never answers a pending choice
+    self.voiceAwaitingMode=NO; // ...nor a pending travel-mode question
     self.navigationStarted=NO;self.autoNativeHUD=NO;self.backgroundLocationEnabled=NO;[self endNavigationBackgroundTask];
 #if TIO_DISPLAY_PHONE
     TDPPhoneNavigationStop();self.hudIconPixels=nil;self.hudIconType=0;self.crossPixels=nil;
@@ -404,15 +412,43 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     }
     [self voicePickCandidate:cands[0] announced:@""];
 }
-// Chosen (or auto-picked) candidate → destination → realtime planning.
+// Chosen (or auto-picked) candidate → destination. When the trigger utterance
+// did not name a travel mode, ask "怎么去？" first: walk planning rejects long
+// distances, so the mode must be the user's spoken choice, never a blind walk
+// default. The turn stays OPEN (done:NO) until the mode is answered or the 15s
+// timeout applies the distance-aware default (walk ≤3km, else drive).
 - (void)voicePickCandidate:(NSDictionary *)candidate announced:(NSString *)suffix{
     self.voiceCandidates=nil;
     NSString *city=candidate[@"city"]; // dictionary subscript yields id; dot-syntax needs a typed local
-    TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：选定「%@」%@（%@），第3步算路",candidate[@"name"]?:@"",suffix,city.length?city:@"未知城市"]);
-    TIOAssistantEmit([NSString stringWithFormat:@"\n好，导航去%@。",candidate[@"name"]?:@"目的地"],YES); // closes the owned turn; harmless when the hijack is gone
     [self selectPlace:@{@"name":candidate[@"name"]?:@"目的地",@"address":candidate[@"city"]?:@"",@"lat":candidate[@"lat"],@"lon":candidate[@"lon"]}];
     self.travelMode.selectedSegmentIndex=1; // Position is already confirmed; plan now, auto-begin follows.
-    self.note=[NSString stringWithFormat:@"第2步：选定终点「%@」。第3步：规划实时路线…",candidate[@"name"]?:@""];
+    if(self.voiceModeExplicit){
+        TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：选定「%@」%@（%@），方式=%@（触发语已指定），第3步算路",candidate[@"name"]?:@"",suffix,city.length?city:@"未知城市",TIONavigationModeTitle(self.selectedTransport)]);
+        TIOAssistantEmit([NSString stringWithFormat:@"\n好，导航去%@。",candidate[@"name"]?:@"目的地"],YES); // closes the owned turn; harmless when the hijack is gone
+        self.note=[NSString stringWithFormat:@"第2步：选定终点「%@」。第3步：规划实时路线…",candidate[@"name"]?:@""];
+        [self refresh];[self startWalking];return;
+    }
+    double m=[candidate[@"meters"] doubleValue];
+    self.voiceModeFallback=(m>=0&&m<=3000)?TIONavigationWalk:TIONavigationDrive;
+    self.voiceAwaitingMode=YES;self.voiceModeExpire=NSProcessInfo.processInfo.systemUptime+15;
+    TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：选定「%@」%@（%@），追问出行方式（15秒默认%@）",candidate[@"name"]?:@"",suffix,city.length?city:@"未知城市",TIONavigationModeTitle(self.voiceModeFallback)]);
+    NSString *ask=[NSString stringWithFormat:@"\n好，选定「%@」。怎么去？说「步行」「骑行」或「驾车」，15秒默认%@。",candidate[@"name"]?:@"目的地",TIONavigationModeTitle(self.voiceModeFallback)];
+    if(!TIOAssistantEmit(ask,NO)){ // chat gone: never strand the user -- apply the default now
+        self.voiceAwaitingMode=NO;TIOVoiceNavTrace(@"聊天框接管不可用：按默认方式直接算路（兜底）");
+        [self voicePickMode:self.voiceModeFallback announced:@"（聊天框不可用，自动默认）"];return;
+    }
+    self.note=[NSString stringWithFormat:@"第2步：选定终点「%@」。等待选择出行方式（步行/骑行/驾车，15秒默认%@）",candidate[@"name"]?:@"",TIONavigationModeTitle(self.voiceModeFallback)];
+    [self refresh];
+}
+// Chosen (or defaulted) travel mode → realtime planning → auto-begin.
+- (void)voicePickMode:(NSInteger)mode announced:(NSString *)suffix{
+    self.voiceAwaitingMode=NO;
+    if(!TIONavigationModeTitle(mode))mode=self.voiceModeFallback;
+    self.selectedTransport=mode;self.transportMode.selectedSegmentIndex=mode;
+    TIOVoiceNavTrace([NSString stringWithFormat:@"出行方式：%@%@，第3步算路",TIONavigationModeTitle(mode),suffix]);
+    if(mode==TIONavigationRide)TIOVoiceNavTrace(@"提示：眼镜原生导航不支持骑行，以手机指引为准");
+    TIOAssistantEmit([NSString stringWithFormat:@"\n好，%@去%@，开始规划路线。",TIONavigationModeTitle(mode),self.destinationName?:@"目的地"],YES); // closes the owned turn
+    self.note=[NSString stringWithFormat:@"第2步完成：%@去「%@」。第3步：规划实时路线…",TIONavigationModeTitle(mode),self.destinationName?:@""];
     [self refresh];[self startWalking];
 }
 // 0-based index from the ASR/NLP choice handler; validates expiry.
@@ -595,6 +631,31 @@ void TIOVoiceNavReject(void){
     void (^work)(void)=^{[SharedNavPanel voiceRejectCandidates];};
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
+// Travel-mode follow-up ("怎么去？"), consumed by Addon.m's ASR/NLP hooks
+// exactly like the candidate dialog.
+BOOL TIOVoiceNavPendingMode(void){return SharedNavPanel.voiceAwaitingMode;}
+// Parse a short spoken mode answer: 步行/骑行/驾车 with colloquial aliases.
+// Long utterances are new intents, not mode answers. Returns the mode,
+// 0 = not a mode answer, -1 = "随便/都行" (apply the distance-aware fallback).
+static NSInteger TIOVoiceParseModeAnswer(NSString *text){
+    if(![text isKindOfClass:NSString.class]||!text.length||text.length>20)return 0;
+    for(NSString *w in @[@"骑行",@"骑车",@"自行车",@"单车",@"电动车",@"摩托"])if([text rangeOfString:w].location!=NSNotFound)return TIONavigationRide;
+    for(NSString *w in @[@"驾车",@"开车",@"自驾",@"打车",@"汽车",@"出租"])if([text rangeOfString:w].location!=NSNotFound)return TIONavigationDrive;
+    for(NSString *w in @[@"步行",@"走路",@"徒步",@"走过去"])if([text rangeOfString:w].location!=NSNotFound)return TIONavigationWalk;
+    for(NSString *w in @[@"随便",@"都行",@"都可以",@"你定",@"看着办"])if([text rangeOfString:w].location!=NSNotFound)return -1;
+    return 0;
+}
+BOOL TIOVoiceNavChooseMode(NSString *text){
+    __block BOOL ok=NO;
+    void (^work)(void)=^{
+        if(!SharedNavPanel.voiceAwaitingMode)return;
+        NSInteger mode=TIOVoiceParseModeAnswer(text);if(!mode)return;
+        if(mode<0)mode=SharedNavPanel.voiceModeFallback;
+        [SharedNavPanel voicePickMode:mode announced:@"（语音选择）"];ok=YES;
+    };
+    if(NSThread.isMainThread)work();else dispatch_sync(dispatch_get_main_queue(),work);
+    return ok;
+}
 // Pure matcher shared by the NLP trigger and the reply hijack: normalize the
 // utterance (trim, strip trailing punctuation/speech prefixes) and return the
 // destination (with trailing travel-mode words removed), or nil if no trigger.
@@ -636,18 +697,23 @@ BOOL TIOVoiceNavMaybeStart(NSString *text){
     if(now-LastVoiceNavAt<8&&lastDestination&&[destination isEqualToString:lastDestination])return NO;
     // Travel mode: default WALK unless the utterance names ride/drive explicitly
     // (scanned on the raw text; trailing mode words were stripped by the matcher).
+    // modeExplicit records whether the user already told us HOW to go -- only then
+    // does the panel skip the "怎么去？" follow-up after the destination pick.
     NSInteger voiceMode=TIONavigationWalk;
     NSArray *rides=@[@"骑行",@"骑车",@"自行车",@"单车",@"电动车"],*drives=@[@"驾车",@"开车",@"自驾",@"打车"];
     for(NSString *w in rides)if([text rangeOfString:w].location!=NSNotFound){voiceMode=TIONavigationRide;break;}
     if(voiceMode==TIONavigationWalk)for(NSString *w in drives)if([text rangeOfString:w].location!=NSNotFound){voiceMode=TIONavigationDrive;break;}
+    BOOL modeExplicit=voiceMode!=TIONavigationWalk;
+    if(!modeExplicit)for(NSString *w in @[@"步行",@"走路",@"徒步"])if([text rangeOfString:w].location!=NSNotFound){modeExplicit=YES;break;}
     LastVoiceNavAt=now;lastDestination=[destination copy];
     TIOVoiceNavTraceReset();
-    TIOVoiceNavTrace([NSString stringWithFormat:@"语音命中，终点「%@」，%@（%@）",destination,TIONavigationModeTitle(voiceMode),voiceMode==TIONavigationWalk?@"默认":@"语音指定"]);
+    TIOVoiceNavTrace([NSString stringWithFormat:@"语音命中，终点「%@」，%@（%@）",destination,TIONavigationModeTitle(voiceMode),modeExplicit?@"语音指定":@"选点后追问"]);
     dispatch_async(dispatch_get_main_queue(),^{
         if(SharedNavPanel.active||SharedNavPanel.planning){TIOVoiceNavTrace(@"忽略：已有导航进行中");return;}
         [SharedNavPanel stopUser];
         SharedNavPanel=[TIONavigationPanel new];
-        SharedNavPanel.selectedTransport=voiceMode; // Voice-specified travel mode; walk unless said otherwise.
+        SharedNavPanel.selectedTransport=voiceMode; // Voice-specified travel mode; walk placeholder until the follow-up answers.
+        SharedNavPanel.voiceModeExplicit=modeExplicit;
         [SharedNavPanel view]; // Force viewDidLoad: initializes AMap SDK, map, and location.
         [SharedNavPanel viewWillAppear:NO]; // Force the 1s tick timer (lifecycle method never fires off-screen).
         if(voiceMode==TIONavigationRide)TIOVoiceNavTrace(@"提示：眼镜原生导航不支持骑行，以手机指引为准");

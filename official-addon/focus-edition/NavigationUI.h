@@ -15,6 +15,12 @@ NSString *TIOVoiceNavTraceStatus(void);
 NSUInteger TIOVoiceNavPendingChoices(void); // 0 = nothing awaiting a choice
 BOOL TIOVoiceNavChoose(NSUInteger oneBasedIndex); // YES = consumed a live pending choice
 void TIOVoiceNavReject(void); // 用户说「都不对」：清空候选并提示重说（不启动导航）
+// Travel-mode follow-up after the destination pick ("怎么去？"): pending only
+// when the trigger utterance did not name a mode. 15s timeout applies the
+// distance-aware default (walk ≤3km, else drive -- walk planning rejects long
+// distances). ChooseMode parses 步行/骑行/驾车 (+ aliases, 随便 → default).
+BOOL TIOVoiceNavPendingMode(void); // YES = waiting for a spoken travel mode
+BOOL TIOVoiceNavChooseMode(NSString *text); // YES = consumed as the mode answer
 NSString *TIOVoiceNavMatchDestination(NSString *text); // pure matcher: destination after normalization, nil = no nav trigger
 // Assistant-session lifecycle helpers (implemented in Addon.m).
 void TIOVoiceCloseAssistantSession(void); // official stop entry; frees the lens

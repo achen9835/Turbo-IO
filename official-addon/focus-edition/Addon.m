@@ -416,6 +416,11 @@ static void AsrHook(id self,SEL cmd,id text,BOOL final,id sid) {
             if(pick>0){TIOVoiceNavTrace([NSString stringWithFormat:@"语音选择（ASR直取）：第%ld个",(long)pick]);TIOVoiceNavChoose((NSUInteger)pick);return;}
             if(pick<0){TIOVoiceNavTrace(@"语音排除全部候选（ASR直取）");TIOVoiceNavReject();return;}
         }
+        // Travel-mode follow-up answers ("骑车") are consumed the same way,
+        // before any NLP round trip. A fresh "导航去Y" is NOT a mode answer even
+        // when it contains a mode word ("导航去步行街"): let it through so the
+        // NLP layer restarts the pipeline with the new destination.
+        if(final&&TIOVoiceNavPendingMode()&&!TIOVoiceNavMatchDestination(copy).length&&TIOVoiceNavChooseMode(copy)){TIOVoiceNavTrace([NSString stringWithFormat:@"出行方式（ASR直取）：%@",copy]);return;}
         OriginalAsr(self,cmd,text,final,sid);
         [Controller acceptAsr:copy finished:final session:session listener:self];
     };
@@ -472,6 +477,13 @@ static void NlpHook(id self,SEL cmd,id value) {
                 if(lastPending!=pending){TIOVoiceNavTrace(@"候选等待中：说 第几个（本轮官方回复的迟到回包也会流经这里，属正常）");lastPending=pending;} // log once per dialog, not per reply delta
                 // Fall through: the user may have switched to a fresh "导航去Y".
             }else lastPending=UINT_MAX;
+            // Travel-mode follow-up ("怎么去？"): same consumption as choices.
+            // The nav-keyword guard keeps a fresh "导航去Y" (or this turn's late
+            // official deltas) from being mis-read as a mode answer.
+            if(TIOVoiceNavPendingMode()){
+                if(TIOVoiceNavMatchDestination(voiceQuery).length){TIOVoiceNavMaybeStart(voiceQuery);return;}
+                if(TIOVoiceNavChooseMode(voiceQuery)){TIOVoiceNavTrace([NSString stringWithFormat:@"出行方式（NLP）：%@",voiceQuery]);return;}
+            }
             TIOVoiceNavMaybeStart(voiceQuery);
         }
     };
