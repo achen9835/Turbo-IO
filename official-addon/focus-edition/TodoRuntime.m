@@ -125,7 +125,10 @@ static void Send(id self,SEL cmd,NSString *channel,NSData *message,id reply){
                     // Inbound update-check silencer: rewrite the version REPLY the
                     // official side is about to see (OsVersion → 99.99.99). The BLE
                     // request/reply pair completed normally, so nothing can jam;
-                    // native observers above still saw the real payload.
+                    // native observers above still saw the real payload. The
+                    // observer first records frame type + JSON key names so a
+                    // surviving prompt is diagnosable from the OTA page.
+                    TIOOTAObserveInboundBizNine(data);
                     NSData *rewritten=TIOOTARewriteVersionReply(data);
                     if(rewritten){NSMutableDictionary *fm=[event[@"message"] mutableCopy];fm[@"payload"]=rewritten;NSMutableDictionary *fe=[event mutableCopy];fe[@"message"]=fm;NSData *repacked=((NSData*(*)(id,SEL,id))objc_msgSend)(codec,NSSelectorFromString(@"encodeSuccessEnvelope:"),fe);if(repacked.length)forwardMessage=repacked;}
                 }

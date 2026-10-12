@@ -25,7 +25,7 @@
 - (void)autoStartNativeHUDIfNeeded{
  if(!self.autoNativeHUD)return;
  NSDictionary *s=TDPPhoneNavigationStatus();
- if([s[@"active"] boolValue]){self.autoNativeHUD=NO;return;}
+ if([s[@"active"] boolValue]){self.autoNativeHUD=NO;if(self.voiceBridgeTask!=UIBackgroundTaskInvalid){[self endVoiceBridgeTask];TIOVoiceNavTrace(@"锁屏桥接：HUD已激活，桥接结束");}return;}
  if(![self canStartDisplayHUD])return;
  NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
  if(now<self.autoNativeHUDNextAt)return;
@@ -49,6 +49,7 @@
  if(!TIOProtocolDevice().length)st=@"眼镜通道未就绪：设备号未知，点亮手机/打开App后自动重试";
  NSString *why=TNVRefusalReason();
  if(why.length)st=[st stringByAppendingFormat:@"；具体原因：%@",why];
+ if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive)st=[st stringByAppendingString:@"；App在后台（重试循环依赖锁屏桥接存活）"];
  TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD：开启请求被拒（第%lu次，2秒后重试；状态：%@）",(unsigned long)self.autoNativeHUDAttempts,st]);
 }
 - (void)buildDisplayHUD{

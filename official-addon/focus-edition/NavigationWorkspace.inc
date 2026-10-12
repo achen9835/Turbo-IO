@@ -98,6 +98,9 @@
     self.manager.pausesLocationUpdatesAutomatically=!self.backgroundLocationEnabled;
      BOOL ok=self.simulated?[self.manager startEmulatorNavi]:[self.manager startGPSNavi];if(!ok){[self fail:@"导航启动失败，可停止后重新规划"];if(self.voiceSession)TIOVoiceNavTrace(@"中止：SDK启动导航失败");return;}self.routeReady=NO;self.navigationStarted=YES;
      if(self.voiceSession)TIOVoiceNavTrace(@"第4步：导航已开始，等待转向指引上眼镜");
+     // Locked phones: hold runtime through the exitVoice handoff so the HUD
+     // retry loop stays schedulable until the lens engages (see NavigationBackground.inc).
+     [self beginVoiceBridgeTask];
      // Navigation is running: the candidate dialog (if any) is over, close the
      // assistant session so the chat window yields the lens to the nav page.
      if(self.voiceSession){NSUInteger g=self.generation;dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{if(g==self.generation)TIOVoiceCloseAssistantSession();});}

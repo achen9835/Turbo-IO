@@ -4,6 +4,13 @@
 static BOOL HookReady;
 static NSUInteger Blocked,VersionQueries,SilencedVersionReads,BizNineCalls;
 static uint64_t BizNineTypes;
+// Inbound business-9 observability: which frames actually arrived, and why the
+// rewriter did or did not touch them. Key NAMES only are recorded -- values
+// never enter diagnostics.
+static NSUInteger InboundBizNine,InboundVersionReplies;
+static uint64_t InboundBizNineTypes;
+static NSString *InboundVersionKeys=@"-";
+static NSString *RewriteSkip=@"未收到版本回包";
 static BOOL Var(const uint8_t *bytes,NSUInteger length,NSUInteger *at,uint64_t *value){
     *value=0;for(unsigned i=0;i<5;i++){if(*at>=length)return NO;uint8_t b=bytes[(*at)++];if(i==4&&(b&0xf0))return NO;*value|=(uint64_t)(b&127)<<(7*i);if(!(b&128))return i==0||b!=0;}return NO;
 }
@@ -49,7 +56,7 @@ BOOL TIOOTABlockPreparationCall(id call){
     @synchronized(NSProcessInfo.processInfo){if(blocked)Blocked++;else if([method isEqual:@"rayneonet_sendMessage"])VersionQueries++;}
     return blocked;
 }
-NSDictionary *TIOOTAGuardStatus(void){@synchronized(NSProcessInfo.processInfo){NSMutableString *types=[NSMutableString new];for(unsigned t=0;t<64;t++)if(BizNineTypes&(1ull<<t))[types appendFormat:@"%@%u",types.length?@",":@"",t];return @{@"preparationBuild":@(TIOOTAPreparationBuild()),@"transportHookReady":@(HookReady),@"blockedCalls":@(Blocked),@"versionReadCalls":@(VersionQueries),@"silencedVersionReads":@(SilencedVersionReads),@"businessNineCalls":@(BizNineCalls),@"businessNineTypes":types.length?types:@"-",@"releaseSupported":@NO};}}
+NSDictionary *TIOOTAGuardStatus(void){@synchronized(NSProcessInfo.processInfo){NSMutableString *types=[NSMutableString new];for(unsigned t=0;t<64;t++)if(BizNineTypes&(1ull<<t))[types appendFormat:@"%@%u",types.length?@",":@"",t];NSMutableString *intypes=[NSMutableString new];for(unsigned t=0;t<64;t++)if(InboundBizNineTypes&(1ull<<t))[intypes appendFormat:@"%@%u",intypes.length?@",":@"",t];return @{@"preparationBuild":@(TIOOTAPreparationBuild()),@"transportHookReady":@(HookReady),@"blockedCalls":@(Blocked),@"versionReadCalls":@(VersionQueries),@"silencedVersionReads":@(SilencedVersionReads),@"businessNineCalls":@(BizNineCalls),@"businessNineTypes":types.length?types:@"-",@"inboundBizNine":@(InboundBizNine),@"inboundBizNineTypes":intypes.length?intypes:@"-",@"inboundVersionReplies":@(InboundVersionReplies),@"inboundVersionKeys":InboundVersionKeys,@"rewriteSkip":RewriteSkip,@"releaseSupported":@NO};}}
 // Update-prompt silencer. Outbound business-9 frames are counted but NEVER
 // blocked: a swallowed read leaves the official BLE request pending until
 // timeout and jams whatever the app queues behind it (collateral seen on
@@ -78,6 +85,39 @@ BOOL TIOOTAUpdateCheckBlockCall(id call){
     @synchronized(NSProcessInfo.processInfo){BizNineCalls++;if(type&&type<64)BizNineTypes|=(1ull<<type);}
     return NO; // 仅统计帧类型，永不拦截
 }
+// Inbound observability: count every inbound business-9 frame by type and, for
+// type-1 (version report) frames, record the JSON KEY NAMES -- never values.
+// When the update prompt survives the OsVersion rewrite, these two numbers on
+// the OTA page say which driver is left: 0 inbound frames = the reply flows a
+// path we do not see; frames of another type = a push we have not neutralized;
+// version replies with no rewrite = shape mismatch (see rewriteSkip).
+void TIOOTAObserveInboundBizNine(NSData *payload){
+    @synchronized(NSProcessInfo.processInfo){
+        InboundBizNine++;
+        uint64_t type=FrameType(payload);
+        if(type&&type<64)InboundBizNineTypes|=(1ull<<type);
+        if(type!=1||![payload isKindOfClass:NSData.class]||payload.length<4||payload.length>65536)return;
+        const uint8_t *b=payload.bytes;NSUInteger at=0;NSRange json=NSMakeRange(NSNotFound,0);
+        while(at<payload.length){
+            uint64_t key,value;
+            if(!Var(b,payload.length,&at,&key))return;
+            unsigned field=(unsigned)(key>>3),wire=key&7;
+            if(wire==0){if(!Var(b,payload.length,&at,&value))return;}
+            else if(wire==2){if(!Var(b,payload.length,&at,&value)||value>payload.length-at)return;if(field==3)json=NSMakeRange(at,(NSUInteger)value);at+=(NSUInteger)value;}
+            else return;
+        }
+        if(json.location==NSNotFound)return;
+        id obj=[NSJSONSerialization JSONObjectWithData:[payload subdataWithRange:json] options:0 error:nil];
+        if(![obj isKindOfClass:NSDictionary.class])return;
+        InboundVersionReplies++;
+        NSArray *keys=[[obj allKeys] sortedArrayUsingSelector:@selector(compare:)];
+        NSMutableArray *names=[NSMutableArray new];
+        for(NSString *k in keys)if([k isKindOfClass:NSString.class])[names addObject:k.length>31?[k substringToIndex:31]:k];
+        NSString *joined=[names componentsJoinedByString:@","];
+        if(joined.length>140)joined=[joined substringToIndex:140];
+        if(joined.length)InboundVersionKeys=[joined copy];
+    }
+}
 // Inbound side of the silencer: the glasses' version REPLY still completes the
 // request/reply pair, but its OsVersion string is rewritten to a very high
 // value before the official Dart side sees it. Nothing is blocked, nothing
@@ -88,23 +128,25 @@ BOOL TIOOTAUpdateCheckBlockCall(id call){
 // armed/started flash session (stage>0) passes the real reply through.
 static void AppendVar(NSMutableData *out,uint64_t v){uint8_t b;do{b=v&127;v>>=7;if(v)b|=128;[out appendBytes:&b length:1];}while(v);}
 NSData *TIOOTARewriteVersionReply(NSData *payload){
-    id toggle=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];if(toggle&&![toggle boolValue])return nil;
-    if([[TIOOTAFlashStatus() objectForKey:@"stage"] unsignedIntegerValue]>0)return nil;
-    if(![payload isKindOfClass:NSData.class]||payload.length<4||payload.length>65536)return nil;
+    id toggle=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];if(toggle&&![toggle boolValue]){RewriteSkip=@"开关已关闭（官方行为）";return nil;}
+    if([[TIOOTAFlashStatus() objectForKey:@"stage"] unsignedIntegerValue]>0){RewriteSkip=@"试刷进行中，放行真实回包";return nil;}
+    if(![payload isKindOfClass:NSData.class]||payload.length<4||payload.length>65536){RewriteSkip=@"载荷无效";return nil;}
     const uint8_t *b=payload.bytes;NSUInteger at=0,field3Start=NSNotFound;BOOL isVersionReply=NO;NSRange json=NSMakeRange(NSNotFound,0);
     while(at<payload.length){
         NSUInteger fieldStart=at;uint64_t key,value;
-        if(!Var(b,payload.length,&at,&key))return nil;
+        if(!Var(b,payload.length,&at,&key)){RewriteSkip=@"帧解析失败（varint游走中断）";return nil;}
         unsigned field=(unsigned)(key>>3),wire=key&7;
-        if(wire==0){if(!Var(b,payload.length,&at,&value))return nil;if(field==2)isVersionReply=(value==1);}
-        else if(wire==2){if(!Var(b,payload.length,&at,&value)||value>payload.length-at)return nil;if(field==3){field3Start=fieldStart;json=NSMakeRange(at,(NSUInteger)value);}at+=(NSUInteger)value;}
-        else return nil; // unexpected wire type: leave the frame untouched
+        if(wire==0){if(!Var(b,payload.length,&at,&value)){RewriteSkip=@"帧解析失败（varint取值中断）";return nil;}if(field==2)isVersionReply=(value==1);}
+        else if(wire==2){if(!Var(b,payload.length,&at,&value)||value>payload.length-at){RewriteSkip=@"帧解析失败（长度越界）";return nil;}if(field==3){field3Start=fieldStart;json=NSMakeRange(at,(NSUInteger)value);}at+=(NSUInteger)value;}
+        else{RewriteSkip=@"帧解析失败（未知线型）";return nil;} // unexpected wire type: leave the frame untouched
     }
-    if(!isVersionReply||field3Start==NSNotFound)return nil;
+    if(!isVersionReply||field3Start==NSNotFound){RewriteSkip=@"非版本回包（type!=1或无JSON字段）";return nil;}
     id obj=[NSJSONSerialization JSONObjectWithData:[payload subdataWithRange:json] options:0 error:nil];
-    if(![obj isKindOfClass:NSDictionary.class])return nil;
+    if(![obj isKindOfClass:NSDictionary.class]){RewriteSkip=@"JSON解析失败";return nil;}
     NSString *version=obj[@"OsVersion"];
-    if(![version isKindOfClass:NSString.class]||![version hasPrefix:@"Strix OS "]||[version isEqual:@"Strix OS 99.99.99"])return nil;
+    if(![version isKindOfClass:NSString.class]){RewriteSkip=@"JSON无OsVersion字段（键名见上）";return nil;}
+    if(![version hasPrefix:@"Strix OS "]){RewriteSkip=@"OsVersion前缀不符";return nil;}
+    if([version isEqual:@"Strix OS 99.99.99"]){RewriteSkip=@"已改写为99.99.99（幂等跳过）";return nil;}
     NSMutableDictionary *forged=[obj mutableCopy];forged[@"OsVersion"]=@"Strix OS 99.99.99";
     NSData *forgedJson=[NSJSONSerialization dataWithJSONObject:forged options:0 error:nil];if(!forgedJson.length)return nil;
     NSMutableData *out=[NSMutableData dataWithCapacity:payload.length+16];
@@ -112,6 +154,6 @@ NSData *TIOOTARewriteVersionReply(NSData *payload){
     uint8_t key=(3<<3)|2;[out appendBytes:&key length:1];AppendVar(out,forgedJson.length);
     [out appendData:forgedJson];
     [out appendData:[payload subdataWithRange:NSMakeRange(NSMaxRange(json),payload.length-NSMaxRange(json))]];
-    @synchronized(NSProcessInfo.processInfo){SilencedVersionReads++;}
+    @synchronized(NSProcessInfo.processInfo){SilencedVersionReads++;RewriteSkip=@"已改写为99.99.99";}
     return out;
 }

@@ -91,6 +91,8 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property NSString *voiceQuery;
 @property UIBackgroundTaskIdentifier navigationBackgroundTask;
 @property NSUInteger backgroundEpoch;
+@property UIBackgroundTaskIdentifier voiceBridgeTask; // hands-free bridge: keeps the HUD retry loop schedulable after exitVoice closes the voice session, until the lens engages
+@property NSUInteger voiceBridgeEpoch;
 @property NSString *destinationName;
 @property CLLocationCoordinate2D simulationStart;
 @property NSUInteger locationGeneration;
@@ -135,7 +137,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     if(self.navigationController.viewControllers.count<=1){
         self.navigationItem.leftBarButtonItem=[[UIBarButtonItem alloc]initWithTitle:@"退出导航页" style:UIBarButtonItemStylePlain target:self action:@selector(voiceDismiss)];
     }
-    self.permission=[CLLocationManager new];self.permission.delegate=self;self.navigationBackgroundTask=UIBackgroundTaskInvalid;
+    self.permission=[CLLocationManager new];self.permission.delegate=self;self.navigationBackgroundTask=UIBackgroundTaskInvalid;self.voiceBridgeTask=UIBackgroundTaskInvalid;
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(refresh) name:@"TIONavigationChanged" object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(stopUser) name:@"TIOResearchClosed" object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(background) name:UIApplicationDidEnterBackgroundNotification object:nil];
@@ -153,7 +155,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     if(self.active||self.planning){TIOVoiceNavTrace(@"导航页面已退出，导航继续后台运行");return;}
     [self stopUser];[self.timer invalidate];self.timer=nil;
 }
-- (void)dealloc{if(self.navigationBackgroundTask!=UIBackgroundTaskInvalid)[UIApplication.sharedApplication endBackgroundTask:self.navigationBackgroundTask];[self.subtitleHUD stop:@"导航页面已销毁"];[self.teleHUD stop:@"导航页面已销毁"];[self.timer invalidate];[NSNotificationCenter.defaultCenter removeObserver:self];}
+- (void)dealloc{if(self.navigationBackgroundTask!=UIBackgroundTaskInvalid)[UIApplication.sharedApplication endBackgroundTask:self.navigationBackgroundTask];if(self.voiceBridgeTask!=UIBackgroundTaskInvalid)[UIApplication.sharedApplication endBackgroundTask:self.voiceBridgeTask];[self.subtitleHUD stop:@"导航页面已销毁"];[self.teleHUD stop:@"导航页面已销毁"];[self.timer invalidate];[NSNotificationCenter.defaultCenter removeObserver:self];}
 - (void)refresh{if(!NSThread.isMainThread){dispatch_async(dispatch_get_main_queue(),^{[self refresh];});return;}NSDictionary *s=TIONavTransportStatus(),*tele=self.teleHUD.status;self.statusLabel.text=[NSString stringWithFormat:@"%@\n常亮：%@ · 已提交%@帧\n通知：%@\n连接／卡片：%@\nKey：%@ · SDK：%@",self.note?:@"",tele[@"note"],tele[@"frames"],s[@"noticeNote"],s[@"note"],ReadNavKey().length?@"已配置（有效性待实际算路）":@"未配置",
 #if TIO_AMAP_ENABLED
     @"11.2.100"
@@ -246,7 +248,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     self.voiceLifelogWasOn=NO;self.voiceSession=NO;self.voiceLocating=NO;
     self.voiceCandidates=nil; // a stopped pipeline never answers a pending choice
     self.voiceAwaitingMode=NO; // ...nor a pending travel-mode question
-    self.navigationStarted=NO;self.autoNativeHUD=NO;self.backgroundLocationEnabled=NO;[self endNavigationBackgroundTask];
+    self.navigationStarted=NO;self.autoNativeHUD=NO;self.backgroundLocationEnabled=NO;[self endNavigationBackgroundTask];[self endVoiceBridgeTask];
 #if TIO_DISPLAY_PHONE
     TDPPhoneNavigationStop();self.hudIconPixels=nil;self.hudIconType=0;self.crossPixels=nil;
 #endif

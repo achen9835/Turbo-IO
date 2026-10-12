@@ -13,3 +13,8 @@ FOUNDATION_EXPORT NSDictionary *TIOOTAGuardStatus(void);
 // TIOUpdateCheckSilence=NO restores official; armed flash sessions exempted).
 FOUNDATION_EXPORT BOOL TIOOTAUpdateCheckBlockCall(id call);
 FOUNDATION_EXPORT NSData *TIOOTARewriteVersionReply(NSData *payload);
+// Inbound business-9 observability: counts frames by type and records the JSON
+// KEY NAMES of type-1 replies (names only, never values) so the OTA page can
+// show which update-check frames actually arrived and what the official side
+// compares -- the decisive evidence when the prompt survives the rewrite.
+FOUNDATION_EXPORT void TIOOTAObserveInboundBizNine(NSData *payload);
