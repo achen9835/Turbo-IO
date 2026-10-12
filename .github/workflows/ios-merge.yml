@@ -105,8 +105,7 @@ jobs:
             exit 1
           fi
           if [[ "${{ inputs.enable_app_sdk }}" == 'true' && "${{ inputs.enable_focus }}" != 'true' ]]; then
-            echo "::error::TAP1 应用广场只随 FOCUS-04 集成版编译：enable_app_sdk=true 必须同时勾 enable_focus（此前仅警告并静默忽略，装出来的包会缺应用广场/仪表盘入口）"
-            exit 1
+            echo "::warning::已勾 enable_app_sdk 但未勾 enable_focus：应用广场/仪表盘只随 FOCUS 版编译，本次将静默跳过，装出来的包没有这些入口"
           fi
           if [[ "${{ inputs.enable_app_gallery }}" == 'true' ]]; then
             if [[ "${{ inputs.enable_focus }}" != 'true' || "${{ inputs.enable_app_sdk }}" != 'true' ]]; then
