@@ -7,7 +7,9 @@ FOUNDATION_EXPORT void TIOOTARecordTransportHookReady(void);
 FOUNDATION_EXPORT BOOL TIOOTAPreparationProtected(void);
 FOUNDATION_EXPORT BOOL TIOOTABlockPreparationCall(id call);
 FOUNDATION_EXPORT NSDictionary *TIOOTAGuardStatus(void);
-// Silences the official firmware update check by swallowing the business-9
-// empty version read (default ON; TIOUpdateCheckSilence=NO restores official;
-// armed/started experimental flash sessions are exempted automatically).
+// Update-prompt silencer. Outbound business-9 frames are counted but NEVER
+// blocked (blocking jams the official BLE request pipeline); the inbound
+// version reply's OsVersion is rewritten to a high value instead (default ON;
+// TIOUpdateCheckSilence=NO restores official; armed flash sessions exempted).
 FOUNDATION_EXPORT BOOL TIOOTAUpdateCheckBlockCall(id call);
+FOUNDATION_EXPORT NSData *TIOOTARewriteVersionReply(NSData *payload);

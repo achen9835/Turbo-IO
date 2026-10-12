@@ -75,10 +75,11 @@ static void MethodHook(id self,SEL cmd,id call,id result){
 #endif
     if(otaBlocked){if(result)((void(^)(id))result)(@{@"success":@NO,@"message":@"Turbo IO transfer gate: not authorized or packet mismatch"});return;}
     if(TIOOTABlockPreparationCall(call)){if(result)((void(^)(id))result)(@{@"success":@NO,@"message":@"Turbo IO OTA preparation only: outbound traffic blocked"});return;}
-    // Swallowed version reads report success: the Dart side then waits for a
-    // version reply that never arrives and quietly times out -- a failure result
-    // could surface a toast or a retry loop instead.
-    if(TIOOTAUpdateCheckBlockCall(call)){if(result)((void(^)(id))result)(@{@"success":@YES});return;}
+    // Outbound business-9 frames are counted here but never blocked: a blocked
+    // version read leaves the official BLE request pending until timeout and
+    // jams whatever the app queues behind it. The update prompt is silenced on
+    // the inbound side instead (TIOOTARewriteVersionReply in the Send hook).
+    TIOOTAUpdateCheckBlockCall(call);
     if(TIOGlassesLogBlockCall(call)){if(result)((void(^)(id))result)(@{@"success":@NO,@"message":@"本机日志研究任务隔离中，未重复请求"});return;}
     {NSString *method=Get(call,@"method");id args=Get(call,@"arguments");if([args isKindOfClass:NSDictionary.class]){void(^work)(void)=^{TIOProtocolObserveCall(self,method,args);TIONewsTeleObserveCall(self,method,args);TIOA2UIObserveCall(self,method,args);TIOGlassesLogObserveCall(self,method,args);TIONavObserveCall(self,method,args);TIOSubtitleObserveCall(self,method,args);
 #if TIO_APP_SDK
@@ -93,6 +94,7 @@ static void MethodHook(id self,SEL cmd,id call,id result){
     }else PriorMethod(self,cmd,call,result);
 }
 static void Send(id self,SEL cmd,NSString *channel,NSData *message,id reply){
+    NSData *forwardMessage=message;
     if([channel isKindOfClass:NSString.class]&&[channel.lowercaseString containsString:@"rayneonet"]&&message.length<262144){
         Class cls=NSClassFromString(@"FlutterStandardMethodCodec");
         @try{if([cls respondsToSelector:@selector(sharedInstance)]){id codec=((id(*)(id,SEL))objc_msgSend)(cls,@selector(sharedInstance));id event=((id(*)(id,SEL,id))objc_msgSend)(codec,NSSelectorFromString(@"decodeEnvelope:"),message);
@@ -119,6 +121,14 @@ static void Send(id self,SEL cmd,NSString *channel,NSData *message,id reply){
 #endif
             if([event isKindOfClass:NSDictionary.class]&&[event[@"eventType"] isEqual:@"messageReceived"]&&[event[@"message"] isKindOfClass:NSDictionary.class]){
                 NSMutableDictionary *e=[event mutableCopy],*m=[event[@"message"] mutableCopy];NSData *data=Data(m[@"payload"]);if(data)m[@"payload"]=data;e[@"message"]=m;TIOOTAFlashObserveEvent(e);NSDictionary *physical=TIOTodoPhysicalStatus(e);
+                if([m[@"businessId"] isEqual:@9]){
+                    // Inbound update-check silencer: rewrite the version REPLY the
+                    // official side is about to see (OsVersion → 99.99.99). The BLE
+                    // request/reply pair completed normally, so nothing can jam;
+                    // native observers above still saw the real payload.
+                    NSData *rewritten=TIOOTARewriteVersionReply(data);
+                    if(rewritten){NSMutableDictionary *fm=[event[@"message"] mutableCopy];fm[@"payload"]=rewritten;NSMutableDictionary *fe=[event mutableCopy];fe[@"message"]=fm;NSData *repacked=((NSData*(*)(id,SEL,id))objc_msgSend)(codec,NSSelectorFromString(@"encodeSuccessEnvelope:"),fe);if(repacked.length)forwardMessage=repacked;}
+                }
 #if TIO_DISPLAY_PHONE
                 if(TDPPhoneRouteReply(e,^(BOOL owned){if(owned){if(reply)((void(^)(NSData *))reply)(nil);}else PriorSend(self,cmd,channel,message,reply);}))return;
 #endif
@@ -138,7 +148,7 @@ static void Send(id self,SEL cmd,NSString *channel,NSData *message,id reply){
                 if(physical)dispatch_async(dispatch_get_main_queue(),^{PhysicalEvents++;if(TestWire.length&&[physical[@"wireId"] isEqual:TestWire]&&[physical[@"deviceId"] isEqual:TestDevice]){PhysicalComplete=[physical[@"status"] isEqual:@1];State=PhysicalComplete?@"收到此测试项的眼镜完成回传，真实ID匹配":@"收到此测试项的眼镜未完成回传";SaveEvidence();}});
             }
         }}@catch(NSException *e){}
-    }PriorSend(self,cmd,channel,message,reply);
+    }PriorSend(self,cmd,channel,forwardMessage,reply);
 }
 void TIOTodoObserveNlp(id listener,id response){
     if(Injecting||!Installed||![Get(response,@"domain") isEqual:@"task"]||![Get(response,@"intent") isEqual:@"create_task"]||![Get(response,@"finished") boolValue]||[Get(response,@"offline") boolValue])return;

@@ -50,15 +50,12 @@ BOOL TIOOTABlockPreparationCall(id call){
     return blocked;
 }
 NSDictionary *TIOOTAGuardStatus(void){@synchronized(NSProcessInfo.processInfo){NSMutableString *types=[NSMutableString new];for(unsigned t=0;t<64;t++)if(BizNineTypes&(1ull<<t))[types appendFormat:@"%@%u",types.length?@",":@"",t];return @{@"preparationBuild":@(TIOOTAPreparationBuild()),@"transportHookReady":@(HookReady),@"blockedCalls":@(Blocked),@"versionReadCalls":@(VersionQueries),@"silencedVersionReads":@(SilencedVersionReads),@"businessNineCalls":@(BizNineCalls),@"businessNineTypes":types.length?types:@"-",@"releaseSupported":@NO};}}
-// Silence the official firmware update prompt at its local root: after pairing,
-// the app learns the glasses OS version through a business-9 empty version read
-// (type=1, message=null) and compares it locally -- the gray/upgrade HTTP URLs
-// are already loopback-patched at packaging time, yet the prompt still fired,
-// so the read is the driver. Swallowing it leaves nothing to compare. Default
-// ON (TIOUpdateCheckSilence=NO restores official behavior); an armed/started
-// experimental flash session (stage>0) is exempt -- that flow needs the read.
-// Side effect while ON: the firmware version field in the official app stays
-// blank. All business-9 frames are counted (type bitmask) for diagnostics.
+// Update-prompt silencer. Outbound business-9 frames are counted but NEVER
+// blocked: a swallowed read leaves the official BLE request pending until
+// timeout and jams whatever the app queues behind it (collateral seen on
+// device: unrelated flows failed while the block was active). The prompt is
+// silenced on the INBOUND side instead -- see TIOOTARewriteVersionReply.
+// Default ON (TIOUpdateCheckSilence=NO restores official behavior).
 static uint64_t FrameType(NSData *payload){
     if(![payload isKindOfClass:NSData.class]||!payload.length||payload.length>256)return 0;
     const uint8_t *b=payload.bytes;NSUInteger at=0;
@@ -79,9 +76,42 @@ BOOL TIOOTAUpdateCheckBlockCall(id call){
     id data=args[@"payload"];if(![data isKindOfClass:NSData.class]){@try{data=[data valueForKey:@"data"];}@catch(NSException *e){data=nil;}}
     uint64_t type=FrameType(data);
     @synchronized(NSProcessInfo.processInfo){BizNineCalls++;if(type&&type<64)BizNineTypes|=(1ull<<type);}
-    id toggle=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];if(toggle&&![toggle boolValue])return NO;
-    if([[TIOOTAFlashStatus() objectForKey:@"stage"] unsignedIntegerValue]>0)return NO; // 试刷授权/进行中：放行版本读取
-    if(type!=1)return NO; // 帧类型表：1=OS 版本读取；电量/空间/空闲查询等照常放行
+    return NO; // 仅统计帧类型，永不拦截
+}
+// Inbound side of the silencer: the glasses' version REPLY still completes the
+// request/reply pair, but its OsVersion string is rewritten to a very high
+// value before the official Dart side sees it. Nothing is blocked, nothing
+// jams, the version field is never blank, and any local "current < latest"
+// comparison reads "up to date". Native-side observers (flash authorization)
+// still receive the real payload -- only the forwarded envelope is rewritten.
+// Default ON; TIOUpdateCheckSilence=NO restores official behavior; an
+// armed/started flash session (stage>0) passes the real reply through.
+static void AppendVar(NSMutableData *out,uint64_t v){uint8_t b;do{b=v&127;v>>=7;if(v)b|=128;[out appendBytes:&b length:1];}while(v);}
+NSData *TIOOTARewriteVersionReply(NSData *payload){
+    id toggle=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];if(toggle&&![toggle boolValue])return nil;
+    if([[TIOOTAFlashStatus() objectForKey:@"stage"] unsignedIntegerValue]>0)return nil;
+    if(![payload isKindOfClass:NSData.class]||payload.length<4||payload.length>65536)return nil;
+    const uint8_t *b=payload.bytes;NSUInteger at=0,field3Start=NSNotFound;BOOL isVersionReply=NO;NSRange json=NSMakeRange(NSNotFound,0);
+    while(at<payload.length){
+        NSUInteger fieldStart=at;uint64_t key,value;
+        if(!Var(b,payload.length,&at,&key))return nil;
+        unsigned field=(unsigned)(key>>3),wire=key&7;
+        if(wire==0){if(!Var(b,payload.length,&at,&value))return nil;if(field==2)isVersionReply=(value==1);}
+        else if(wire==2){if(!Var(b,payload.length,&at,&value)||value>payload.length-at)return nil;if(field==3){field3Start=fieldStart;json=NSMakeRange(at,(NSUInteger)value);}at+=(NSUInteger)value;}
+        else return nil; // unexpected wire type: leave the frame untouched
+    }
+    if(!isVersionReply||field3Start==NSNotFound)return nil;
+    id obj=[NSJSONSerialization JSONObjectWithData:[payload subdataWithRange:json] options:0 error:nil];
+    if(![obj isKindOfClass:NSDictionary.class])return nil;
+    NSString *version=obj[@"OsVersion"];
+    if(![version isKindOfClass:NSString.class]||![version hasPrefix:@"Strix OS "]||[version isEqual:@"Strix OS 99.99.99"])return nil;
+    NSMutableDictionary *forged=[obj mutableCopy];forged[@"OsVersion"]=@"Strix OS 99.99.99";
+    NSData *forgedJson=[NSJSONSerialization dataWithJSONObject:forged options:0 error:nil];if(!forgedJson.length)return nil;
+    NSMutableData *out=[NSMutableData dataWithCapacity:payload.length+16];
+    [out appendData:[payload subdataWithRange:NSMakeRange(0,field3Start)]];
+    uint8_t key=(3<<3)|2;[out appendBytes:&key length:1];AppendVar(out,forgedJson.length);
+    [out appendData:forgedJson];
+    [out appendData:[payload subdataWithRange:NSMakeRange(NSMaxRange(json),payload.length-NSMaxRange(json))]];
     @synchronized(NSProcessInfo.processInfo){SilencedVersionReads++;}
-    return YES;
+    return out;
 }
