@@ -1,5 +1,4 @@
 #import "ExperimentalOTAGuard.h"
-#import "ExperimentalOTAFlash.h"
 #include <TargetConditionals.h>
 static BOOL HookReady;
 static NSUInteger Blocked,VersionQueries,SilencedVersionReads,BizNineCalls;
@@ -50,16 +49,14 @@ BOOL TIOOTABlockPreparationCall(id call){
     return blocked;
 }
 NSDictionary *TIOOTAGuardStatus(void){@synchronized(NSProcessInfo.processInfo){NSMutableString *types=[NSMutableString new];for(unsigned t=0;t<64;t++)if(BizNineTypes&(1ull<<t))[types appendFormat:@"%@%u",types.length?@",":@"",t];return @{@"preparationBuild":@(TIOOTAPreparationBuild()),@"transportHookReady":@(HookReady),@"blockedCalls":@(Blocked),@"versionReadCalls":@(VersionQueries),@"silencedVersionReads":@(SilencedVersionReads),@"businessNineCalls":@(BizNineCalls),@"businessNineTypes":types.length?types:@"-",@"releaseSupported":@NO};}}
-// Silence the official firmware update check: after pairing, the app learns the
-// glasses OS version through a business-9 empty version read (type=1,
-// message=null) and only then queries the gray/upgrade HTTP endpoint. Swallowing
-// the read leaves the Dart side without a version to compare, so no update
-// prompt is ever built. Default ON; standardUserDefaults TIOUpdateCheckSilence=NO
-// restores the official behavior. Flash builds keep the read: the experimental
-// flash flow observes the same reply.
-// All business-9 frames are counted (type bitmask) for diagnostics: if the
-// prompt survives while silencedVersionReads climbs, the check is not driven by
-// this read at all.
+// Optional second layer: swallow the business-9 empty version read (type=1,
+// message=null) so the app never learns the glasses OS version. The primary
+// mechanism is the build-time URL patch in build-local.sh (no prompt, version
+// display intact); this block stays available for unpatched builds. OFF by
+// default because it also blanks the firmware version shown in the official
+// app, and it must stay off while using the experimental flash flow (which
+// needs the same read). Opt in: NSUserDefaults TIOUpdateCheckSilence=YES.
+// All business-9 frames are counted (type bitmask) for diagnostics regardless.
 static uint64_t FrameType(NSData *payload){
     if(![payload isKindOfClass:NSData.class]||!payload.length||payload.length>256)return 0;
     const uint8_t *b=payload.bytes;NSUInteger at=0;
@@ -80,8 +77,7 @@ BOOL TIOOTAUpdateCheckBlockCall(id call){
     id data=args[@"payload"];if(![data isKindOfClass:NSData.class]){@try{data=[data valueForKey:@"data"];}@catch(NSException *e){data=nil;}}
     uint64_t type=FrameType(data);
     @synchronized(NSProcessInfo.processInfo){BizNineCalls++;if(type&&type<64)BizNineTypes|=(1ull<<type);}
-    if(TIOOTAFlashBuild())return NO;
-    id toggle=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];if(toggle&&![toggle boolValue])return NO;
+    id toggle=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];if(![toggle boolValue])return NO;
     if(!TIOOTAIsEmptyVersionQuery(data))return NO;
     @synchronized(NSProcessInfo.processInfo){SilencedVersionReads++;}
     return YES;

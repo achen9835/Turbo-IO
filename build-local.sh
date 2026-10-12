@@ -81,6 +81,20 @@ echo "    扩展就绪：$ADDON"
 echo "==> [5/6] 合并 + 高德资源 + FOCUS 固件注入 + adhoc 签名"
 rm -rf input merged && mkdir input merged
 unzip -q original.ipa -d input
+# 关闭官方 App/固件更新检查：把 App.framework 里两个 gray/upgrade URL 离线改写
+# 为 127.0.0.1:18794（日常构建没有服务监听该端口 → 连接被拒 → 检查静默失败，
+# 不再弹更新）。只改 Dart 字符串不改指令；SHA 与 1.0.5/201 不符则跳过不拦构建。
+# 保留官方检查：TIO_KEEP_OFFICIAL_UPDATE_CHECK=1 bash build-local.sh
+if [[ "${TIO_KEEP_OFFICIAL_UPDATE_CHECK:-0}" != "1" ]]; then
+  APPBIN="$PWD/input/Payload/Runner.app/Frameworks/App.framework/App"
+  if node official-addon/research/patch-ios105-ota-source.mjs "$APPBIN" "$PWD/patched-app" >/dev/null 2>&1; then
+    mv "$PWD/patched-app/App" "$APPBIN" && chmod 755 "$APPBIN"
+    echo "    更新检查 URL 已改写为 127.0.0.1（App 与固件检查将静默失败）"
+  else
+    echo "    警告：更新检查补丁未应用（App.framework 与已知 1.0.5/201 不符），官方更新弹窗可能仍在" >&2
+  fi
+  rm -rf patched-app
+fi
 node official-addon/macho-embed.mjs \
   "$PWD/input/Payload/Runner.app" \
   "$PWD/merged/Payload/Runner.app" \

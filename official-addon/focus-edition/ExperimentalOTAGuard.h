@@ -8,5 +8,6 @@ FOUNDATION_EXPORT BOOL TIOOTAPreparationProtected(void);
 FOUNDATION_EXPORT BOOL TIOOTABlockPreparationCall(id call);
 FOUNDATION_EXPORT NSDictionary *TIOOTAGuardStatus(void);
 // Silences the official firmware update check by swallowing the business-9
-// empty version read (default ON; TIOUpdateCheckSilence=NO restores official).
+// empty version read. OFF by default (the build-time URL patch in
+// build-local.sh is the primary mechanism); TIOUpdateCheckSilence=YES opts in.
 FOUNDATION_EXPORT BOOL TIOOTAUpdateCheckBlockCall(id call);
