@@ -1,6 +1,6 @@
 #import <UIKit/UIKit.h>
 UIViewController *TIONavigationController(void);
-// Voice entry: passive ASR keyword observer ("导航到X/导航去X/带我去X").
+// Voice entry: passive NLP keyword observer ("导航到X/导航去X/带我去X").
 // Runs fully headless -- no page is opened; the glasses HUD appearing is the
 // success feedback. Opt-out preference key: voiceNavDisabled (default: on).
 BOOL TIOVoiceNavMaybeStart(NSString *text); // YES = a NEW voice navigation dispatched.
@@ -10,7 +10,11 @@ void TIOVoiceNavTrace(NSString *step);
 void TIOVoiceNavTraceReset(void);
 NSString *TIOVoiceNavTraceStatus(void);
 // Multi-turn voice destination choice: when a search yields several local
-// candidates the panel announces them and waits for "去第几个".
+// candidates they are streamed into the hijacked assistant chat window (the
+// "聊天框") and the panel waits for "第几个" (30s, then defaults to the first).
+NSUInteger TIOVoiceNavPendingChoices(void); // 0 = nothing awaiting a choice
+BOOL TIOVoiceNavChoose(NSUInteger oneBasedIndex); // YES = consumed a live pending choice
 NSString *TIOVoiceNavMatchDestination(NSString *text); // pure matcher: destination after normalization, nil = no nav trigger
 // Assistant-session lifecycle helpers (implemented in Addon.m).
 void TIOVoiceCloseAssistantSession(void); // official stop entry; frees the lens
+BOOL TIOAssistantEmit(NSString *piece,BOOL done); // append to the hijacked reply; NO = no owned turn (fall back)

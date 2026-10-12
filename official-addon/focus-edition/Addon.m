@@ -156,6 +156,7 @@ static void Alert(NSString *title,NSString *message) {
 @property(nonatomic) BOOL voiceExited;
 @property(nonatomic) TIOTodoTurnGate *taskGate;
 - (BOOL)exitVoice;
+- (BOOL)appendOwned:(NSString *)piece done:(BOOL)done;
 @end
 static TIOController *Controller;
 // Close the assistant session via the verified official stop entry -- same
@@ -165,6 +166,16 @@ static TIOController *Controller;
 void TIOVoiceCloseAssistantSession(void){
     void (^work)(void)=^{if(!Controller.voiceExited)[Controller exitVoice];};
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
+}
+// Append a line to the hijacked assistant reply: the glasses chat window is
+// the voice UI for navigation candidates (the "聊天框"). Returns NO when no
+// turn is owned (hijack unavailable or already closed) so callers fall back
+// to auto-pick instead of waiting for a choice that can never be shown.
+BOOL TIOAssistantEmit(NSString *piece,BOOL done){
+    __block BOOL ok=NO;
+    void (^work)(void)=^{ok=[Controller appendOwned:piece done:done];};
+    if(NSThread.isMainThread)work();else dispatch_sync(dispatch_get_main_queue(),work);
+    return ok;
 }
 
 static id CopyResponse(id source,NSString *answer,BOOL final) {
@@ -176,6 +187,17 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
         [copy setValue:answer forKey:@"answer"];[copy setValue:@"" forKey:@"spoken"];[copy setValue:@(final) forKey:@"finished"];
     }@catch(NSException *e){return nil;}
     return copy;
+}
+// Normalize an utterance for trigger matching: trim whitespace/punctuation and
+// drop the wake word, so "小雷小雷，飞书……" still matches the 飞书 prefix.
+// Mirrors the wake-word handling in TIOIsVoiceExitCommand (Core.m).
+static NSString *TIOTriggerUtterance(NSString *text){
+    if(![text isKindOfClass:NSString.class])return @"";
+    NSMutableCharacterSet *trim=[NSCharacterSet.whitespaceAndNewlineCharacterSet mutableCopy];
+    [trim addCharactersInString:@"，。！？,.!?、：:"];
+    NSString *s=[text stringByTrimmingCharactersInSet:trim];
+    if([s hasPrefix:@"小雷小雷"])s=[[s substringFromIndex:4] stringByTrimmingCharactersInSet:trim];
+    return s;
 }
 @implementation TIOController
 - (instancetype)init {if((self=[super init])){_seenFinals=[NSMutableSet set];_captureEpoch=NSUUID.UUID.UUIDString;_history=[TIOConversationHistory new];_taskGate=[TIOTodoTurnGate new];}return self;}
@@ -222,8 +244,14 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
     }] resume];
 }
 - (void)acceptAsr:(NSString *)text finished:(BOOL)final session:(NSString *)sid listener:(id)listener {
-    if(![Prefs integerForKey:@"mode"]||!text.length)return;
-    if(!final){if(_ownsTurn&&_started){[self cancel];}_asr=text;return;}
+    if(!text.length)return;
+    // Record the turn in EVERY mode: the nav/feishu reply hijacks need _listener
+    // and _asr in official mode too (mode 0). The early return on mode==0 used
+    // to leave both unset, and since mode is force-reset to 0 at every launch,
+    // both hijacks were structurally unreachable. Barge-in cancellation on
+    // partials stays limited to custom modes so an owned hijack turn (candidate
+    // dialog) survives the user starting to speak in official mode.
+    if(!final){if([Prefs integerForKey:@"mode"]&&_ownsTurn&&_started){[self cancel];}_asr=text;return;}
     NSString *identity=[NSString stringWithFormat:@"%@|%@",sid,text];if([_seenFinals containsObject:identity])return;
     if(_seenFinals.count>=256)[_seenFinals removeAllObjects];[_seenFinals addObject:identity];
     [self cancel];[_taskGate beginTurn];_listener=listener;_asr=text;_sid=sid;
@@ -246,6 +274,14 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
     if(delta.length||done){id wrapper=CopyResponse(_responseTemplate,delta,done);if(!wrapper){[_request cancel];_request=nil;_responseDone=YES;OriginalComplete(_listener,NSSelectorFromString(@"onResponseComplete"));Diagnostic=@"回复模板复制失败，已提交收尾";return;}OriginalNlp(_listener,NSSelectorFromString(@"onNlpResult:"),wrapper);_emitted=[text copy];}
     if(done){_responseDone=YES;if(!error&&_request&&text.length)[_history appendQuestion:_requestQuestion answer:text];Diagnostic=error?@"自定义回复失败，已提交错误收尾":@"自定义回复结束，已提交官方收尾回调";
         OriginalComplete(_listener,NSSelectorFromString(@"onResponseComplete"));}
+}
+// Append a piece to the currently owned reply (used by TIOAssistantEmit for
+// the navigation candidate dialog). emitText already diffs against _emitted,
+// so the piece is appended to the full text and sent as the next delta.
+- (BOOL)appendOwned:(NSString *)piece done:(BOOL)done{
+    if(!_ownsTurn||_responseDone||!_listener||!_responseTemplate)return NO;
+    [self emitText:[(_emitted?:@"") stringByAppendingString:piece?:@""] done:done error:nil generation:_generation];
+    return YES;
 }
 - (BOOL)receiveNlp:(id)response listener:(id)listener {
     NSString *domain=String(Get(response,@"domain")),*intent=String(Get(response,@"intent")),*sub=String(Get(response,@"sub"));
@@ -283,14 +319,23 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
         [self cancel];Diagnostic=@"官方待办接管本轮；自有回复已取消，完成回调交回官方";
     }
     if(_taskGate.official)return NO;
+    // A turn already seized (nav/feishu/custom stream) swallows the remaining
+    // official deltas; this also keeps the triggers below from firing twice on
+    // the same turn (each official delta re-enters here with the same query).
+    if(_ownsTurn)return YES;
     // Feishu trigger: "飞书X" prefix → hijack the ENTIRE reply (both modes) to
     // a one-liner, call the custom model in the BACKGROUND, and send the Q&A
     // to the Feishu webhook. The answer appears as a Feishu notification, not
-    // as a streamed assistant reply.
-    if(TIOFeishuEnabled()&&listener==_listener&&_asr.length&&!offline&&TIOIsEligibleChat(domain,intent,sub,NO,Get(response,@"command")!=nil)){
+    // as a streamed assistant reply. The domain is NOT restricted to chat: the
+    // whole reply is replaced anyway, so "飞书帮我查天气" (classified weather)
+    // must trigger too. Skill commands (command!=nil) are never touched.
+    if(TIOFeishuEnabled()&&listener==_listener&&!offline&&Get(response,@"command")==nil){
+        NSString *utter=TIOTriggerUtterance(nlpQuery.length?nlpQuery:_asr);
+        BOOL matched=NO;
         for(NSString *pre in @[@"飞书",@"发飞书",@"问飞书"]){
-            if([_asr hasPrefix:pre]){
-                NSString *rest=[[_asr substringFromIndex:pre.length] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+            if([utter hasPrefix:pre]){
+                matched=YES;
+                NSString *rest=[[utter substringFromIndex:pre.length] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
                 if(rest.length>=2){
                     _responseTemplate=response;_ownsTurn=YES;_started=YES;_emitted=@"";
                     NSUInteger gen=_generation;
@@ -302,37 +347,35 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
                 }
             }
         }
+        if(!matched&&[utter containsString:@"飞书"])Diagnostic=@"飞书开关已开但前缀未命中（未接管）：q 需以「飞书/发飞书/问飞书」开头";
     }
-    // Official mode + voice navigation: behave like a DEVICE-CONTROL command.
-    // A nav trigger ("导航去X") has no official intent, so it would fall into the
-    // chat domain and the assistant would ramble a conversational answer right
-    // over our pipeline. Instead, seize this response as the template and speak
-    // ONE short confirmation of our own through the same channel the custom
-    // model uses (chat window + glasses TTS); later official deltas of the same
-    // turn are swallowed by _ownsTurn below.
-    if(![Prefs integerForKey:@"mode"]){
-        if(_ownsTurn)return YES;
-        if(listener==_listener&&!offline){
-            NSString *sid=String(Get(response,@"sessionId"));
-            if(!(_sid.length&&sid.length&&![_sid isEqual:sid])
-               &&TIOIsEligibleChat(domain,intent,sub,NO,Get(response,@"command")!=nil)){
-                // Match on the NLP query first (always present) with the final ASR
-                // as fallback -- the ASR final can arrive after the first reply delta,
-                // which used to make the hijack miss while the trigger still fired.
-                NSString *navDest=TIOVoiceNavMatchDestination(nlpQuery.length?nlpQuery:_asr);
-                if(navDest.length){
-                    _responseTemplate=response;_ownsTurn=YES;_started=YES;_emitted=@"";
-                    NSUInteger gen=_generation;
-                    NSString *say=[NSString stringWithFormat:@"好，正在搜索附近的「%@」。",navDest];
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.3*NSEC_PER_SEC)),dispatch_get_main_queue(),^{[self emitText:say done:YES error:nil generation:gen];});
-                    Diagnostic=[NSString stringWithFormat:@"导航指令接管本轮回复：%@",navDest];
-                    TIOVoiceNavTrace([NSString stringWithFormat:@"回复接管：助手只说一句确认（终点「%@」）",navDest]);
-                    return YES;
-                }
+    // Voice navigation (BOTH modes): a nav trigger ("导航去X") has no official
+    // intent, so it falls into the chat domain and the assistant would ramble a
+    // conversational answer right over our pipeline. Seize this response as the
+    // template instead: every further word on the lens is ours -- trigger
+    // confirmation, streamed candidates, choice result -- and later official
+    // deltas of the same turn are swallowed by _ownsTurn above. The turn stays
+    // OPEN (done:NO) so candidate lines append into the same chat window; it
+    // closes with the pick/timeout line or when the session is released.
+    if(listener==_listener&&!offline&&TIOIsEligibleChat(domain,intent,sub,NO,Get(response,@"command")!=nil)){
+        NSString *respSid=String(Get(response,@"sessionId"));
+        if(!(_sid.length&&respSid.length&&![_sid isEqual:respSid])){
+            // Match on the NLP query first (always present) with the final ASR
+            // as fallback -- the ASR final can arrive after the first reply delta,
+            // which used to make the hijack miss while the trigger still fired.
+            NSString *navDest=TIOVoiceNavMatchDestination(nlpQuery.length?nlpQuery:_asr);
+            if(navDest.length){
+                _responseTemplate=response;_ownsTurn=YES;_started=YES;_emitted=@"";
+                NSUInteger gen=_generation;
+                NSString *say=[NSString stringWithFormat:@"好，正在搜索附近的「%@」。",navDest];
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.3*NSEC_PER_SEC)),dispatch_get_main_queue(),^{[self emitText:say done:NO error:nil generation:gen];});
+                Diagnostic=[NSString stringWithFormat:@"导航指令接管本轮回复：%@",navDest];
+                TIOVoiceNavTrace([NSString stringWithFormat:@"回复接管：助手发言已截断，候选将流式上镜（终点「%@」）",navDest]);
+                return YES;
             }
         }
-        return NO;
     }
+    if(![Prefs integerForKey:@"mode"])return NO;
     BOOL eligible=TIOIsEligibleChat(domain,intent,sub,offline,Get(response,@"command")!=nil);
     if(eligible)
         [Prefs setObject:@"chat" forKey:@"verifiedChatDomain"];
@@ -358,11 +401,20 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
 }
 @end
 
+static NSInteger TIOParseVoiceChoice(NSString *text,NSUInteger count); // defined with the NLP choice handler below
 static void AsrHook(id self,SEL cmd,id text,BOOL final,id sid) {
     NSString *copy=String(text),*session=String(sid);
     void (^work)(void)=^{
         if(final&&[Prefs boolForKey:@"voiceExitCommands"]&&TIOIsVoiceExitCommand(copy)&&[Controller exitVoice])return;
         if(Controller.voiceExited)return;
+        // Candidate-dialog answers ("第二个") are consumed at the ASR layer: the
+        // instant the utterance is recognized -- before any NLP round trip, and
+        // WITHOUT forwarding it, so the official assistant does not start its
+        // own reply on top of our navigation dialog.
+        if(final&&TIOVoiceNavPendingChoices()){
+            NSInteger pick=TIOParseVoiceChoice(copy,TIOVoiceNavPendingChoices());
+            if(pick>0){TIOVoiceNavTrace([NSString stringWithFormat:@"语音选择（ASR直取）：第%ld个",(long)pick]);TIOVoiceNavChoose((NSUInteger)pick);return;}
+        }
         OriginalAsr(self,cmd,text,final,sid);
         [Controller acceptAsr:copy finished:final session:session listener:self];
     };
@@ -372,9 +424,24 @@ static void AudioStartHook(id self,SEL cmd) {
     void (^work)(void)=^{TWReaderPauseForVoice();TMMusicPauseForVoice();Controller.voiceExited=NO;[Controller.taskGate beginTurn];OriginalAudioStart(self,cmd);};
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
-// (The spoken candidate-choice parser was removed with the local-TTS dialog:
-// announcements through the phone's audio route proved useless in the
-// pocket-and-glasses scenario; the hijacked assistant reply is the voice UI.)
+// Parse a spoken candidate choice: 第一个/第2个/去第三个/就要第二个/最近/短句裸数字.
+// Returns the 1-based index, 0 = not a choice. Bare numbers only match very
+// short utterances so ordinary chat sentences never accidentally select.
+static NSInteger TIOParseVoiceChoice(NSString *text,NSUInteger count){
+    if(![text isKindOfClass:NSString.class]||!count)return 0;
+    if([text rangeOfString:@"最近"].location!=NSNotFound)return 1;
+    NSArray *digits=@[@[@"一",@"1"],@[@"二",@"两",@"2"],@[@"三",@"3"]];
+    for(NSUInteger n=1;n<=digits.count&&n<=count;n++)for(NSString *d in digits[n-1]){
+        if([text rangeOfString:[NSString stringWithFormat:@"第%@个",d]].location!=NSNotFound)return (NSInteger)n;
+        if([text rangeOfString:[NSString stringWithFormat:@"第%@",d]].location!=NSNotFound)return (NSInteger)n;
+    }
+    NSString *t=[text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    while(t.length){unichar c=[t characterAtIndex:t.length-1];if(c==0x3002||c==0xFF01||c==0xFF1F||c==0xFF0C||c==','||c=='.'||c=='!'||c=='?'||c==0x5427)t=[t substringToIndex:t.length-1];else break;}
+    if(t.length&&t.length<=6)for(NSUInteger n=1;n<=digits.count&&n<=count;n++)for(NSString *d in digits[n-1]){
+        if([t isEqualToString:d]||[t isEqualToString:[@"去" stringByAppendingString:d]]||[t isEqualToString:[@"要" stringByAppendingString:d]])return (NSInteger)n;
+    }
+    return 0;
+}
 static void NlpHook(id self,SEL cmd,id value) {
     // Route decisions on the main queue to serialize ASR, cancellation and stream completion.
     void (^work)(void)=^{
@@ -383,15 +450,36 @@ static void NlpHook(id self,SEL cmd,id value) {
         TIOTodoObserveNlp(self,value);
         if(![Controller receiveNlp:value listener:self])
             OriginalNlp(self,cmd,value);
-        // Voice navigation at the NLP layer: trigger keywords ("导航去X") run the
-        // full pipeline; the hijacked assistant reply is the voice feedback.
+        // Voice navigation at the NLP layer, two layers: (1) a pending candidate
+        // dialog consumes "去第几个" style answers (also handled at the ASR layer
+        // for immediacy) -- a fresh "导航去Y" is NEVER treated as a choice, it
+        // re-triggers below; (2) otherwise the trigger keywords ("导航去X") run
+        // the full pipeline. The nav-keyword guard also keeps this turn's own
+        // late official deltas (query="导航去第三医院") from mis-selecting.
         NSString *voiceQuery=Get(value,@"query");
-        if([voiceQuery isKindOfClass:NSString.class])TIOVoiceNavMaybeStart(voiceQuery);
+        if([voiceQuery isKindOfClass:NSString.class]){
+            static NSUInteger lastPending=UINT_MAX;
+            NSUInteger pending=TIOVoiceNavPendingChoices();
+            if(pending){
+                if(TIOVoiceNavMatchDestination(voiceQuery).length){TIOVoiceNavMaybeStart(voiceQuery);return;}
+                NSInteger pick=TIOParseVoiceChoice(voiceQuery,pending);
+                if(pick>0){TIOVoiceNavTrace([NSString stringWithFormat:@"语音选择（NLP）：第%ld个（共%lu个候选）",(long)pick,(unsigned long)pending]);TIOVoiceNavChoose((NSUInteger)pick);lastPending=pending;return;}
+                if(lastPending!=pending){TIOVoiceNavTrace(@"候选等待中：说 第几个（本轮官方回复的迟到回包也会流经这里，属正常）");lastPending=pending;} // log once per dialog, not per reply delta
+                // Fall through: the user may have switched to a fresh "导航去Y".
+            }else lastPending=UINT_MAX;
+            TIOVoiceNavMaybeStart(voiceQuery);
+        }
     };
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 static void CompleteHook(id self,SEL cmd) {
-    void (^work)(void)=^{CompletionEvents++;if(Controller.voiceExited)return;if(![Prefs integerForKey:@"mode"]||!(Controller.listener==self&&Controller.ownsTurn))OriginalComplete(self,cmd);};
+    // An owned turn (custom stream, nav/feishu hijack) controls its own
+    // completion in BOTH modes: forwarding the official completion mid-dialog
+    // could close the chat page before our streamed lines arrive, and our
+    // done:YES emit calls OriginalComplete explicitly. Mic behavior matches
+    // custom-mode barge-in: the session stays open while the reply is
+    // incomplete, which is exactly what the candidate dialog needs.
+    void (^work)(void)=^{CompletionEvents++;if(Controller.voiceExited)return;if(!(Controller.listener==self&&Controller.ownsTurn))OriginalComplete(self,cmd);};
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 static void AlwaysOnHook(id self,SEL cmd,id value) {

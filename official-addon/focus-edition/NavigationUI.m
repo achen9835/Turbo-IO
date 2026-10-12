@@ -76,6 +76,8 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property BOOL routeReady,locating;
 @property BOOL navigationStarted,backgroundLocationEnabled;
 @property BOOL voiceSession,voiceLifelogWasOn,voiceLocating,hasVoiceFix,voiceSearchAround;
+@property NSArray<NSDictionary *> *voiceCandidates; // pending multi-choice dialog: name/lat/lon/meters/city (meters=-1 without a step-1 fix)
+@property NSTimeInterval voiceCandidatesExpire;
 @property CLLocationCoordinate2D voiceFix; // Fresh CLLocationManager fix from voice step 1; used as the explicit route origin so background planning never waits on the SDK's own (paused) location engine.
 #if TIO_AMAP_ENABLED
 @property AMapSearchAPI *voiceSearch;
@@ -167,6 +169,9 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 #endif
     [self refresh];}
 - (void)tick{
+    // Candidate dialog timeout: never leave the user stranded -- default to the
+    // nearest candidate and keep navigating.
+    if(self.voiceCandidates.count&&NSProcessInfo.processInfo.systemUptime>self.voiceCandidatesExpire){TIOVoiceNavTrace(@"候选30秒未选择：默认最近的，继续导航");[self voicePickCandidate:self.voiceCandidates[0] announced:@"（超时默认最近）"];}
 #if TIO_DISPLAY_PHONE
     if(self.crossPixels&&NSProcessInfo.processInfo.systemUptime-self.crossReceived>12){self.crossPixels=nil;if([self.display[@"phase"] isEqual:@"navigating"])TDPPhoneNavigationOffer([self displayHUDFrame]);}
     TDPPhoneNavigationPump();[self refreshDisplayHUD];
@@ -231,6 +236,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 - (void)enableGlasses{if([self subtitleBlocksOtherDisplay])return;UIAlertController *a=[UIAlertController alertControllerWithTitle:@"新增／更新专用导航卡？" message:@"只修改本扩展拥有的导航卡，不覆盖天气与待办。整卡连续更新仍需镜片验收。请先用模拟导航测试。" preferredStyle:UIAlertControllerStyleAlert];[a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[a addAction:[UIAlertAction actionWithTitle:@"启用" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){if([self subtitleBlocksOtherDisplay])return;[self.teleHUD stop:@"切换到仪表盘导航卡"];TIONavEnableDisplay(YES);TIONavOfferDisplay(self.display);TIONavPump();[self refresh];}]];[self presentViewController:a animated:YES completion:nil];}
 - (void)halt{
     self.voiceLifelogWasOn=NO;self.voiceSession=NO;self.voiceLocating=NO;
+    self.voiceCandidates=nil; // a stopped pipeline never answers a pending choice
     self.navigationStarted=NO;self.autoNativeHUD=NO;self.backgroundLocationEnabled=NO;[self endNavigationBackgroundTask];
 #if TIO_DISPLAY_PHONE
     TDPPhoneNavigationStop();self.hudIconPixels=nil;self.hudIconType=0;self.crossPixels=nil;
@@ -290,6 +296,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,15*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(g==self.generation&&self.voiceLocating){self.voiceLocating=NO;[self fail:@"15秒未获得可靠位置：到开阔处重试，或用页面按钮手动规划"];TIOVoiceNavTrace(@"中止：15秒未定位成功");}});
 #else
     [self alert:@"语音导航不可用" message:@"此构建未链接高德 SDK。"];
+    TIOVoiceCloseAssistantSession(); // release any hijacked chat turn: no fail path runs without AMap
 #endif
 }
 #if TIO_AMAP_ENABLED
@@ -314,19 +321,57 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     dispatch_async(dispatch_get_main_queue(),^{
         if(request!=self.voiceRequest||!self.voiceSession)return;self.voiceRequest=nil;
         NSArray<AMapPOI *> *pois=response.pois;
-        AMapPOI *first=nil;for(AMapPOI *poi in pois)if(poi.location){first=poi;break;}
-        // No local-TTS candidate dialog: announcements through the phone's audio
-        // route are useless in the pocket-and-glasses scenario (user decision).
-        // Auto-pick the nearest (first local) hit; the hijacked assistant reply
-        // ("好，正在搜索附近的「X」。") is the voice feedback that works.
-        if(!first&&self.voiceSearchAround){TIOVoiceNavTrace(@"本地无结果，改为全国搜索");[self voiceSearchKeywordsNationwide];return;}
-        if(!first){[self fail:[NSString stringWithFormat:@"语音没找到“%@”：请说更完整的名称，或手动搜索",self.voiceQuery?:@""] ];TIOVoiceNavTrace(@"中止：搜索无结果");return;}
-        TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：选定「%@」（%@，搜索第一位），第3步算路",first.name?:@"",first.city.length?first.city:@"未知城市"]);
-        [self selectPlace:@{@"name":first.name?:@"目的地",@"address":first.city?:@"",@"lat":@(first.location.latitude),@"lon":@(first.location.longitude)}];
-        self.travelMode.selectedSegmentIndex=1; // Position is already confirmed; plan now, auto-begin follows.
-        self.note=[NSString stringWithFormat:@"第2步：选定终点「%@」（搜索第一位）。第3步：规划实时路线…",first.name?:@""];
-        [self refresh];[self startWalking];
+        // Collect up to 3 located candidates with their distance from the step-1 fix.
+        NSMutableArray *cands=[NSMutableArray new];
+        for(AMapPOI *poi in pois){
+            if(!poi.location)continue;
+            double m=self.hasVoiceFix?hypot((poi.location.latitude-self.voiceFix.latitude)*111000,(poi.location.longitude-self.voiceFix.longitude)*111000*cos(self.voiceFix.latitude*M_PI/180)):-1;
+            [cands addObject:@{@"name":poi.name?:@"目的地",@"lat":@(poi.location.latitude),@"lon":@(poi.location.longitude),@"meters":@(m),@"city":poi.city?:@""}];
+            if(cands.count>=3)break;
+        }
+        if(!cands.count&&self.voiceSearchAround){TIOVoiceNavTrace(@"本地无结果，改为全国搜索");[self voiceSearchKeywordsNationwide];return;}
+        if(!cands.count){[self fail:[NSString stringWithFormat:@"语音没找到“%@”：请说更完整的名称，或手动搜索",self.voiceQuery?:@""] ];TIOVoiceNavTrace(@"中止：搜索无结果");return;}
+        // Multi-candidate dialog: stream the list into the hijacked assistant
+        // reply -- the glasses chat window is the only "chat box" that is always
+        // present in a headless voice turn -- then wait for "第几个" (30s, then
+        // the nearest). If the hijacked channel is unavailable (no owned turn),
+        // auto-pick the first candidate exactly as before: never strand the user.
+        if(cands.count>1){
+            self.voiceCandidates=[cands copy];self.voiceCandidatesExpire=NSProcessInfo.processInfo.systemUptime+30;
+            NSArray *nums=@[@"一",@"二",@"三"];
+            NSMutableString *lines=[NSMutableString new];
+            for(NSUInteger i=0;i<cands.count;i++){NSDictionary *c=cands[i];double m=[c[@"meters"] doubleValue];
+                NSString *dist=m<0?(c[@"city"].length?c[@"city"]:@"未知城市"):(m<1000?[NSString stringWithFormat:@"约%.0f米",m]:[NSString stringWithFormat:@"约%.1f公里",m/1000]);
+                [lines appendFormat:@"\n%@. %@（%@）",nums[i],c[@"name"],dist];}
+            [lines appendString:@"\n说「第几个」选择，30 秒默认第一个。"];
+            if(!TIOAssistantEmit(lines,NO)){
+                self.voiceCandidates=nil;TIOVoiceNavTrace(@"聊天框接管不可用：自动选最近候选（兜底）");
+                [self voicePickCandidate:cands[0] announced:@"（聊天框不可用，自动选最近）"];return;
+            }
+            NSMutableString *names=[NSMutableString new];for(NSUInteger i=0;i<cands.count;i++){[names appendString:cands[i][@"name"]?:@""];if(i+1<cands.count)[names appendString:@" / "];}
+            self.note=[NSString stringWithFormat:@"第2步：找到%lu个候选（%@），等待语音选择（说 第几个，30秒后默认第一个）",(unsigned long)cands.count,names];
+            TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：%lu个候选（%@）已流式上镜，等待选择",(unsigned long)cands.count,names]);
+            [self refresh];return;
+        }
+        [self voicePickCandidate:cands[0] announced:@""];
     });
+}
+// Chosen (or auto-picked) candidate → destination → realtime planning.
+- (void)voicePickCandidate:(NSDictionary *)candidate announced:(NSString *)suffix{
+    self.voiceCandidates=nil;
+    TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：选定「%@」%@（%@），第3步算路",candidate[@"name"]?:@"",suffix,candidate[@"city"].length?candidate[@"city"]:@"未知城市"]);
+    TIOAssistantEmit([NSString stringWithFormat:@"\n好，导航去%@。",candidate[@"name"]?:@"目的地"],YES); // closes the owned turn; harmless when the hijack is gone
+    [self selectPlace:@{@"name":candidate[@"name"]?:@"目的地",@"address":candidate[@"city"]?:@"",@"lat":candidate[@"lat"],@"lon":candidate[@"lon"]}];
+    self.travelMode.selectedSegmentIndex=1; // Position is already confirmed; plan now, auto-begin follows.
+    self.note=[NSString stringWithFormat:@"第2步：选定终点「%@」。第3步：规划实时路线…",candidate[@"name"]?:@""];
+    [self refresh];[self startWalking];
+}
+// 0-based index from the ASR/NLP choice handler; validates expiry.
+- (BOOL)voiceChoose:(NSUInteger)index{
+    if(index>=self.voiceCandidates.count)return NO;
+    if(NSProcessInfo.processInfo.systemUptime>self.voiceCandidatesExpire){TIOVoiceNavTrace(@"选择超时，已默认最近候选");return NO;}
+    [self voicePickCandidate:self.voiceCandidates[index] announced:@"（语音选择）"];
+    return YES;
 }
 - (void)AMapSearchRequest:(id)request didFailWithError:(NSError *)error{
     dispatch_async(dispatch_get_main_queue(),^{if(request!=self.voiceRequest||!self.voiceSession)return;self.voiceRequest=nil;[self fail:[NSString stringWithFormat:@"语音搜索失败（code=%ld）：检查网络与Key搜索权限",(long)error.code] ];TIOVoiceNavTrace([NSString stringWithFormat:@"中止：搜索失败 code=%ld",(long)error.code]);});
@@ -399,7 +444,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     if(self.voiceSession)TIOVoiceNavTrace(voiceOrigin?@"第3步：算路已提交（以第1步定位为起点，后台安全）":@"第3步：算路请求已提交，等待结果");
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,45*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(self.generation==generation&&self.planning){[self fail:@"45 秒未收到算路结果；已停止，本次结果未知"];if(self.voiceSession)TIOVoiceNavTrace(@"中止：45秒未收到算路结果（引擎内部定位可能被暂停）");}});
 }
-- (void)fail:(NSString *)message{[self halt];self.note=message;[self setFrame:TIONavDisplay(@"error",0,@"",-1,-1,-1,self.simulated)];if(self.voiceSession)TIOVoiceCloseAssistantSession();} // voice pipeline over: free the lens
+- (void)fail:(NSString *)message{BOOL wasVoice=self.voiceSession;[self halt];self.note=message;[self setFrame:TIONavDisplay(@"error",0,@"",-1,-1,-1,self.simulated)];if(wasVoice){TIOAssistantEmit([NSString stringWithFormat:@"\n%@",message],YES);TIOVoiceCloseAssistantSession();}} // voice pipeline over: free the lens (emit BEFORE close, which cancels the owned turn)
 - (void)navigationRouteSuccess:(id<TIONavigationManager>)manager{dispatch_async(dispatch_get_main_queue(),^{if(manager!=self.manager||!self.active)return;BOOL first=self.planning;self.planning=NO;self.rerouting=NO;self.lastInfo=NSProcessInfo.processInfo.systemUptime;self.staleShown=NO;[self drawRoute:manager.naviRoute];if(first){self.routeReady=YES;self.note=@"路线已准备，核对地图后点击开始。尚未向眼镜发送导航。";self.routeSummary.text=[NSString stringWithFormat:@"%.1f 公里   ·   约 %ld 分钟",manager.naviRoute.routeLength/1000.0,(long)MAX(1,(manager.naviRoute.routeTime+59)/60)];self.display=TIONavDisplay(@"ready",0,@"",-1,manager.naviRoute.routeLength,manager.naviRoute.routeTime,self.simulated);
         if(self.voiceSession){ // Voice flow: no human at the screen; start as soon as the route exists.
             TIOVoiceNavTrace(@"第3步完成：算路成功，1.2秒后自动开始导航");
@@ -485,6 +530,15 @@ static TIONavigationPanel *SharedNavPanel=nil;
 // Every step appends to TIOVoiceNavTrace (shown in 适配与回调) so a silent
 // off-screen failure is still diagnosable.
 void TIOVoiceNavStop(void){[SharedNavPanel stopUser];}
+// Pending candidate dialog state, consumed by Addon.m's ASR/NLP choice parser.
+NSUInteger TIOVoiceNavPendingChoices(void){return SharedNavPanel.voiceCandidates.count;}
+BOOL TIOVoiceNavChoose(NSUInteger oneBasedIndex){
+    if(!oneBasedIndex)return NO;
+    __block BOOL ok=NO;
+    void (^work)(void)=^{ok=[SharedNavPanel voiceChoose:oneBasedIndex-1];};
+    if(NSThread.isMainThread)work();else dispatch_sync(dispatch_get_main_queue(),work);
+    return ok;
+}
 // Pure matcher shared by the NLP trigger and the reply hijack: normalize the
 // utterance (trim, strip trailing punctuation/speech prefixes) and return the
 // destination (with trailing travel-mode words removed), or nil if no trigger.
@@ -513,20 +567,24 @@ BOOL TIOVoiceNavMaybeStart(NSString *text){
     if(![text isKindOfClass:NSString.class])return NO;
     if([NSUserDefaults.standardUserDefaults boolForKey:@"voiceNavDisabled"]){TIOVoiceNavTrace(@"忽略：语音导航开关已关闭（导航页-更多里可重新开启）");return NO;}
     NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
-    if(now-LastVoiceNavAt<8)return NO; // Same turn's NLP deltas repeat the query; silently throttled.
     NSString *destination=TIOVoiceNavMatchDestination(text);
     if(!destination){ // Ordinary chat turns miss too; log each distinct text once.
         static NSString *lastMiss=@"";
         if(![text isEqual:lastMiss]){lastMiss=[text copy];TIOVoiceNavTrace([NSString stringWithFormat:@"未命中导航关键词：%@",text]);}
         return NO;
     }
+    // Throttle ONLY repeats of the same destination (one turn's NLP deltas echo
+    // the same query). A different destination is a fresh user intent: restart
+    // even inside the window -- stopUser below clears any pending candidate list.
+    static NSString *lastDestination=nil;
+    if(now-LastVoiceNavAt<8&&lastDestination&&[destination isEqualToString:lastDestination])return NO;
     // Travel mode: default WALK unless the utterance names ride/drive explicitly
     // (scanned on the raw text; trailing mode words were stripped by the matcher).
     NSInteger voiceMode=TIONavigationWalk;
     NSArray *rides=@[@"骑行",@"骑车",@"自行车",@"单车",@"电动车"],*drives=@[@"驾车",@"开车",@"自驾",@"打车"];
     for(NSString *w in rides)if([text rangeOfString:w].location!=NSNotFound){voiceMode=TIONavigationRide;break;}
     if(voiceMode==TIONavigationWalk)for(NSString *w in drives)if([text rangeOfString:w].location!=NSNotFound){voiceMode=TIONavigationDrive;break;}
-    LastVoiceNavAt=now;
+    LastVoiceNavAt=now;lastDestination=[destination copy];
     TIOVoiceNavTraceReset();
     TIOVoiceNavTrace([NSString stringWithFormat:@"语音命中，终点「%@」，%@（%@）",destination,TIONavigationModeTitle(voiceMode),voiceMode==TIONavigationWalk?@"默认":@"语音指定"]);
     dispatch_async(dispatch_get_main_queue(),^{
