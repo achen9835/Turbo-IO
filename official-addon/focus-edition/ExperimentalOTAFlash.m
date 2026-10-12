@@ -135,14 +135,14 @@ void TIOOTAFlashDisableAutoUpdateIfRequested(void){
     else if([v isKindOfClass:NSNumber.class]&&CFGetTypeID((__bridge CFTypeRef)v)==CFBooleanGetTypeID())[p setBool:NO forKey:keys[0]];
     [p synchronize];
 }
-// Optional second layer of update-check silencing (see TIOOTAUpdateCheckBlockCall):
-// force the official "firmware auto-update" switch off so even a version cached
-// before the URL patch cannot trigger a background download or prompt. OFF by
-// default -- the build-time URL patch already makes every check fail silently;
-// while opted in, re-enabling the switch in the official settings is undone on
-// the next launch. Do not combine with the experimental flash flow.
+// Second layer of the update-check silence (see TIOOTAUpdateCheckBlockCall):
+// force the official "firmware auto-update" switch off, so a version cached
+// before the block existed cannot trigger a background download or prompt.
+// Default ON (TIOUpdateCheckSilence=NO restores official behavior and stops
+// touching the switch). The experimental flash flow REQUIRES this switch off,
+// so forcing it is compatible with flashing.
 void TIOOTAAutoUpdateDisableForSilence(void){
-    id toggle=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];if(![toggle boolValue])return;
+    id toggle=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];if(toggle&&![toggle boolValue])return;
     NSUserDefaults *p=NSUserDefaults.standardUserDefaults;NSMutableArray *keys=[NSMutableArray new];
     for(NSString *key in p.dictionaryRepresentation)if([key hasSuffix:@"_ota_firmware_auto_update"])[keys addObject:key];
     if(keys.count!=1)return;id v=[p objectForKey:keys[0]];

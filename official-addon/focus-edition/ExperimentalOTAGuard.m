@@ -1,4 +1,5 @@
 #import "ExperimentalOTAGuard.h"
+#import "ExperimentalOTAFlash.h"
 #include <TargetConditionals.h>
 static BOOL HookReady;
 static NSUInteger Blocked,VersionQueries,SilencedVersionReads,BizNineCalls;
@@ -49,14 +50,15 @@ BOOL TIOOTABlockPreparationCall(id call){
     return blocked;
 }
 NSDictionary *TIOOTAGuardStatus(void){@synchronized(NSProcessInfo.processInfo){NSMutableString *types=[NSMutableString new];for(unsigned t=0;t<64;t++)if(BizNineTypes&(1ull<<t))[types appendFormat:@"%@%u",types.length?@",":@"",t];return @{@"preparationBuild":@(TIOOTAPreparationBuild()),@"transportHookReady":@(HookReady),@"blockedCalls":@(Blocked),@"versionReadCalls":@(VersionQueries),@"silencedVersionReads":@(SilencedVersionReads),@"businessNineCalls":@(BizNineCalls),@"businessNineTypes":types.length?types:@"-",@"releaseSupported":@NO};}}
-// Optional second layer: swallow the business-9 empty version read (type=1,
-// message=null) so the app never learns the glasses OS version. The primary
-// mechanism is the build-time URL patch in build-local.sh (no prompt, version
-// display intact); this block stays available for unpatched builds. OFF by
-// default because it also blanks the firmware version shown in the official
-// app, and it must stay off while using the experimental flash flow (which
-// needs the same read). Opt in: NSUserDefaults TIOUpdateCheckSilence=YES.
-// All business-9 frames are counted (type bitmask) for diagnostics regardless.
+// Silence the official firmware update prompt at its local root: after pairing,
+// the app learns the glasses OS version through a business-9 empty version read
+// (type=1, message=null) and compares it locally -- the gray/upgrade HTTP URLs
+// are already loopback-patched at packaging time, yet the prompt still fired,
+// so the read is the driver. Swallowing it leaves nothing to compare. Default
+// ON (TIOUpdateCheckSilence=NO restores official behavior); an armed/started
+// experimental flash session (stage>0) is exempt -- that flow needs the read.
+// Side effect while ON: the firmware version field in the official app stays
+// blank. All business-9 frames are counted (type bitmask) for diagnostics.
 static uint64_t FrameType(NSData *payload){
     if(![payload isKindOfClass:NSData.class]||!payload.length||payload.length>256)return 0;
     const uint8_t *b=payload.bytes;NSUInteger at=0;
@@ -77,7 +79,8 @@ BOOL TIOOTAUpdateCheckBlockCall(id call){
     id data=args[@"payload"];if(![data isKindOfClass:NSData.class]){@try{data=[data valueForKey:@"data"];}@catch(NSException *e){data=nil;}}
     uint64_t type=FrameType(data);
     @synchronized(NSProcessInfo.processInfo){BizNineCalls++;if(type&&type<64)BizNineTypes|=(1ull<<type);}
-    id toggle=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];if(![toggle boolValue])return NO;
+    id toggle=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];if(toggle&&![toggle boolValue])return NO;
+    if([[TIOOTAFlashStatus() objectForKey:@"stage"] unsignedIntegerValue]>0)return NO; // 试刷授权/进行中：放行版本读取
     if(!TIOOTAIsEmptyVersionQuery(data))return NO;
     @synchronized(NSProcessInfo.processInfo){SilencedVersionReads++;}
     return YES;
