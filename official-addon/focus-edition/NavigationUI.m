@@ -426,28 +426,18 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
         TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：选定「%@」%@（%@），方式=%@（触发语已指定），第3步算路",candidate[@"name"]?:@"",suffix,city.length?city:@"未知城市",TIONavigationModeTitle(self.selectedTransport)]);
         self.note=[NSString stringWithFormat:@"第2步：选定终点「%@」。第3步：规划实时路线…",candidate[@"name"]?:@""];
         [self refresh];[self startWalking];
-        // Emit outside the ASR/NLP callback delivery: a synchronous OriginalNlp
-        // from inside onAsrResult/onNlpResult is silently dropped by the Flutter
-        // listener (the hijack's first message uses the same 0.3s deferral).
-        NSString *ack=[NSString stringWithFormat:@"\n好，导航去%@。",candidate[@"name"]?:@"目的地"];
-        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.3*NSEC_PER_SEC)),dispatch_get_main_queue(),^{TIOAssistantEmit(ack,YES);}); // closes the owned turn; harmless when the hijack is gone
+        // Post-utterance lines render through the choice utterance's own official
+        // response (see TIOAssistantInjectNext); the old-turn channel is void here.
+        TIOAssistantInjectNext([NSString stringWithFormat:@"好，导航去%@。",candidate[@"name"]?:@"目的地"],YES);
         return;
     }
     double m=[candidate[@"meters"] doubleValue];
     self.voiceModeFallback=(m>=0&&m<=3000)?TIONavigationWalk:TIONavigationDrive;
     self.voiceAwaitingMode=YES;self.voiceModeExpire=NSProcessInfo.processInfo.systemUptime+15;
-    NSString *ask=[NSString stringWithFormat:@"\n好，选定「%@」。怎么去？说「步行」「骑行」或「驾车」，15秒默认%@。",candidate[@"name"]?:@"目的地",TIONavigationModeTitle(self.voiceModeFallback)];
     TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：选定「%@」%@（%@），追问出行方式（15秒默认%@）",candidate[@"name"]?:@"",suffix,city.length?city:@"未知城市",TIONavigationModeTitle(self.voiceModeFallback)]);
+    TIOAssistantInjectNext([NSString stringWithFormat:@"好，选定「%@」。怎么去？说「步行」「骑行」或「驾车」，15秒默认%@。",candidate[@"name"]?:@"目的地",TIONavigationModeTitle(self.voiceModeFallback)],NO);
     self.note=[NSString stringWithFormat:@"第2步：选定终点「%@」。等待选择出行方式（步行/骑行/驾车，15秒默认%@）",candidate[@"name"]?:@"",TIONavigationModeTitle(self.voiceModeFallback)];
     [self refresh];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.3*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
-        if(!self.voiceAwaitingMode)return; // answered or halted inside the deferral window
-        if(!TIOAssistantEmit(ask,NO)){ // chat gone: never strand the user -- apply the default now
-            self.voiceAwaitingMode=NO;TIOVoiceNavTrace(@"聊天框接管不可用：按默认方式直接算路（兜底）");
-            [self voicePickMode:self.voiceModeFallback announced:@"（聊天框不可用，自动默认）"];
-        }
-        else TIOVoiceNavTrace(@"追问已发入聊天框（若眼镜端无文字，说明镜片聊天页已先于回答关闭）");
-    });
 }
 // Chosen (or defaulted) travel mode → realtime planning → auto-begin.
 - (void)voicePickMode:(NSInteger)mode announced:(NSString *)suffix{
@@ -458,8 +448,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     if(mode==TIONavigationRide)TIOVoiceNavTrace(@"提示：眼镜原生导航不支持骑行，以手机指引为准");
     self.note=[NSString stringWithFormat:@"第2步完成：%@去「%@」。第3步：规划实时路线…",TIONavigationModeTitle(mode),self.destinationName?:@""];
     [self refresh];[self startWalking];
-    NSString *closing=[NSString stringWithFormat:@"\n好，%@去%@，开始规划路线。",TIONavigationModeTitle(mode),self.destinationName?:@"目的地"];
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.3*NSEC_PER_SEC)),dispatch_get_main_queue(),^{TIOAssistantEmit(closing,YES);}); // closes the owned turn; harmless when the hijack is gone
+    TIOAssistantInjectNext([NSString stringWithFormat:@"好，%@去%@，开始规划路线。",TIONavigationModeTitle(mode),self.destinationName?:@"目的地"],YES);
 }
 // 0-based index from the ASR/NLP choice handler; validates expiry.
 - (BOOL)voiceChoose:(NSUInteger)index{
@@ -473,7 +462,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 - (void)voiceRejectCandidates{
     self.voiceCandidates=nil;
     TIOVoiceNavTrace(@"用户排除全部候选：等待重新说「导航去+地名」");
-    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.3*NSEC_PER_SEC)),dispatch_get_main_queue(),^{TIOAssistantEmit(@"\n好，这些都不对。请重新说「导航去+地名」。",YES);}); // done:YES closes the hijacked turn cleanly; deferred out of the callback delivery
+    TIOAssistantInjectNext(@"好，这些都不对。请重新说「导航去+地名」。",YES); // done:YES closes the turn cleanly
 }
 #include "NavigationBackground.inc"
 - (void)startFixture{[self halt];self.active=YES;self.fixture=YES;self.simulated=YES;self.fixtureStep=0;self.note=@"离线夹具：模拟转向顺序，不使用 Key、网络或定位";[self setFrame:TIONavDisplay(@"navigating",9,@"模拟测试道路",160,850,720,YES)];}

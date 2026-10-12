@@ -177,6 +177,51 @@ BOOL TIOAssistantEmit(NSString *piece,BOOL done){
     if(NSThread.isMainThread)work();else dispatch_sync(dispatch_get_main_queue(),work);
     return ok;
 }
+// Post-utterance rendering channel: any user utterance makes the glasses chat
+// open a NEW assistant bubble ("..."), and emits keyed to the hijacked OLD
+// turn's template render nowhere (seen on device: the mode question never
+// appeared, only blinking dots). So after a choice/mode answer we park the
+// next dialog line here; that utterance's own official NLP response then gets
+// its answer rewritten to our text and forwarded, rendering in the visible
+// bubble. 2s without an NLP response → fall back to the old-turn channel.
+static NSString *PendingInjectText;
+static BOOL PendingInjectDone;
+static NSUInteger PendingInjectGen;
+void TIOAssistantInjectNext(NSString *text,BOOL done){
+    void (^work)(void)=^{
+        PendingInjectText=[text copy];PendingInjectDone=done;NSUInteger gen=++PendingInjectGen;
+        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{
+            if(PendingInjectText&&gen==PendingInjectGen){PendingInjectText=nil;TIOAssistantEmit(text,done);TIOVoiceNavTrace(@"注入通道2秒无官方回包：回退旧聊天通道");}
+        });
+    };
+    if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
+}
+// Identity of the turn whose response we rewrote: leftover official deltas of
+// that same turn are swallowed, and its completion too (ConsumePendingInject
+// controls the ending). Keyed by session+dialog+round so a follow-up round in
+// the same session is never mistaken for leftovers. Reset on each audio start.
+static NSString *InjectedTurnKey;
+static BOOL SwallowOfficialComplete;
+static id CopyResponse(id source,NSString *answer,BOOL final);
+static NSString *TIOTurnKey(id value){
+    NSString *sid=String(Get(value,@"sessionId"));
+    if(!sid.length)return @"";
+    return [NSString stringWithFormat:@"%@|%@|%@",sid,String(Get(value,@"dialogId")),String(Get(value,@"round"))];
+}
+// Rewrite the CURRENT official NLP response with the parked dialog line and
+// forward it -- the visible new bubble shows our text instead of "...". YES =
+// a parked line was consumed (the official response is replaced; caller must
+// not forward the original).
+static BOOL ConsumePendingInject(id listener,SEL cmd,id value){
+    if(!PendingInjectText)return NO;
+    NSString *text=PendingInjectText;BOOL done=PendingInjectDone;PendingInjectText=nil;PendingInjectGen++;
+    id rewritten=CopyResponse(value,text,done);
+    if(!rewritten){TIOAssistantEmit(text,done);return YES;}
+    InjectedTurnKey=[TIOTurnKey(value) copy];SwallowOfficialComplete=YES;
+    OriginalNlp(listener,cmd,rewritten);
+    if(done)OriginalComplete(listener,NSSelectorFromString(@"onResponseComplete"));
+    return YES;
+}
 
 static id CopyResponse(id source,NSString *answer,BOOL final) {
     // Only use the observed wrapper class. Do not call guessed Swift addresses.
@@ -401,33 +446,25 @@ static NSString *TIOTriggerUtterance(NSString *text){
 }
 @end
 
-static NSInteger TIOParseVoiceChoice(NSString *text,NSUInteger count); // defined with the NLP choice handler below
 static void AsrHook(id self,SEL cmd,id text,BOOL final,id sid) {
     NSString *copy=String(text),*session=String(sid);
     void (^work)(void)=^{
         if(final&&[Prefs boolForKey:@"voiceExitCommands"]&&TIOIsVoiceExitCommand(copy)&&[Controller exitVoice])return;
         if(Controller.voiceExited)return;
-        // Candidate-dialog answers ("第二个") are consumed at the ASR layer: the
-        // instant the utterance is recognized -- before any NLP round trip, and
-        // WITHOUT forwarding it, so the official assistant does not start its
-        // own reply on top of our navigation dialog.
-        if(final&&TIOVoiceNavPendingChoices()){
-            NSInteger pick=TIOParseVoiceChoice(copy,TIOVoiceNavPendingChoices());
-            if(pick>0){TIOVoiceNavTrace([NSString stringWithFormat:@"语音选择（ASR直取）：第%ld个",(long)pick]);TIOVoiceNavChoose((NSUInteger)pick);return;}
-            if(pick<0){TIOVoiceNavTrace(@"语音排除全部候选（ASR直取）");TIOVoiceNavReject();return;}
-        }
-        // Travel-mode follow-up answers ("骑车") are consumed the same way,
-        // before any NLP round trip. A fresh "导航去Y" is NOT a mode answer even
-        // when it contains a mode word ("导航去步行街"): let it through so the
-        // NLP layer restarts the pipeline with the new destination.
-        if(final&&TIOVoiceNavPendingMode()&&!TIOVoiceNavMatchDestination(copy).length&&TIOVoiceNavChooseMode(copy)){TIOVoiceNavTrace([NSString stringWithFormat:@"出行方式（ASR直取）：%@",copy]);return;}
+        // Choice and travel-mode answers are NOT swallowed at this layer: a
+        // swallowed utterance never produces an official NLP response, and
+        // without one there is no live bubble to render the follow-up dialog
+        // into (seen on device: the mode question stayed invisible while the
+        // choice itself worked). Forward everything; NlpHook consumes the
+        // answer and rewrites THIS turn's response before anything official
+        // reaches the lens.
         OriginalAsr(self,cmd,text,final,sid);
         [Controller acceptAsr:copy finished:final session:session listener:self];
     };
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 static void AudioStartHook(id self,SEL cmd) {
-    void (^work)(void)=^{TWReaderPauseForVoice();TMMusicPauseForVoice();Controller.voiceExited=NO;[Controller.taskGate beginTurn];OriginalAudioStart(self,cmd);};
+    void (^work)(void)=^{TWReaderPauseForVoice();TMMusicPauseForVoice();Controller.voiceExited=NO;[Controller.taskGate beginTurn];InjectedTurnKey=nil;SwallowOfficialComplete=NO;OriginalAudioStart(self,cmd);};
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 // Parse a spoken candidate choice: 第一个/第2个/去第三个/就要第二个/最近/短句裸数字.
@@ -457,33 +494,38 @@ static void NlpHook(id self,SEL cmd,id value) {
         if(Controller.voiceExited)return;
         if(TIOTodoIsToolDispatching()){OriginalNlp(self,cmd,value);return;}
         TIOTodoObserveNlp(self,value);
+        // Leftover official deltas of a turn we already rewrote are dropped --
+        // the bubble already shows our dialog line.
+        if(InjectedTurnKey.length&&[InjectedTurnKey isEqualToString:TIOTurnKey(value)])return;
+        // Voice navigation intercepts BEFORE anything official is forwarded:
+        // choice/mode answers are consumed and the SAME packet is rewritten with
+        // the dialog line the consume parks (this utterance's own bubble is the
+        // one that still renders; the old hijacked turn renders nowhere once the
+        // user has spoken again -- seen on device). A fresh "导航去Y" is NEVER
+        // treated as an answer: the trigger keyword falls through and restarts.
+        NSString *voiceQuery=Get(value,@"query");
+        if([voiceQuery isKindOfClass:NSString.class]&&voiceQuery.length&&!TIOVoiceNavMatchDestination(voiceQuery).length){
+            NSUInteger pending=TIOVoiceNavPendingChoices();
+            if(pending){
+                NSInteger pick=TIOParseVoiceChoice(voiceQuery,pending);
+                if(pick>0){TIOVoiceNavTrace([NSString stringWithFormat:@"语音选择（NLP）：第%ld个（共%lu个候选）",(long)pick,(unsigned long)pending]);TIOVoiceNavChoose((NSUInteger)pick);if(ConsumePendingInject(self,cmd,value))return;}
+                else if(pick<0){TIOVoiceNavTrace(@"语音排除全部候选（NLP）");TIOVoiceNavReject();if(ConsumePendingInject(self,cmd,value))return;}
+            }
+            else if(TIOVoiceNavPendingMode()&&TIOVoiceNavChooseMode(voiceQuery)){TIOVoiceNavTrace([NSString stringWithFormat:@"出行方式（NLP）：%@",voiceQuery]);if(ConsumePendingInject(self,cmd,value))return;}
+            if(ConsumePendingInject(self,cmd,value)){TIOVoiceNavTrace([NSString stringWithFormat:@"对话行已改写本轮官方回包上镜（q=%@）",voiceQuery]);return;}
+        }
         if(![Controller receiveNlp:value listener:self])
             OriginalNlp(self,cmd,value);
-        // Voice navigation at the NLP layer, two layers: (1) a pending candidate
-        // dialog consumes "去第几个" style answers (also handled at the ASR layer
-        // for immediacy) -- a fresh "导航去Y" is NEVER treated as a choice, it
-        // re-triggers below; (2) otherwise the trigger keywords ("导航去X") run
-        // the full pipeline. The nav-keyword guard also keeps this turn's own
-        // late official deltas (query="导航去第三医院") from mis-selecting.
-        NSString *voiceQuery=Get(value,@"query");
+        // Trigger keyword handling after forwarding decisions: a fresh "导航去Y"
+        // (re)starts the pipeline even while candidates or the mode question
+        // pend. The once-per-dialog trace keeps this turn's own late official
+        // deltas from spamming the log.
         if([voiceQuery isKindOfClass:NSString.class]){
             static NSUInteger lastPending=UINT_MAX;
             NSUInteger pending=TIOVoiceNavPendingChoices();
             if(pending){
-                if(TIOVoiceNavMatchDestination(voiceQuery).length){TIOVoiceNavMaybeStart(voiceQuery);return;}
-                NSInteger pick=TIOParseVoiceChoice(voiceQuery,pending);
-                if(pick>0){TIOVoiceNavTrace([NSString stringWithFormat:@"语音选择（NLP）：第%ld个（共%lu个候选）",(long)pick,(unsigned long)pending]);TIOVoiceNavChoose((NSUInteger)pick);lastPending=pending;return;}
-                if(pick<0){TIOVoiceNavTrace(@"语音排除全部候选（NLP）");TIOVoiceNavReject();lastPending=UINT_MAX;return;}
-                if(lastPending!=pending){TIOVoiceNavTrace(@"候选等待中：说 第几个（本轮官方回复的迟到回包也会流经这里，属正常）");lastPending=pending;} // log once per dialog, not per reply delta
-                // Fall through: the user may have switched to a fresh "导航去Y".
+                if(lastPending!=pending){TIOVoiceNavTrace(@"候选等待中：说 第几个（本轮官方回复的迟到回包也会流经这里，属正常）");lastPending=pending;}
             }else lastPending=UINT_MAX;
-            // Travel-mode follow-up ("怎么去？"): same consumption as choices.
-            // The nav-keyword guard keeps a fresh "导航去Y" (or this turn's late
-            // official deltas) from being mis-read as a mode answer.
-            if(TIOVoiceNavPendingMode()){
-                if(TIOVoiceNavMatchDestination(voiceQuery).length){TIOVoiceNavMaybeStart(voiceQuery);return;}
-                if(TIOVoiceNavChooseMode(voiceQuery)){TIOVoiceNavTrace([NSString stringWithFormat:@"出行方式（NLP）：%@",voiceQuery]);return;}
-            }
             TIOVoiceNavMaybeStart(voiceQuery);
         }
     };
@@ -496,7 +538,7 @@ static void CompleteHook(id self,SEL cmd) {
     // done:YES emit calls OriginalComplete explicitly. Mic behavior matches
     // custom-mode barge-in: the session stays open while the reply is
     // incomplete, which is exactly what the candidate dialog needs.
-    void (^work)(void)=^{CompletionEvents++;if(Controller.voiceExited)return;if(!(Controller.listener==self&&Controller.ownsTurn))OriginalComplete(self,cmd);};
+    void (^work)(void)=^{CompletionEvents++;if(Controller.voiceExited)return;if(SwallowOfficialComplete){SwallowOfficialComplete=NO;TIOVoiceNavTrace(@"改写轮次的官方完成回调已吞掉（收尾由注入通道控制）");return;}if(!(Controller.listener==self&&Controller.ownsTurn))OriginalComplete(self,cmd);};
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 static void AlwaysOnHook(id self,SEL cmd,id value) {

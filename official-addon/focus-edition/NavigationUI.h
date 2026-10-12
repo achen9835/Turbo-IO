@@ -25,3 +25,7 @@ NSString *TIOVoiceNavMatchDestination(NSString *text); // pure matcher: destinat
 // Assistant-session lifecycle helpers (implemented in Addon.m).
 void TIOVoiceCloseAssistantSession(void); // official stop entry; frees the lens
 BOOL TIOAssistantEmit(NSString *piece,BOOL done); // append to the hijacked reply; NO = no owned turn (fall back)
+// Post-utterance channel: park the next dialog line; the choice utterance's own
+// official NLP response is rewritten with it and forwarded (old-turn emits render
+// nowhere once the user has spoken again). 2s without a response → old channel.
+void TIOAssistantInjectNext(NSString *text,BOOL done);

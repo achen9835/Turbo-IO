@@ -81,7 +81,7 @@ BOOL TIOOTAUpdateCheckBlockCall(id call){
     @synchronized(NSProcessInfo.processInfo){BizNineCalls++;if(type&&type<64)BizNineTypes|=(1ull<<type);}
     id toggle=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];if(toggle&&![toggle boolValue])return NO;
     if([[TIOOTAFlashStatus() objectForKey:@"stage"] unsignedIntegerValue]>0)return NO; // 试刷授权/进行中：放行版本读取
-    if(!TIOOTAIsEmptyVersionQuery(data))return NO;
+    if(type!=1)return NO; // 帧类型表：1=OS 版本读取；电量/空间/空闲查询等照常放行
     @synchronized(NSProcessInfo.processInfo){SilencedVersionReads++;}
     return YES;
 }
