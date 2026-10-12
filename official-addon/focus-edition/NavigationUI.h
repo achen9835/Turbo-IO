@@ -14,6 +14,7 @@ NSString *TIOVoiceNavTraceStatus(void);
 // "聊天框") and the panel waits for "第几个" (30s, then defaults to the first).
 NSUInteger TIOVoiceNavPendingChoices(void); // 0 = nothing awaiting a choice
 BOOL TIOVoiceNavChoose(NSUInteger oneBasedIndex); // YES = consumed a live pending choice
+void TIOVoiceNavReject(void); // 用户说「都不对」：清空候选并提示重说（不启动导航）
 NSString *TIOVoiceNavMatchDestination(NSString *text); // pure matcher: destination after normalization, nil = no nav trigger
 // Assistant-session lifecycle helpers (implemented in Addon.m).
 void TIOVoiceCloseAssistantSession(void); // official stop entry; frees the lens

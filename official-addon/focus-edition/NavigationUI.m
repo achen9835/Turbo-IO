@@ -82,6 +82,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 #if TIO_AMAP_ENABLED
 @property AMapSearchAPI *voiceSearch;
 @property AMapPOIKeywordsSearchRequest *voiceRequest;
+@property AMapInputTipsSearchRequest *voiceTipsRequest;
 #endif
 @property NSString *voiceQuery;
 @property UIBackgroundTaskIdentifier navigationBackgroundTask;
@@ -301,10 +302,13 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 }
 #if TIO_AMAP_ENABLED
 // Step 2 (after the position fix): search the spoken destination, LOCAL FIRST.
-// Tier 1 searches AROUND the step-1 fix (50km) so nearby POIs outrank same-name
-// ones in other cities; tier 2 ( nationwide keyword search) only runs when
-// nothing local matches -- which is exactly the "user explicitly named a
-// distant place" case, so no city-name parsing is needed.
+// Three tiers, each firing only when the previous one found nothing:
+//   1) strict POI search AROUND the step-1 fix (50km) -- nearby POIs outrank
+//      same-name ones in other cities;
+//   2) input tips with location bias -- server-side pinyin fuzzy matching that
+//      recovers ASR homophone errors (「金酒公寓」→「金九公寓」);
+//   3) nationwide keyword search -- the "user explicitly named a distant place"
+//      case, so no city-name parsing is needed.
 - (void)voiceSearchDestination{
     if(!self.voiceSession||!self.voiceQuery.length)return;
     if(!self.hasVoiceFix){[self voiceSearchKeywordsNationwide];return;}
@@ -317,45 +321,88 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     self.note=[NSString stringWithFormat:@"第2步：全国搜索目的地“%@”…",self.voiceQuery];TIOVoiceNavTrace([NSString stringWithFormat:@"第2步：全国搜索「%@」",self.voiceQuery]);[self refresh];
     [self.voiceSearch AMapPOIKeywordsSearch:r];
 }
+// Tier 2: input tips tolerate ASR homophones (server-side pinyin fuzzy). The
+// location bias keeps corrections local; cityLimit stays off so an explicitly
+// named distant place still surfaces (tier 3 remains as the final net).
+- (void)voiceSearchInputTips{
+    AMapInputTipsSearchRequest *r=[AMapInputTipsSearchRequest new];r.keywords=self.voiceQuery;if(self.hasVoiceFix)r.location=[AMapGeoPoint locationWithLatitude:self.voiceFix.latitude longitude:self.voiceFix.longitude];self.voiceTipsRequest=r;self.voiceSearchAround=NO;
+    self.note=[NSString stringWithFormat:@"第2步：本地无精确结果，模糊纠错搜索「%@」…",self.voiceQuery];TIOVoiceNavTrace([NSString stringWithFormat:@"第2步：输入提示模糊纠错「%@」（同音字容错）",self.voiceQuery]);[self refresh];
+    [self.voiceSearch AMapInputTipsSearch:r];
+}
+// Distance (meters) of a candidate coordinate from the step-1 fix; -1 without a fix.
+- (double)voiceDistanceToLat:(double)lat lon:(double)lon{
+    if(!self.hasVoiceFix)return -1;
+    return hypot((lat-self.voiceFix.latitude)*111000,(lon-self.voiceFix.longitude)*111000*cos(self.voiceFix.latitude*M_PI/180));
+}
+// Up to 3 located candidates in the shared dialog shape (name/lat/lon/meters/city).
+- (NSMutableArray *)voiceCandidatesFromPOIs:(NSArray<AMapPOI *> *)pois{
+    NSMutableArray *cands=[NSMutableArray new];
+    for(AMapPOI *poi in pois){
+        if(!poi.location)continue;
+        [cands addObject:@{@"name":poi.name?:@"目的地",@"lat":@(poi.location.latitude),@"lon":@(poi.location.longitude),@"meters":@([self voiceDistanceToLat:poi.location.latitude lon:poi.location.longitude]),@"city":poi.city?:@""}];
+        if(cands.count>=3)break;
+    }
+    return cands;
+}
+- (NSMutableArray *)voiceCandidatesFromTips:(NSArray<AMapTip *> *)tips{
+    NSMutableArray *cands=[NSMutableArray new];
+    for(AMapTip *tip in tips){
+        if(!tip.location)continue; // non-POI tips (roads, districts) are not navigable
+        [cands addObject:@{@"name":tip.name?:@"目的地",@"lat":@(tip.location.latitude),@"lon":@(tip.location.longitude),@"meters":@([self voiceDistanceToLat:tip.location.latitude lon:tip.location.longitude]),@"city":tip.district?:@""}];
+        if(cands.count>=3)break;
+    }
+    return cands;
+}
 - (void)onPOISearchDone:(AMapPOISearchBaseRequest *)request response:(AMapPOISearchResponse *)response{
     dispatch_async(dispatch_get_main_queue(),^{
         if(request!=self.voiceRequest||!self.voiceSession)return;self.voiceRequest=nil;
-        NSArray<AMapPOI *> *pois=response.pois;
-        // Collect up to 3 located candidates with their distance from the step-1 fix.
-        NSMutableArray *cands=[NSMutableArray new];
-        for(AMapPOI *poi in pois){
-            if(!poi.location)continue;
-            double m=self.hasVoiceFix?hypot((poi.location.latitude-self.voiceFix.latitude)*111000,(poi.location.longitude-self.voiceFix.longitude)*111000*cos(self.voiceFix.latitude*M_PI/180)):-1;
-            [cands addObject:@{@"name":poi.name?:@"目的地",@"lat":@(poi.location.latitude),@"lon":@(poi.location.longitude),@"meters":@(m),@"city":poi.city?:@""}];
-            if(cands.count>=3)break;
-        }
-        if(!cands.count&&self.voiceSearchAround){TIOVoiceNavTrace(@"本地无结果，改为全国搜索");[self voiceSearchKeywordsNationwide];return;}
+        NSMutableArray *cands=[self voiceCandidatesFromPOIs:response.pois];
+        if(!cands.count&&self.voiceSearchAround){TIOVoiceNavTrace(@"本地精确搜索无结果：升级输入提示模糊纠错");[self voiceSearchInputTips];return;}
         if(!cands.count){[self fail:[NSString stringWithFormat:@"语音没找到“%@”：请说更完整的名称，或手动搜索",self.voiceQuery?:@""] ];TIOVoiceNavTrace(@"中止：搜索无结果");return;}
-        // Multi-candidate dialog: stream the list into the hijacked assistant
-        // reply -- the glasses chat window is the only "chat box" that is always
-        // present in a headless voice turn -- then wait for "第几个" (30s, then
-        // the nearest). If the hijacked channel is unavailable (no owned turn),
-        // auto-pick the first candidate exactly as before: never strand the user.
-        if(cands.count>1){
-            self.voiceCandidates=[cands copy];self.voiceCandidatesExpire=NSProcessInfo.processInfo.systemUptime+30;
-            NSArray *nums=@[@"一",@"二",@"三"];
-            NSMutableString *lines=[NSMutableString new];
-            for(NSUInteger i=0;i<cands.count;i++){NSDictionary *c=cands[i];double m=[c[@"meters"] doubleValue];
-                NSString *city=c[@"city"]; // dictionary subscript yields id; dot-syntax needs a typed local
-                NSString *dist=m<0?(city.length?city:@"未知城市"):(m<1000?[NSString stringWithFormat:@"约%.0f米",m]:[NSString stringWithFormat:@"约%.1f公里",m/1000]);
-                [lines appendFormat:@"\n%@. %@（%@）",nums[i],c[@"name"],dist];}
-            [lines appendString:@"\n说「第几个」选择，30 秒默认第一个。"];
-            if(!TIOAssistantEmit(lines,NO)){
-                self.voiceCandidates=nil;TIOVoiceNavTrace(@"聊天框接管不可用：自动选最近候选（兜底）");
-                [self voicePickCandidate:cands[0] announced:@"（聊天框不可用，自动选最近）"];return;
-            }
-            NSMutableString *names=[NSMutableString new];for(NSUInteger i=0;i<cands.count;i++){[names appendString:cands[i][@"name"]?:@""];if(i+1<cands.count)[names appendString:@" / "];}
-            self.note=[NSString stringWithFormat:@"第2步：找到%lu个候选（%@），等待语音选择（说 第几个，30秒后默认第一个）",(unsigned long)cands.count,names];
-            TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：%lu个候选（%@）已流式上镜，等待选择",(unsigned long)cands.count,names]);
-            [self refresh];return;
-        }
-        [self voicePickCandidate:cands[0] announced:@""];
+        [self voicePresentCandidates:cands];
     });
+}
+- (void)onInputTipsSearchDone:(AMapInputTipsSearchRequest *)request response:(AMapInputTipsSearchResponse *)response{
+    dispatch_async(dispatch_get_main_queue(),^{
+        if(request!=self.voiceTipsRequest||!self.voiceSession)return;self.voiceTipsRequest=nil;
+        NSMutableArray *cands=[self voiceCandidatesFromTips:response.tips];
+        if(!cands.count){TIOVoiceNavTrace(@"模糊纠错也无结果：改全国关键词搜索");[self voiceSearchKeywordsNationwide];return;}
+        TIOVoiceNavTrace([NSString stringWithFormat:@"模糊纠错命中%lu个候选",(unsigned long)cands.count]);
+        [self voicePresentCandidates:cands];
+    });
+}
+- (void)AMapSearchRequest:(id)request didFailWithError:(NSError *)error{
+    dispatch_async(dispatch_get_main_queue(),^{
+        if(request==self.voiceTipsRequest){self.voiceTipsRequest=nil;TIOVoiceNavTrace([NSString stringWithFormat:@"模糊纠错失败 code=%ld：改全国关键词搜索",(long)error.code]);[self voiceSearchKeywordsNationwide];return;}
+        if(request!=self.voiceRequest||!self.voiceSession)return;self.voiceRequest=nil;[self fail:[NSString stringWithFormat:@"语音搜索失败（code=%ld）：检查网络与Key搜索权限",(long)error.code] ];TIOVoiceNavTrace([NSString stringWithFormat:@"中止：搜索失败 code=%ld",(long)error.code]);});
+}
+#endif
+// -- Candidate dialog: no AMap types below, so non-SDK (offline preview) builds
+// still compile -- tick and the global choice accessors reference these methods.
+// Shared presentation for POI / input-tips candidates: >1 → stream the list into
+// the hijacked assistant reply (the glasses chat window) and wait for 第几个 /
+// 都不对 (30s, then the nearest); emit failure → auto-pick the first: never
+// strand the user.
+- (void)voicePresentCandidates:(NSArray *)cands{
+    if(cands.count>1){
+        self.voiceCandidates=cands;self.voiceCandidatesExpire=NSProcessInfo.processInfo.systemUptime+30;
+        NSArray *nums=@[@"一",@"二",@"三"];
+        NSMutableString *lines=[NSMutableString new];
+        for(NSUInteger i=0;i<cands.count;i++){NSDictionary *c=cands[i];double m=[c[@"meters"] doubleValue];
+            NSString *city=c[@"city"]; // dictionary subscript yields id; dot-syntax needs a typed local
+            NSString *dist=m<0?(city.length?city:@"未知城市"):(m<1000?[NSString stringWithFormat:@"约%.0f米",m]:[NSString stringWithFormat:@"约%.1f公里",m/1000]);
+            [lines appendFormat:@"\n%@. %@（%@）",nums[i],c[@"name"],dist];}
+        [lines appendString:@"\n说「第几个」选择，不对就说「都不对」，30 秒默认第一个。"];
+        if(!TIOAssistantEmit(lines,NO)){
+            self.voiceCandidates=nil;TIOVoiceNavTrace(@"聊天框接管不可用：自动选最近候选（兜底）");
+            [self voicePickCandidate:cands[0] announced:@"（聊天框不可用，自动选最近）"];return;
+        }
+        NSMutableString *names=[NSMutableString new];for(NSUInteger i=0;i<cands.count;i++){[names appendString:cands[i][@"name"]?:@""];if(i+1<cands.count)[names appendString:@" / "];}
+        self.note=[NSString stringWithFormat:@"第2步：找到%lu个候选（%@），等待语音选择（第几个 / 都不对，30秒默认第一个）",(unsigned long)cands.count,names];
+        TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：%lu个候选（%@）已流式上镜，等待选择",(unsigned long)cands.count,names]);
+        [self refresh];return;
+    }
+    [self voicePickCandidate:cands[0] announced:@""];
 }
 // Chosen (or auto-picked) candidate → destination → realtime planning.
 - (void)voicePickCandidate:(NSDictionary *)candidate announced:(NSString *)suffix{
@@ -375,10 +422,13 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     [self voicePickCandidate:self.voiceCandidates[index] announced:@"（语音选择）"];
     return YES;
 }
-- (void)AMapSearchRequest:(id)request didFailWithError:(NSError *)error{
-    dispatch_async(dispatch_get_main_queue(),^{if(request!=self.voiceRequest||!self.voiceSession)return;self.voiceRequest=nil;[self fail:[NSString stringWithFormat:@"语音搜索失败（code=%ld）：检查网络与Key搜索权限",(long)error.code] ];TIOVoiceNavTrace([NSString stringWithFormat:@"中止：搜索失败 code=%ld",(long)error.code]);});
+// "都不对": drop the list, keep the pipeline idle, and ask the user to re-speak
+// a fresh 导航去X (which restarts the search with the corrected destination).
+- (void)voiceRejectCandidates{
+    self.voiceCandidates=nil;
+    TIOVoiceNavTrace(@"用户排除全部候选：等待重新说「导航去+地名」");
+    TIOAssistantEmit(@"\n好，这些都不对。请重新说「导航去+地名」。",YES); // done:YES closes the hijacked turn cleanly
 }
-#endif
 #include "NavigationBackground.inc"
 - (void)startFixture{[self halt];self.active=YES;self.fixture=YES;self.simulated=YES;self.fixtureStep=0;self.note=@"离线夹具：模拟转向顺序，不使用 Key、网络或定位";[self setFrame:TIONavDisplay(@"navigating",9,@"模拟测试道路",160,850,720,YES)];}
 - (void)startWalking{
@@ -540,6 +590,10 @@ BOOL TIOVoiceNavChoose(NSUInteger oneBasedIndex){
     void (^work)(void)=^{ok=[SharedNavPanel voiceChoose:oneBasedIndex-1];};
     if(NSThread.isMainThread)work();else dispatch_sync(dispatch_get_main_queue(),work);
     return ok;
+}
+void TIOVoiceNavReject(void){
+    void (^work)(void)=^{[SharedNavPanel voiceRejectCandidates];};
+    if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 // Pure matcher shared by the NLP trigger and the reply hijack: normalize the
 // utterance (trim, strip trailing punctuation/speech prefixes) and return the

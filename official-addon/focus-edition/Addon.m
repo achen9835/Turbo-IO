@@ -414,6 +414,7 @@ static void AsrHook(id self,SEL cmd,id text,BOOL final,id sid) {
         if(final&&TIOVoiceNavPendingChoices()){
             NSInteger pick=TIOParseVoiceChoice(copy,TIOVoiceNavPendingChoices());
             if(pick>0){TIOVoiceNavTrace([NSString stringWithFormat:@"语音选择（ASR直取）：第%ld个",(long)pick]);TIOVoiceNavChoose((NSUInteger)pick);return;}
+            if(pick<0){TIOVoiceNavTrace(@"语音排除全部候选（ASR直取）");TIOVoiceNavReject();return;}
         }
         OriginalAsr(self,cmd,text,final,sid);
         [Controller acceptAsr:copy finished:final session:session listener:self];
@@ -425,8 +426,10 @@ static void AudioStartHook(id self,SEL cmd) {
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 // Parse a spoken candidate choice: 第一个/第2个/去第三个/就要第二个/最近/短句裸数字.
-// Returns the 1-based index, 0 = not a choice. Bare numbers only match very
-// short utterances so ordinary chat sentences never accidentally select.
+// Returns the 1-based index; 0 = not a choice; -1 = reject all candidates
+// (都不对/错了/重新说…). Reject words are checked AFTER selection words, so
+// "第二个不对" still selects 2. Bare numbers only match very short utterances
+// so ordinary chat sentences never accidentally select.
 static NSInteger TIOParseVoiceChoice(NSString *text,NSUInteger count){
     if(![text isKindOfClass:NSString.class]||!count)return 0;
     if([text rangeOfString:@"最近"].location!=NSNotFound)return 1;
@@ -440,6 +443,7 @@ static NSInteger TIOParseVoiceChoice(NSString *text,NSUInteger count){
     if(t.length&&t.length<=6)for(NSUInteger n=1;n<=digits.count&&n<=count;n++)for(NSString *d in digits[n-1]){
         if([t isEqualToString:d]||[t isEqualToString:[@"去" stringByAppendingString:d]]||[t isEqualToString:[@"要" stringByAppendingString:d]])return (NSInteger)n;
     }
+    for(NSString *w in @[@"都不对",@"都不是",@"不对",@"搞错",@"错了",@"重新说",@"重说",@"换一个"])if([text rangeOfString:w].location!=NSNotFound)return -1;
     return 0;
 }
 static void NlpHook(id self,SEL cmd,id value) {
@@ -464,6 +468,7 @@ static void NlpHook(id self,SEL cmd,id value) {
                 if(TIOVoiceNavMatchDestination(voiceQuery).length){TIOVoiceNavMaybeStart(voiceQuery);return;}
                 NSInteger pick=TIOParseVoiceChoice(voiceQuery,pending);
                 if(pick>0){TIOVoiceNavTrace([NSString stringWithFormat:@"语音选择（NLP）：第%ld个（共%lu个候选）",(long)pick,(unsigned long)pending]);TIOVoiceNavChoose((NSUInteger)pick);lastPending=pending;return;}
+                if(pick<0){TIOVoiceNavTrace(@"语音排除全部候选（NLP）");TIOVoiceNavReject();lastPending=UINT_MAX;return;}
                 if(lastPending!=pending){TIOVoiceNavTrace(@"候选等待中：说 第几个（本轮官方回复的迟到回包也会流经这里，属正常）");lastPending=pending;} // log once per dialog, not per reply delta
                 // Fall through: the user may have switched to a fresh "导航去Y".
             }else lastPending=UINT_MAX;
