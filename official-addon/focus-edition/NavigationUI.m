@@ -341,7 +341,8 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
             NSArray *nums=@[@"一",@"二",@"三"];
             NSMutableString *lines=[NSMutableString new];
             for(NSUInteger i=0;i<cands.count;i++){NSDictionary *c=cands[i];double m=[c[@"meters"] doubleValue];
-                NSString *dist=m<0?(c[@"city"].length?c[@"city"]:@"未知城市"):(m<1000?[NSString stringWithFormat:@"约%.0f米",m]:[NSString stringWithFormat:@"约%.1f公里",m/1000]);
+                NSString *city=c[@"city"]; // dictionary subscript yields id; dot-syntax needs a typed local
+                NSString *dist=m<0?(city.length?city:@"未知城市"):(m<1000?[NSString stringWithFormat:@"约%.0f米",m]:[NSString stringWithFormat:@"约%.1f公里",m/1000]);
                 [lines appendFormat:@"\n%@. %@（%@）",nums[i],c[@"name"],dist];}
             [lines appendString:@"\n说「第几个」选择，30 秒默认第一个。"];
             if(!TIOAssistantEmit(lines,NO)){
@@ -359,7 +360,8 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 // Chosen (or auto-picked) candidate → destination → realtime planning.
 - (void)voicePickCandidate:(NSDictionary *)candidate announced:(NSString *)suffix{
     self.voiceCandidates=nil;
-    TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：选定「%@」%@（%@），第3步算路",candidate[@"name"]?:@"",suffix,candidate[@"city"].length?candidate[@"city"]:@"未知城市"]);
+    NSString *city=candidate[@"city"]; // dictionary subscript yields id; dot-syntax needs a typed local
+    TIOVoiceNavTrace([NSString stringWithFormat:@"第2步完成：选定「%@」%@（%@），第3步算路",candidate[@"name"]?:@"",suffix,city.length?city:@"未知城市"]);
     TIOAssistantEmit([NSString stringWithFormat:@"\n好，导航去%@。",candidate[@"name"]?:@"目的地"],YES); // closes the owned turn; harmless when the hijack is gone
     [self selectPlace:@{@"name":candidate[@"name"]?:@"目的地",@"address":candidate[@"city"]?:@"",@"lat":candidate[@"lat"],@"lon":candidate[@"lon"]}];
     self.travelMode.selectedSegmentIndex=1; // Position is already confirmed; plan now, auto-begin follows.
