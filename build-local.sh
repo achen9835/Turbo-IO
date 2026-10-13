@@ -79,7 +79,7 @@ fi
 echo "    扩展就绪：$ADDON"
 
 echo "==> [5/6] 合并 + 高德资源 + FOCUS 固件注入 + adhoc 签名"
-rm -rf input merged && mkdir input merged
+rm -rf input merged && mkdir input merged IPA
 unzip -q original.ipa -d input
 # 注意：gray/upgrade 两个更新检查 URL 的回环补丁由 focus-adhoc-package.mjs
 # 在 merged/ 上完成（那里才是最终产物），此处不要重复打——已补丁的二进制
@@ -113,7 +113,6 @@ find merged/Payload/Runner.app/Frameworks -name '*.dylib' -type f | while read -
 codesign -f -s - --generate-entitlement-der merged/Payload/Runner.app
 
 echo "==> [6/6] 打包"
-mkdir -p IPA
 ditto -c -k --norsrc --keepParent merged/Payload IPA/TurboIO-merged-adhoc.ipa
 if [[ ! -f IPA/TurboIO-merged-adhoc.ipa ]]; then echo "错误：IPA 未生成"; exit 1; fi
 echo "=============================================="
