@@ -174,8 +174,16 @@ void TIOStartExperimentalOTAFeedIfMarked(void){
     static dispatch_once_t once;
     dispatch_once(&once,^{
         NSBundle *bundle=NSBundle.mainBundle;
-        if(![[bundle objectForInfoDictionaryKey:@"TIOExperimentalOTAQueryRouting"] isEqual:@"ios105-tfp1-loopback-disabled"]&&!TIOOTAPreparationBuild()&&!TIOOTAFlashBuild())return;
-        if(![bundle.bundleIdentifier isEqual:@"com.rayneo.venus.pub"]||![[bundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] isEqual:@"1.0.5"]||![[bundle objectForInfoDictionaryKey:@"CFBundleVersion"] isEqual:@"201"]){BootstrapFailure=@"实验升级来源的宿主版本不匹配";return;}
+        // IKLAZ2：URL 补丁随 focus 构建进入 merged 日常包（自定义 Bundle ID），
+        // 更新检查会被打到本机回环端口——普通构建若不启动应答器，官方把连接拒绝
+        // 渲染成「软件更新检查失败」全屏页。因此普通构建也常驻启动：未武装时对
+        // 一切检查只回「无更新」（武装由 TIO_OTA_FEED_ARMING_ENABLED=0 编译期
+        // 禁用，TIOBeginExperimentalOTAPreparation 另有保护门）。刷机/预备构建
+        // 维持原硬门：宿主必须是官方包名。
+        BOOL flashBuild=TIOOTAPreparationBuild()||TIOOTAFlashBuild();
+        BOOL officialHost=[bundle.bundleIdentifier isEqual:@"com.rayneo.venus.pub"];
+        if(flashBuild&&!officialHost){BootstrapFailure=@"实验升级来源的宿主版本不匹配";return;}
+        if(![[bundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] isEqual:@"1.0.5"]||![[bundle objectForInfoDictionaryKey:@"CFBundleVersion"] isEqual:@"201"]){BootstrapFailure=@"实验升级来源的宿主版本不匹配";return;}
         // Read only two fixed string records. Code signing is handled by packaging;
         // this check prevents starting a feed with an unpatched/mismatched host.
         NSString *file=[bundle.bundlePath stringByAppendingPathComponent:@"Frameworks/App.framework/App"];
