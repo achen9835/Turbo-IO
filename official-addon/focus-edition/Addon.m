@@ -420,6 +420,9 @@ static NSString *TIOTriggerUtterance(NSString *text){
     // as a streamed assistant reply. The domain is NOT restricted to chat: the
     // whole reply is replaced anyway, so "飞书帮我查天气" (classified weather)
     // must trigger too. Skill commands (command!=nil) are never touched.
+    // v5：此分支仅兜底——ASR 层（AsrHook，镜像「退下吧」姿势）已优先截断并
+    // 关闭会话；只有 ASR 错字未命中而 NLP query 修正后才走到这里，仍走 v4
+    // 的播完（TTS信号+5s下限）再关路径。
     if(TIOFeishuEnabled()&&listener==_listener&&!offline&&Get(response,@"command")==nil){
         NSString *utter=TIOTriggerUtterance(nlpQuery.length?nlpQuery:_asr);
         BOOL matched=NO;
@@ -502,6 +505,28 @@ static void AsrHook(id self,SEL cmd,id text,BOOL final,id sid) {
     void (^work)(void)=^{
         if(final&&[Prefs boolForKey:@"voiceExitCommands"]&&TIOIsVoiceExitCommand(copy)&&[Controller exitVoice])return;
         if(Controller.voiceExited)return;
+        // v5 飞书 ASR 层截断（镜像「退下吧」的已验证姿势：识别完成即关、不转发
+        // 官方——官方不起回复工作流、无 TTS 朗读，对话框瞬间消失，镜片即刻
+        // 腾空等飞书通知。ASR 错字未命中时 NLP 层兜底仍走播完再关路径）。
+        if(final&&TIOFeishuEnabled()){
+            NSString *utter=TIOTriggerUtterance(copy);
+            for(NSString *pre in @[@"飞书",@"发飞书",@"问飞书"]){
+                if([utter hasPrefix:pre]){
+                    NSString *rest=[[utter substringFromIndex:pre.length] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
+                    if(rest.length>=2){
+                        [Controller feishuBeginBridgeTask];
+                        if([Controller exitVoice]){
+                            TIOVoiceNavTrace(@"飞书：ASR层命中（同退下吧姿势）——语音流已截断、会话已关、镜片已腾空");
+                            Diagnostic=@"飞书指令ASR层命中：会话已关，后台查询进行中";
+                            [Controller feishuBackgroundQuery:rest];
+                            return;
+                        }
+                        TIOVoiceNavTrace(@"飞书：ASR层命中但停止入口不可用，本轮转发官方（NLP层兜底）");
+                        break;
+                    }
+                }
+            }
+        }
         // Choice and travel-mode answers are NOT swallowed at this layer: a
         // swallowed utterance never produces an official NLP response, and
         // without one there is no live bubble to render the follow-up dialog
