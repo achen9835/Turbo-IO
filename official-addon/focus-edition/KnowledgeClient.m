@@ -22,6 +22,10 @@ BOOL TIOFeishuConfigure(NSString *webhookURL){
     return StoreWebhook(webhookURL);
 }
 void TIOFeishuSend(NSString *text,void(^completion)(NSString *error)){
+    // completion 可为 nil（Addon.m「未配置自定义模型」分支传 nil）。block 调用
+    // 不是 ObjC 消息、没有 nil 安全——反汇编实证：nil 块在 invoke 槽（+0x10）
+    // 读取处即崩（Runner-2026-10-14 两份 ips 同一签名），故入口统一换空块。
+    if(!completion)completion=^(NSString *e){};
     if(!text.length){completion(@"empty");return;}
     NSString *url=StoredWebhook();if(!url.length){completion(@"webhook not configured");return;}
     NSDictionary *payload=@{@"msg_type":@"text",@"content":@{@"text":text}};
