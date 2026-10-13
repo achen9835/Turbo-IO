@@ -34,7 +34,10 @@ void TIOFeishuSend(NSString *text,void(^completion)(NSString *error)){
             if(err){completion(err.localizedDescription);return;}
             NSInteger code=[resp isKindOfClass:NSHTTPURLResponse.class]?[(NSHTTPURLResponse *)resp statusCode]:0;
             if(code!=200){completion([NSString stringWithFormat:@"HTTP %ld",(long)code]);return;}
-            NSDictionary *j=data.length<=8192?[NSJSONSerialization JSONObjectWithData:data options:0 error:nil]:nil;
+            // data 可为 nil（响应空体/异常收尾时 err 亦为 nil）：nil 传给
+            // JSONObjectWithData 在 release 构建走 CF 路径 = SIGSEGV 0x10
+            // （CFDataGetLength 读 NULL+0x10，Runner-2026-10-14 崩溃日志实证）。
+            NSDictionary *j=(data&&data.length&&data.length<=8192)?[NSJSONSerialization JSONObjectWithData:data options:0 error:nil]:nil;
             if([j isKindOfClass:NSDictionary.class]&&[j[@"code"] integerValue]!=0){
                 completion([NSString stringWithFormat:@"Feishu: %@ (code %ld)",j[@"msg"]?:@"unknown",(long)[j[@"code"] integerValue]]);
                 return;

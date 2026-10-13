@@ -288,7 +288,9 @@ static NSString *TIOTriggerUtterance(NSString *text){
     [[[NSURLSession sessionWithConfiguration:NSURLSessionConfiguration.ephemeralSessionConfiguration] dataTaskWithRequest:r completionHandler:^(NSData *data,NSURLResponse *resp,NSError *err){
         dispatch_async(dispatch_get_main_queue(),^{
             if(err){TIOFeishuSend([NSString stringWithFormat:@"Q: %@\nA:（模型调用失败：%@）",question,err.localizedDescription],nil);return;}
-            NSDictionary *j=data.length<=262144?[NSJSONSerialization JSONObjectWithData:data options:0 error:nil]:nil;
+            // data 可为 nil（同 KnowledgeClient.m 的 nil-data 崩溃教训）：先判空
+            // 再喂 JSONObjectWithData。
+            NSDictionary *j=(data&&data.length&&data.length<=262144)?[NSJSONSerialization JSONObjectWithData:data options:0 error:nil]:nil;
             NSString *answer=[j isKindOfClass:NSDictionary.class]&&[j[@"choices"] isKindOfClass:NSArray.class]&&((NSArray *)j[@"choices"]).count?[NSString stringWithFormat:@"%@",((NSArray *)j[@"choices"]).firstObject[@"message"][@"content"]?:@""]:@"";
             TIOFeishuSend([NSString stringWithFormat:@"Q: %@\nA: %@",question,answer.length?answer:@"（模型无回复）"],^(NSString *e){
                 if(e)Diagnostic=[@"飞书通知失败：" stringByAppendingString:e];
