@@ -157,6 +157,7 @@ static void Alert(NSString *title,NSString *message) {
 @property(nonatomic) TIOTodoTurnGate *taskGate;
 - (BOOL)exitVoice;
 - (BOOL)appendOwned:(NSString *)piece done:(BOOL)done;
+- (void)feishuDelayedCloseWithGeneration:(NSUInteger)gen;
 @end
 static TIOController *Controller;
 // Close the assistant session via the verified official stop entry -- same
@@ -288,6 +289,19 @@ static NSString *TIOTriggerUtterance(NSString *text){
         });
     }] resume];
 }
+// IKLAZR 飞书说完即断：确认文案上镜后延迟关闭语音会话。镜像导航流先例
+// （NavigationWorkspace.inc beginRoute：官方语义是 Response EOF alone never
+// closes a window，只发 done 关不掉语音工作流窗口）。只经已校验封装
+// TIOVoiceCloseAssistantSession（内部走 exitVoice→cancel→官方 stopWorkflow），
+// 绝不直接调 stopWorkflow。gen 守卫防误杀：期间任何新一轮 ASR final、待办
+// 接管或手动退出都会 ++_generation / 置 voiceExited，守卫不过就跳过并留痕。
+- (void)feishuDelayedCloseWithGeneration:(NSUInteger)gen {
+    if(gen!=_generation){TIOVoiceNavTrace(@"飞书：延迟关闭跳过（已进入新一轮对话）");return;}
+    if(!_ownsTurn){TIOVoiceNavTrace(@"飞书：延迟关闭跳过（本轮回复权已移交或取消）");return;}
+    if(_voiceExited){TIOVoiceNavTrace(@"飞书：延迟关闭跳过（会话已被退出指令关闭）");return;}
+    TIOVoiceNavTrace(@"飞书：已调用语音停止入口（延迟关闭会话）");
+    TIOVoiceCloseAssistantSession();
+}
 - (void)acceptAsr:(NSString *)text finished:(BOOL)final session:(NSString *)sid listener:(id)listener {
     if(!text.length)return;
     // Record the turn in EVERY mode: the nav/feishu reply hijacks need _listener
@@ -386,6 +400,10 @@ static NSString *TIOTriggerUtterance(NSString *text){
                     NSUInteger gen=_generation;
                     NSString *say=@"已发送到飞书，请查看通知。";
                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.3*NSEC_PER_SEC)),dispatch_get_main_queue(),^{[self emitText:say done:YES error:nil generation:gen];});
+                    // IKLAZR 说完即断：0.3s 确认文案先上镜，2s 后主动关闭语音会话
+                    // （镜像导航流 beginRoute+2s 先例；只发 done 关不掉官方窗口）。
+                    // gen 守卫保证定时器只在仍是飞书这一轮时生效。
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{[self feishuDelayedCloseWithGeneration:gen];});
                     Diagnostic=@"飞书指令接管本轮回复";
                     [self feishuBackgroundQuery:rest];
                     return YES;
