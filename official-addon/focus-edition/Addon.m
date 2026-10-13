@@ -157,6 +157,7 @@ static void Alert(NSString *title,NSString *message) {
 @property(nonatomic) TIOTodoTurnGate *taskGate;
 - (BOOL)exitVoice;
 - (BOOL)appendOwned:(NSString *)piece done:(BOOL)done;
+- (void)feishuDelayedCloseWithGeneration:(NSUInteger)gen;
 @end
 static TIOController *Controller;
 // Close the assistant session via the verified official stop entry -- same
@@ -288,10 +289,19 @@ static NSString *TIOTriggerUtterance(NSString *text){
         });
     }] resume];
 }
-// IKLAZR 飞书说完即断 v2：命中即在 NLP 回调内立即退出语音会话（镜像「退下吧」
-// 的同路径同时机），不先发任何回复——工作流停在无朗读的静默态，绝不砍 mid-TTS
-// 音频流（731f5f8 的 +2.3s 延迟关闭砍在确认文案朗读中途，真机眼镜断连）。飞书
-// 通知到达眼镜即确认；后台查询走独立 NSURLSession，不受会话关闭影响。
+// IKLAZR 飞书说完即断 v3：完整镜像导航流关闭的三条件——本轮回复已完整交付
+// （emit done→OriginalComplete，官方状态机收尾）、官方 TTS 已播完（7 秒余量，
+// 12 字播报约 3 秒 + 起播延迟，宁迟勿砍）、dispatch_after 干净调用栈。v1 的
+// +2.3 秒砍在朗读中途（真机断连）；v2 在 NLP 回调内嵌套 exitVoice 且本轮未
+// 收尾（真机 App 重启）。gen 守卫防误杀：期间任何新一轮 ASR final、待办接管
+// 或手动退出都会 ++_generation / 置 voiceExited，守卫不过就跳过并留痕。
+- (void)feishuDelayedCloseWithGeneration:(NSUInteger)gen {
+    if(gen!=_generation){TIOVoiceNavTrace(@"飞书：延迟关闭跳过（已进入新一轮对话）");return;}
+    if(!_ownsTurn){TIOVoiceNavTrace(@"飞书：延迟关闭跳过（本轮回复权已移交或取消）");return;}
+    if(_voiceExited){TIOVoiceNavTrace(@"飞书：延迟关闭跳过（会话已被退出指令关闭）");return;}
+    TIOVoiceNavTrace(@"飞书：播报已毕，调用语音停止入口（镜像导航关闭三条件）");
+    TIOVoiceCloseAssistantSession();
+}
 - (void)acceptAsr:(NSString *)text finished:(BOOL)final session:(NSString *)sid listener:(id)listener {
     if(!text.length)return;
     // Record the turn in EVERY mode: the nav/feishu reply hijacks need _listener
@@ -387,16 +397,14 @@ static NSString *TIOTriggerUtterance(NSString *text){
                 NSString *rest=[[utter substringFromIndex:pre.length] stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceCharacterSet]];
                 if(rest.length>=2){
                     _responseTemplate=response;_ownsTurn=YES;_started=YES;_emitted=@"";
-                    if([self exitVoice]){
-                        Diagnostic=@"飞书指令命中：已立即退出语音会话，后台查询进行中";
-                        TIOVoiceNavTrace(@"飞书：命中即断——已调用语音停止入口（同退下吧路径）");
-                    }else{
-                        NSUInteger gen=_generation;
-                        NSString *say=@"已发送到飞书，请查看通知。";
-                        dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.3*NSEC_PER_SEC)),dispatch_get_main_queue(),^{[self emitText:say done:YES error:nil generation:gen];});
-                        Diagnostic=@"飞书指令接管本轮回复（停止入口不可用，交官方超时收尾）";
-                        TIOVoiceNavTrace(@"飞书：停止入口不可用，回退为确认文案+官方超时");
-                    }
+                    NSUInteger gen=_generation;
+                    NSString *say=@"已发送到飞书，请查看通知。";
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.3*NSEC_PER_SEC)),dispatch_get_main_queue(),^{[self emitText:say done:YES error:nil generation:gen];});
+                    // v3：+7 秒关闭。确认文案 TTS（约 3 秒 + 起播延迟）必须播完且
+                    // 在干净调用栈上关——导航先例的三个条件缺一即断连/重启
+                    // （见方法注释）；余量宁迟勿砍。
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(7*NSEC_PER_SEC)),dispatch_get_main_queue(),^{[self feishuDelayedCloseWithGeneration:gen];});
+                    Diagnostic=@"飞书指令接管本轮回复；播报完成后自动退出会话";
                     [self feishuBackgroundQuery:rest];
                     return YES;
                 }
