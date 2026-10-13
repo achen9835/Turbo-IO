@@ -113,7 +113,7 @@ find merged/Payload/Runner.app/Frameworks -name '*.dylib' -type f | while read -
 codesign -f -s - --generate-entitlement-der merged/Payload/Runner.app
 
 echo "==> [6/6] 打包"
-mkdir -p IPA && rm -f IPA/TurboIO-merged-adhoc.ipa
+mkdir -p IPA
 ditto -c -k --norsrc --keepParent merged/Payload IPA/TurboIO-merged-adhoc.ipa
 if [[ ! -f IPA/TurboIO-merged-adhoc.ipa ]]; then echo "错误：IPA 未生成"; exit 1; fi
 echo "=============================================="
