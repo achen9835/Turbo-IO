@@ -71,6 +71,7 @@ static void (*OriginalNlp)(id,SEL,id);
 static void (*OriginalComplete)(id,SEL);
 static void (*OriginalAlwaysOn)(id,SEL,id);
 static void (*OriginalAudioStart)(id,SEL);
+static void (*OriginalTts)(id,SEL,int32_t,id);
 static BOOL VoiceExitReady=NO;
 static NSUInteger CompletionEvents;
 
@@ -154,10 +155,17 @@ static void Alert(NSString *title,NSString *message) {
 @property(nonatomic) TIOConversationHistory *history;
 @property(nonatomic,copy) NSString *requestQuestion;
 @property(nonatomic) BOOL voiceExited;
+@property(nonatomic) UIBackgroundTaskIdentifier feishuBridgeTask;
+@property(nonatomic) NSUInteger feishuBridgeEpoch;
+@property(nonatomic) BOOL feishuTtsDone;
+@property(nonatomic) BOOL feishuPending;
+@property(nonatomic) NSTimeInterval feishuTriggerUptime;
 @property(nonatomic) TIOTodoTurnGate *taskGate;
 - (BOOL)exitVoice;
 - (BOOL)appendOwned:(NSString *)piece done:(BOOL)done;
 - (void)feishuDelayedCloseWithGeneration:(NSUInteger)gen;
+- (void)feishuBeginBridgeTask;
+- (void)feishuEndBridgeTask:(NSUInteger)epoch;
 @end
 static TIOController *Controller;
 // Close the assistant session via the verified official stop entry -- same
@@ -247,7 +255,7 @@ static NSString *TIOTriggerUtterance(NSString *text){
 }
 @implementation TIOController
 - (instancetype)init {if((self=[super init])){_seenFinals=[NSMutableSet set];_captureEpoch=NSUUID.UUID.UUIDString;_history=[TIOConversationHistory new];_taskGate=[TIOTodoTurnGate new];}return self;}
-- (void)cancel {++_generation;[_request cancel];_request=nil;_ownsTurn=NO;_started=NO;_responseDone=NO;_responseTemplate=nil;_emitted=@"";}
+- (void)cancel {++_generation;[_request cancel];_request=nil;_ownsTurn=NO;_started=NO;_responseDone=NO;_responseTemplate=nil;_emitted=@"";_feishuPending=NO;}
 - (BOOL)exitVoice {
     if(!VoiceExitReady)return NO;
     Class cls=NSClassFromString(@"rayneo_venus_sdk_plugin.VoiceAssistantHelper");
@@ -289,18 +297,42 @@ static NSString *TIOTriggerUtterance(NSString *text){
         });
     }] resume];
 }
-// IKLAZR 飞书说完即断 v3：完整镜像导航流关闭的三条件——本轮回复已完整交付
-// （emit done→OriginalComplete，官方状态机收尾）、官方 TTS 已播完（7 秒余量，
-// 12 字播报约 3 秒 + 起播延迟，宁迟勿砍）、dispatch_after 干净调用栈。v1 的
-// +2.3 秒砍在朗读中途（真机断连）；v2 在 NLP 回调内嵌套 exitVoice 且本轮未
-// 收尾（真机 App 重启）。gen 守卫防误杀：期间任何新一轮 ASR final、待办接管
-// 或手动退出都会 ++_generation / 置 voiceExited，守卫不过就跳过并留痕。
+// IKLAZR 飞书说完即断 v4：关闭锚定两个真实信号而非盲定时器——
+// ① onTtsStatusChange 官方回调确认「已发送到飞书」播完（+1s 余量），消灭
+//   起播延迟不可知导致的 mid-TTS 截断（v1/v3 同一种死法：2.3s/7s 都砍在
+//   朗读中，真机断连）；
+// ② 关闭前照导航 beginVoiceBridgeTask 先例（NavigationBackground.inc，其
+//   头注记载 exitVoice 会终结 BLE 音频保活、锁屏时 iOS 挂起 App 导致拆除
+//   握手中途冻结）开一个有界后台任务，保证官方 stopWorkflow 的异步拆除
+//   完整落地；飞书 webhook 完成或到期时释放。v2（回调内嵌套关停未收尾的
+//   引擎）导致官方崩溃重启——只在干净栈上关闭。
+// gen 守卫保留：期间任何新一轮 ASR final、待办接管或手动退出都会
+// ++_generation / 置 voiceExited，守卫不过就跳过并留痕。
 - (void)feishuDelayedCloseWithGeneration:(NSUInteger)gen {
     if(gen!=_generation){TIOVoiceNavTrace(@"飞书：延迟关闭跳过（已进入新一轮对话）");return;}
     if(!_ownsTurn){TIOVoiceNavTrace(@"飞书：延迟关闭跳过（本轮回复权已移交或取消）");return;}
     if(_voiceExited){TIOVoiceNavTrace(@"飞书：延迟关闭跳过（会话已被退出指令关闭）");return;}
-    TIOVoiceNavTrace(@"飞书：播报已毕，调用语音停止入口（镜像导航关闭三条件）");
+    TIOVoiceNavTrace(@"飞书：播报已毕（TTS完成信号），调用语音停止入口");
+    [self feishuBeginBridgeTask];
     TIOVoiceCloseAssistantSession();
+}
+// v4 ②：有界后台桥接任务（镜像导航 beginVoiceBridgeTask：exitVoice 同时终结
+// BLE 音频保活，锁屏时 iOS 可能在官方拆除握手中途挂起 App = 断连+重启的真机
+// 症状）。保证 stopWorkflow 异步拆除完整落地；30 秒自动到期释放（与导航 45 秒
+// 同型的有界设计，webhook 完成回调不与此耦合）。
+- (void)feishuBeginBridgeTask {
+    if(self.feishuBridgeTask!=UIBackgroundTaskInvalid)return;
+    NSUInteger epoch=++self.feishuBridgeEpoch;__weak typeof(self) weak=self;
+    self.feishuBridgeTask=[UIApplication.sharedApplication beginBackgroundTaskWithName:@"TurboIO feishu voice close bridge" expirationHandler:^{dispatch_async(dispatch_get_main_queue(),^{[weak feishuEndBridgeTask:epoch];});}];
+    if(self.feishuBridgeTask==UIBackgroundTaskInvalid){TIOVoiceNavTrace(@"飞书：系统未授予后台时间，拆除保活缺失（锁屏可能断连）");return;}
+    TIOVoiceNavTrace(@"飞书：已申请后台桥接时间，保证语音会话拆除完整落地");
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,30*NSEC_PER_SEC),dispatch_get_main_queue(),^{[weak feishuEndBridgeTask:epoch];});
+}
+- (void)feishuEndBridgeTask:(NSUInteger)epoch {
+    self.feishuBridgeEpoch++;
+    UIBackgroundTaskIdentifier task=self.feishuBridgeTask;
+    self.feishuBridgeTask=UIBackgroundTaskInvalid;
+    if(task!=UIBackgroundTaskInvalid)[UIApplication.sharedApplication endBackgroundTask:task];
 }
 - (void)acceptAsr:(NSString *)text finished:(BOOL)final session:(NSString *)sid listener:(id)listener {
     if(!text.length)return;
@@ -399,11 +431,12 @@ static NSString *TIOTriggerUtterance(NSString *text){
                     _responseTemplate=response;_ownsTurn=YES;_started=YES;_emitted=@"";
                     NSUInteger gen=_generation;
                     NSString *say=@"已发送到飞书，请查看通知。";
+                    _feishuTtsDone=NO;_feishuPending=YES;_feishuTriggerUptime=NSProcessInfo.processInfo.systemUptime;
                     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(0.3*NSEC_PER_SEC)),dispatch_get_main_queue(),^{[self emitText:say done:YES error:nil generation:gen];});
-                    // v3：+7 秒关闭。确认文案 TTS（约 3 秒 + 起播延迟）必须播完且
-                    // 在干净调用栈上关——导航先例的三个条件缺一即断连/重启
-                    // （见方法注释）；余量宁迟勿砍。
-                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(7*NSEC_PER_SEC)),dispatch_get_main_queue(),^{[self feishuDelayedCloseWithGeneration:gen];});
+                    // v4：关闭锚定 TTS 完成信号（TtsHook 置位后 +1s 余量关），15s
+                    // 兜底防信号缺席；关闭前开后台桥接（见方法注释）。v1/v3 的
+                    // 盲定时器砍在朗读中途=断连，v2 嵌套关停=重启。
+                    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(16*NSEC_PER_SEC)),dispatch_get_main_queue(),^{[self feishuDelayedCloseWithGeneration:gen];});
                     Diagnostic=@"飞书指令接管本轮回复；播报完成后自动退出会话";
                     [self feishuBackgroundQuery:rest];
                     return YES;
@@ -483,6 +516,27 @@ static void AsrHook(id self,SEL cmd,id text,BOOL final,id sid) {
 }
 static void AudioStartHook(id self,SEL cmd) {
     void (^work)(void)=^{TWReaderPauseForVoice();TMMusicPauseForVoice();Controller.voiceExited=NO;[Controller.taskGate beginTurn];InjectedTurnKey=nil;SwallowOfficialComplete=NO;OriginalAudioStart(self,cmd);};
+    if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
+}
+// v4 ①：官方 TTS 状态回调 = 「播完」的官方可观测信号（签名经探针验证：
+// v (int32_t status, id session)，VoiceLifecycleProbe.m Args(tts,@"i", @"@")）。
+// status 语义无官方文档——按惯例 2=结束；即使猜反（2=开始）也有运行时保险：
+// 关闭距触发不早于 5 秒（覆盖 3 秒文案 + 起播延迟），信号只允许「更晚」，
+// 不允许更早——砍中途（v1 死法）在结构上不可能。feishuPending 区分飞书轮
+// （导航接管也触发官方 TTS，不能误关导航会话），该标志在 cancel（新 ASR
+// final/接管/退出）时复位。
+static void TtsHook(id self,SEL cmd,int32_t status,id session) {
+    void (^work)(void)=^{
+        if(status==2&&Controller.feishuPending&&!Controller.feishuTtsDone){
+            Controller.feishuTtsDone=YES;NSUInteger gen=Controller.generation;
+            // 时间下限保险：等待时长取 max(1.2s, 5s-已耗时)，信号早到也拖到 5s。
+            NSTimeInterval wait=1.2,elapsed=NSProcessInfo.processInfo.systemUptime-Controller.feishuTriggerUptime;
+            if(elapsed+wait<5.0)wait=5.0-elapsed;
+            TIOVoiceNavTrace([NSString stringWithFormat:@"飞书：官方TTS完成信号已到达（触发后%.1f秒，%.1f秒后关闭）",elapsed,wait]);
+            dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(wait*NSEC_PER_SEC)),dispatch_get_main_queue(),^{[Controller feishuDelayedCloseWithGeneration:gen];});
+        }
+        OriginalTts(self,cmd,status,session);
+    };
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 // Parse a spoken candidate choice: 第一个/第2个/去第三个/就要第二个/最近/短句裸数字.
@@ -797,6 +851,8 @@ __attribute__((constructor)) static void Load(void) {
             Class helper=NSClassFromString(@"rayneo_venus_sdk_plugin.VoiceAssistantHelper");
             VoiceExitReady=valid&&Signature(object_getClass(helper),@"shared",2,"@",@[])&&Signature(helper,@"stopWorkflow",2,"v",@[])&&Signature(voice,@"onAudioRecordStart",2,"v",@[]);
             if(VoiceExitReady)OriginalAudioStart=(void *)method_setImplementation(class_getInstanceMethod(voice,NSSelectorFromString(@"onAudioRecordStart")),(IMP)AudioStartHook);
+            // v4：TTS 完成信号 hook（可选安装——缺失时 16s 兜底定时器仍会关）。
+            if(valid&&Signature(voice,@"onTtsStatusChange:sessionId:",4,"v",@[@"i",@"@"]))OriginalTts=(void *)method_setImplementation(class_getInstanceMethod(voice,NSSelectorFromString(@"onTtsStatusChange:sessionId:")),(IMP)TtsHook);
             if(valid)TIOInstallTodoRuntime();
             TIOOTAFlashDisableAutoUpdateIfRequested();
             TIOOTAAutoUpdateDisableForSilence();
