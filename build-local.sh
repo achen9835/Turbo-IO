@@ -6,7 +6,7 @@
 # 用法（仓库根目录）：
 #   bash build-local.sh                      # 默认 Bundle ID = 证书配套 ID
 #   bash build-local.sh app.aurora7070.potato6444 iPhone18,2
-# 产物：merged/TurboIO-merged-adhoc.ipa → 回 Windows 用爱思助手（导入证书）签名安装。
+# 产物：IPA/TurboIO-merged-adhoc.ipa → 回 Windows 用爱思助手（导入证书）签名安装。
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -114,8 +114,10 @@ codesign -f -s - --generate-entitlement-der merged/Payload/Runner.app
 
 echo "==> [6/6] 打包"
 ditto -c -k --norsrc --keepParent merged/Payload merged/TurboIO-merged-adhoc.ipa
+mkdir -p IPA
+cp merged/TurboIO-merged-adhoc.ipa IPA/
 echo "=============================================="
-echo "完成：merged/TurboIO-merged-adhoc.ipa"
+echo "完成：IPA/TurboIO-merged-adhoc.ipa"
 echo "Bundle ID：${BUNDLE_ID:-app.aurora7070.potato6444}（爱思签名时保持原值勿改）"
-shasum -a 256 merged/TurboIO-merged-adhoc.ipa
+shasum -a 256 IPA/TurboIO-merged-adhoc.ipa
 echo "回 Windows：爱思助手 → 导入证书（p12+mobileprovision）→ 安装 → 设置→通用→VPN与设备管理→信任"
