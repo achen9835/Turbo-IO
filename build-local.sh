@@ -113,11 +113,11 @@ find merged/Payload/Runner.app/Frameworks -name '*.dylib' -type f | while read -
 codesign -f -s - --generate-entitlement-der merged/Payload/Runner.app
 
 echo "==> [6/6] 打包"
-ditto -c -k --norsrc --keepParent merged/Payload merged/TurboIO-merged-adhoc.ipa
-mkdir -p IPA
-cp merged/TurboIO-merged-adhoc.ipa IPA/
+mkdir -p IPA && rm -f IPA/TurboIO-merged-adhoc.ipa
+ditto -c -k --norsrc --keepParent merged/Payload IPA/TurboIO-merged-adhoc.ipa
+if [[ ! -f IPA/TurboIO-merged-adhoc.ipa ]]; then echo "错误：IPA 未生成"; exit 1; fi
 echo "=============================================="
-echo "完成：IPA/TurboIO-merged-adhoc.ipa"
+echo "完成：IPA/TurboIO-merged-adhoc.ipa ($(du -h IPA/TurboIO-merged-adhoc.ipa | cut -f1))"
 echo "Bundle ID：${BUNDLE_ID:-app.aurora7070.potato6444}（爱思签名时保持原值勿改）"
 shasum -a 256 IPA/TurboIO-merged-adhoc.ipa
 echo "回 Windows：爱思助手 → 导入证书（p12+mobileprovision）→ 安装 → 设置→通用→VPN与设备管理→信任"
