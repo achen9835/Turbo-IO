@@ -117,6 +117,10 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property MAPointAnnotation *pin;
 @property MAPointAnnotation *startPin;
 @property MAPolyline *routeLine;
+@property NSArray<NSNumber *> *trafficBarLevels;
+@property NSInteger cameraKind,cameraLimit,eventKind;
+@property NSUInteger cameraMeters,eventMeters;
+@property double navLat,navLon;
 #endif
 @end
 @implementation TIONavigationPanel
@@ -261,7 +265,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     self.map.showsUserLocation=NO;
 #endif
 }
-- (void)stopUser{BOOL wasRunning=self.navigationStarted;[self halt];TIONavEnableNotices(NO);self.note=@"导航更新已停止并请求退出。字幕退出仍需镜片确认；未关闭时用实体按钮。不会自动重新开启。";self.routeSummary.text=@"导航已结束 · 可重新规划路线";self.display=TIONavDisplay(@"stopped",0,@"",-1,-1,-1,self.simulated);TIONavEnableDisplay(NO);if(wasRunning)TIOVoiceNavTrace(@"导航已结束：镜片导航页60秒无更新会自动息屏（或用眼镜返回键立即退出）；期间立即重测可能需要重试");[self refresh];}
+- (void)stopUser{BOOL wasRunning=self.navigationStarted;[self halt];TIONavEnableNotices(NO);self.note=@"导航更新已停止并请求退出。字幕退出仍需镜片确认；未关闭时用实体按钮。不会自动重新开启。";self.routeSummary.text=@"导航已结束 · 可重新规划路线";self.display=TIONavDisplay(@"stopped",0,@"",-1,-1,-1,self.simulated);[self clearSceneExtensionState];TIONavEnableDisplay(NO);if(wasRunning)TIOVoiceNavTrace(@"导航已结束：镜片导航页60秒无更新会自动息屏（或用眼镜返回键立即退出）；期间立即重测可能需要重试");[self refresh];}
 - (void)voiceDismiss{
     // Exiting the page never stops a running session (the shared panel keeps
     // feeding the glasses off-screen); 结束导航 or reopening the page stops it.
@@ -560,15 +564,15 @@ static NSMutableArray *TIONavAheadCoords(NSArray<AMapNaviSegment *> *segments,NS
 }
 #endif
 - (void)navigationManager:(id<TIONavigationManager>)manager updateNaviInfo:(AMapNaviInfo *)info{
- if(!info)return;NSMutableDictionary *frame=[TIONavDisplay(@"navigating",info.iconType,info.nextRoadName,info.segmentRemainDistance,info.routeRemainDistance,info.routeRemainTime,self.simulated) mutableCopy];frame[@"segment"]=@(info.currentSegmentIndex);frame[@"remainingMeters"]=@(info.routeRemainDistance);frame[@"remainingSeconds"]=@(info.routeRemainTime);
+ if(!info)return;NSMutableDictionary *frame=[TIONavDisplay(@"navigating",info.iconType,info.nextRoadName,info.segmentRemainDistance,info.routeRemainDistance,info.routeRemainTime,self.simulated) mutableCopy];frame[@"segment"]=@(info.currentSegmentIndex);frame[@"remainingMeters"]=@(info.routeRemainDistance);frame[@"remainingSeconds"]=@(info.routeRemainTime);frame[@"lights"]=@(info.routeRemainTrafficLightCount);
  NSInteger segment=info.currentSegmentIndex,link=info.currentLinkIndex,point=info.currentPointIndex;
  dispatch_async(dispatch_get_main_queue(),^{if(manager!=self.manager||!self.active||self.routeReady||self.planning||self.rerouting)return;
   NSArray<AMapNaviSegment *> *segments=manager.naviRoute.routeSegments;NSMutableArray *coords=[NSMutableArray new];
   if(segment>=0&&segment<(NSInteger)segments.count&&link>=0&&point>=0)coords=TIONavAheadCoords(segments,(NSUInteger)segment,(NSUInteger)link,(NSUInteger)point);
-  [frame addEntriesFromDictionary:TNVNormalizeCoordinates(coords)];self.lastInfo=NSProcessInfo.processInfo.systemUptime;self.staleShown=NO;[self setFrame:frame];
+  [frame addEntriesFromDictionary:TNVNormalizeCoordinates(coords)];[self applySceneExtensions:frame];self.lastInfo=NSProcessInfo.processInfo.systemUptime;self.staleShown=NO;[self setFrame:frame];
  });
 }
-- (void)navigationReroute:(id<TIONavigationManager>)manager{dispatch_async(dispatch_get_main_queue(),^{if(manager==self.manager&&self.active){self.rerouting=YES;self.note=@"偏航，等待高德重新规划";[self setFrame:TIONavDisplay(@"rerouting",0,@"",-1,-1,-1,self.simulated)];}});}
+- (void)navigationReroute:(id<TIONavigationManager>)manager{dispatch_async(dispatch_get_main_queue(),^{if(manager==self.manager&&self.active){self.rerouting=YES;self.note=@"偏航，等待高德重新规划";[self clearSceneExtensionState];[self setFrame:TIONavDisplay(@"rerouting",0,@"",-1,-1,-1,self.simulated)];}});}
 - (void)drawRoute:(AMapNaviRoute *)route{NSArray<AMapNaviPoint *> *points=route.routeCoordinates;if(points.count<2||points.count>100000)return;CLLocationCoordinate2D *coords=calloc(points.count,sizeof(CLLocationCoordinate2D));if(!coords)return;for(NSUInteger i=0;i<points.count;i++)coords[i]=CLLocationCoordinate2DMake(points[i].latitude,points[i].longitude);if(self.routeLine)[self.map removeOverlay:self.routeLine];self.routeLine=[MAPolyline polylineWithCoordinates:coords count:points.count];free(coords);[self.map addOverlay:self.routeLine];[self.map setVisibleMapRect:self.routeLine.boundingMapRect edgePadding:UIEdgeInsetsMake(30,25,30,25) animated:YES];}
 - (MAOverlayRenderer *)mapView:(MAMapView *)map rendererForOverlay:(id<MAOverlay>)overlay{if([overlay isKindOfClass:MAPolyline.class]){MAPolylineRenderer *r=[[MAPolylineRenderer alloc]initWithPolyline:overlay];r.lineWidth=6;r.strokeColor=UIColor.systemIndigoColor;return r;}return nil;}
 - (void)navigationManager:(id<TIONavigationManager>)manager updateGPSSignalStrength:(AMapNaviGPSSignalStrength)strength{dispatch_async(dispatch_get_main_queue(),^{if(manager!=self.manager||!self.active||self.simulated)return;self.gpsWeak=strength!=AMapNaviGPSSignalStrengthStrong&&strength!=AMapNaviGPSSignalStrengthSmartPos; // AMap's guidance stream is the authority; only surface a weak-state frame when AMap itself has gone quiet, so live guidance never flickers.
@@ -599,6 +603,37 @@ static NSMutableArray *TIONavAheadCoords(NSArray<AMapNaviSegment *> *segments,NS
 - (void)driveManagerDidEndEmulatorNavi:(AMapNaviDriveManager *)m{[self arrived:(id)m];}
 - (void)driveManagerOnArrivedDestination:(AMapNaviDriveManager *)m{[self arrived:(id)m];}
 - (void)driveManagerNeedRecalculateRouteForTrafficJam:(AMapNaviDriveManager *)m{[self navigationReroute:(id)m];}
+// Extension scene data rides the same TNV frame: bar levels, nearest camera,
+// first route event. All sources are standard AMap representable callbacks and
+// every refresh goes through setFrame, so stale values survive only until the
+// next push and a reroute clears them outright.
+- (NSArray<NSNumber *> *)levelsFromTrafficStatus:(NSArray<AMapNaviTrafficStatus *> *)status{NSMutableArray *levels=[NSMutableArray new];
+ for(AMapNaviTrafficStatus *t in status){if(levels.count>=24)break; /* TN_BAR_MAX：多出的段截断，不得拒帧 */NSInteger v=0;
+  switch(t.status){case AMapNaviRouteStatusSmooth:case AMapNaviRouteStatusFineOpen:v=1;break;case AMapNaviRouteStatusSlow:v=2;break;case AMapNaviRouteStatusJam:v=3;break;case AMapNaviRouteStatusSeriousJam:v=4;break;default:break;}
+  [levels addObject:@(v)];}return levels;}
+- (void)clearSceneExtensionState{self.trafficBarLevels=nil;self.cameraKind=0;self.cameraLimit=-1;self.cameraMeters=65535;self.eventKind=0;self.eventMeters=65535;}
+// TNV is a full-scene replace: extension keys must ride EVERY navigating frame,
+// otherwise the 1 Hz naviInfo frame wipes the bar/alert lines between callbacks.
+- (void)applySceneExtensions:(NSMutableDictionary *)frame{
+ if(self.trafficBarLevels)frame[@"barLevels"]=self.trafficBarLevels;
+ if(self.cameraKind){NSMutableDictionary *camera=[@{@"kind":@(self.cameraKind),@"limit":@(self.cameraLimit)} mutableCopy];if(self.cameraMeters<65535)camera[@"m"]=@(self.cameraMeters);frame[@"camera"]=camera;}
+ if(self.eventKind){NSMutableDictionary *event=[@{@"kind":@(self.eventKind)} mutableCopy];if(self.eventMeters<65535)event[@"m"]=@(self.eventMeters);frame[@"event"]=event;}}
+- (void)offerSceneRefresh{if(![self.display[@"phase"] isEqual:@"navigating"])return;NSMutableDictionary *f=[self.display mutableCopy];[self applySceneExtensions:f];[self setFrame:f];}
+- (void)driveManager:(AMapNaviDriveManager *)m updateNaviLocation:(AMapNaviLocation *)loc{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active||!loc)return;self.navLat=loc.coordinate.latitude;self.navLon=loc.coordinate.longitude;});}
+- (void)driveManager:(AMapNaviDriveManager *)m updateTrafficStatus:(NSArray<AMapNaviTrafficStatus *> *)status{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active)return;self.trafficBarLevels=[self levelsFromTrafficStatus:status];[self offerSceneRefresh];});}
+- (void)driveManager:(AMapNaviDriveManager *)m updateCameraInfos:(NSArray<AMapNaviCameraInfo *> *)cams{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active)return;
+ AMapNaviCameraInfo *best=nil;for(AMapNaviCameraInfo *c in cams)if(c.distance>=0&&(!best||c.distance<best.distance))best=c;
+ NSInteger kind=0,limit=-1;NSUInteger meters=65535;
+ if(best){switch(best.cameraType){case AMapNaviCameraTypeSpeed:kind=1;break;case AMapNaviCameraTypeTrafficLight:kind=2;break;case AMapNaviCameraTypeSurveillance:kind=3;break;case AMapNaviCameraTypeIntervalVelocityStart:case AMapNaviCameraTypeIntervalVelocityEnd:kind=4;break;default:kind=5;}
+  limit=best.cameraSpeed>0?(NSInteger)best.cameraSpeed:-1;meters=best.distance>65534?65534:(NSUInteger)best.distance;}
+ self.cameraKind=kind;self.cameraLimit=limit;self.cameraMeters=meters;[self offerSceneRefresh];});}
+- (void)driveManager:(AMapNaviDriveManager *)m updateTrafficEvents:(NSArray<AMapNaviRouteTrafficEventInfo *> *)events{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active)return;
+ NSInteger kind=0;NSUInteger meters=65535;BOOL found=NO;
+ for(AMapNaviRouteTrafficEventInfo *route in events){for(AMapNaviTrafficEventItem *it in route.infoList){
+  kind=(NSInteger)it.type;if(kind<0||kind>4)kind=0;
+  if(self.navLat!=0||self.navLon!=0){double dlat=it.coord.latitude-self.navLat,dlon=it.coord.longitude-self.navLon,dm=hypot(dlat*111000,dlon*111000*cos(self.navLat*M_PI/180));meters=dm>65534?65534:(NSUInteger)dm;}
+  found=YES;break;}if(found)break;}
+ self.eventKind=kind;self.eventMeters=meters;[self offerSceneRefresh];});}
 #endif
 #include "NavigationDisplayHUD.inc"
 #include "NavigationWorkspace.inc"

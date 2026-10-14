@@ -57,7 +57,21 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
  memset(s,0,sizeof *s);NSInteger i=[d[@"icon"] integerValue];switch(i){case 2:s->icon=TN_LEFT;break;case 3:s->icon=TN_RIGHT;break;case 4:s->icon=TN_SLIGHT_LEFT;break;case 5:s->icon=TN_SLIGHT_RIGHT;break;case 6:s->icon=TN_SHARP_LEFT;break;case 7:s->icon=TN_SHARP_RIGHT;break;case 8:case 19:s->icon=TN_UTURN;break;case 9:case 20:s->icon=TN_STRAIGHT;break;case 11:case 12:case 17:case 18:s->icon=TN_ROUNDABOUT;break;case 15:s->icon=TN_ARRIVE;break;default:s->icon=TN_UNKNOWN;}
  s->mode=always?TN_ALWAYS:TN_SMART;s->distance_m=[d[@"meters"] unsignedIntValue];s->remaining_m=[d[@"remainingMeters"] unsignedIntValue];s->remaining_s=[d[@"remainingSeconds"] unsignedIntValue];Clip(s->road,sizeof s->road,d[@"road"]);Clip(s->turn,sizeof s->turn,d[@"turn"]);
  NSArray *points=d[@"navPoints"];if(points){if(![points isKindOfClass:NSArray.class]||points.count>32)return NO;for(id pair in points){if(![pair isKindOfClass:NSArray.class]||[pair count]!=2||!Number(pair[0],1023)||!Number(pair[1],1023))return NO;s->points[s->point_count++]=(TNPoint){[pair[0] unsignedIntValue],[pair[1] unsignedIntValue]};}}
- if(s->point_count)s->position=s->points[0];if(Number(d[@"navHeading"],359))s->heading=[d[@"navHeading"] unsignedIntValue];return YES;
+ if(s->point_count)s->position=s->points[0];if(Number(d[@"navHeading"],359))s->heading=[d[@"navHeading"] unsignedIntValue];
+ /* Extension fields default to documented unknowns; malformed values reject
+  * the frame, which the session treats as transient and keeps rendering. */
+ s->lights=255;s->camera_limit=-1;s->camera_m=65535;s->event_m=65535;
+ id lights=d[@"lights"];if(lights){if(![lights isKindOfClass:NSNumber.class])return NO;long v=[lights longValue];if(v<0||v>255)v=255;s->lights=(uint8_t)v;} /* clamp: an SDK unknown must never reject the whole turn frame */
+ id bar=d[@"barLevels"];if(bar){if(![bar isKindOfClass:NSArray.class]||[bar count]>TN_BAR_MAX)return NO;
+  unsigned n=0;for(id level in bar){if(![level isKindOfClass:NSNumber.class])return NO;long x=[level longValue];if(x<0||x>4)return NO;s->bar[n++]=(uint8_t)x;}s->bar_count=(uint8_t)n;}
+ id cam=d[@"camera"];if(cam){if(![cam isKindOfClass:NSDictionary.class])return NO;id k=cam[@"kind"];id lim=cam[@"limit"];id mtr=cam[@"m"];
+  if(![k isKindOfClass:NSNumber.class]||[k longValue]<1||[k longValue]>TN_CAMERA_OTHER)return NO;s->camera_kind=(uint8_t)[k longValue];
+  if(lim){if(![lim isKindOfClass:NSNumber.class])return NO;long v=[lim longValue];if(v!=-1&&(v<0||v>500))return NO;s->camera_limit=(int16_t)v;}
+  if(mtr){if(![mtr isKindOfClass:NSNumber.class])return NO;long v=[mtr longValue];if(v<0||v>65534)return NO;s->camera_m=(uint16_t)v;}}
+ id ev=d[@"event"];if(ev){if(![ev isKindOfClass:NSDictionary.class])return NO;id k=ev[@"kind"];id mtr=ev[@"m"];
+  if(![k isKindOfClass:NSNumber.class]||[k longValue]<1||[k longValue]>TN_EVENT_CONTROL)return NO;s->event_kind=(uint8_t)[k longValue];
+  if(mtr){if(![mtr isKindOfClass:NSNumber.class])return NO;long v=[mtr longValue];if(v<0||v>65534)return NO;s->event_m=(uint16_t)v;}}
+ return YES;
 }
 @implementation TNVSession{
  NSString *_device,*_task,*_nativeTask,*_note;uint32_t _sid,_seq;NSTimeInterval(^_clock)(void);void(^_sender)(NSData *,NSString *,TNVSubmitted);void(^_cleanup)(NSString *);
