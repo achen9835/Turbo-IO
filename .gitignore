@@ -34,3 +34,6 @@
 **/.idea/
 **/local.properties
 /harmony-sdk/build-profile.json5
+
+# 本地凭据存档（令牌/密钥），永不提交
+secrets.local.md
