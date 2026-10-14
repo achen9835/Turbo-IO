@@ -1,7 +1,22 @@
 # TAP1 树 2026-10 重编说明：导航路况扩展 + 模块剔除 + 容器探查
 
 本批对 `tap1/source` 快照的修改，用于镜上 TAP1-TEST-01 同源固件的下一版重编。
-**尚未构建、尚未刷写**。构建仍走 `build-image-rx-candidate.py` 管线（需 OHOS LLVM 15.0.4 与原厂 AP 基线，云 Mac 执行）。
+**尚未构建、尚未刷写**。
+
+## 云 Mac 构建命令（一键脚本）
+
+前置：OHOS LLVM 15.0.4（DevEco Studio 的 OpenHarmony native llvm/bin）、node、原厂 rollback ZIP（Release `firmware-strix-1.0.4.12-turbophoto-r3` 的 `StrixOS-1.0.4.12-ORIGINAL-rollback.zip`）。
+
+```sh
+git clone https://gitee.com/achen9835/Turbo-IO.git && cd Turbo-IO   # 或已有仓库 git pull
+bash firmware-research/strix-1.0.4.12/tap1/build-tap1.sh \
+  /Applications/DevEco-Studio.app/Contents/sdk/default/openharmony/native/llvm/bin \
+  /absolute/StrixOS-1.0.4.12-ORIGINAL-rollback.zip \
+  /absolute/fresh-output-dir
+```
+
+产物在输出目录 `candidate/` 下；脚本尾打印新 AP 的 SHA-256——记入下面刷机清单第 1 条。
+构建器自带符号断言（无未解析符号）、AP 尺寸与分区描述符断言、15 成员清单校验。
 
 ## 改了什么
 
