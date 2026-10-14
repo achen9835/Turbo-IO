@@ -3,6 +3,7 @@ import zipfile
 import subprocess
 import shutil
 from pathlib import Path
+import pytest
 from turbo_dashboard.app_examples import examples, export
 from turbo_dashboard.app_package import build_package, read_package, validate_app
 from turbo_dashboard.app_wire import encode
@@ -44,10 +45,13 @@ def test_complex_examples_have_images_and_disclaimers():
 def test_examples_native_views_under_sanitizers(tmp_path):
     src=Path(__file__).resolve().parents[2]/'official-addon/research/app-runtime-v1'
     exe=tmp_path/'views'
-    cc=['clang']
     if shutil.which('xcrun'):
         sdk=subprocess.check_output(['xcrun','--sdk','macosx','--show-sdk-path'],text=True).strip()
         cc=['xcrun','--sdk','macosx','clang','-isysroot',sdk]
+    elif shutil.which('clang'):
+        cc=['clang']
+    else:
+        pytest.skip('clang with sanitizers not available')
     subprocess.run(cc+['-std=c11','-O1','-g','-fsanitize=address,undefined',
                     str(src/'app.c'),str(src/'app_view.c'),str(src/'test_view.c'),'-o',str(exe)],check=True)
     for stem,doc in examples().items():

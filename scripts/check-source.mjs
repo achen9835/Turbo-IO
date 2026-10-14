@@ -73,10 +73,10 @@ export function audit(root){
   ];
   function walk(p){
     if(path.basename(p)==='.git')return; // Also support Git worktree pointer files.
-    const s=fs.lstatSync(p),relative=path.relative(root,p);
+    const s=fs.lstatSync(p),relative=path.relative(root,p).split(path.sep).join('/');
     if(s.isSymbolicLink()){findings.push({file:relative,rule:'symlink'});return;}
     if(s.isDirectory()){
-      if(['.git','.build','node_modules','build','__pycache__'].includes(path.basename(p)))return;
+      if(['.git','.build','node_modules','build','__pycache__','.venv','.mimosa','.state'].includes(path.basename(p)))return;
       if(/\.(?:app|xcframework|xcresult)$/.test(p)){findings.push({file:relative,rule:'binary-bundle'});return;}
       for(const n of fs.readdirSync(p))walk(path.join(p,n));return;
     }

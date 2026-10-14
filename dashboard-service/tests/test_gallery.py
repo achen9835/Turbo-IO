@@ -4,6 +4,7 @@ import hashlib
 import json
 import subprocess
 import shutil
+import sys
 from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
@@ -34,7 +35,7 @@ def test_snapshot_whitelist_and_no_overwrite(tmp_path):
     for ident in ['../x','missing']:
         with pytest.raises(Fault):snapshot_doc(ident)
     target=tmp_path/'app.zip'
-    cmd=['turbo-app','gallery','build','city_weather','--out',str(target)]
+    cmd=[sys.executable,'-m','turbo_dashboard.app_cli','gallery','build','city_weather','--out',str(target)]
     subprocess.run(cmd,check=True,capture_output=True);before=target.read_bytes()
     assert subprocess.run(cmd,capture_output=True).returncode!=0 and target.read_bytes()==before
 
@@ -58,10 +59,13 @@ def test_real_http_package_build_and_auth(tmp_path):
 
 def test_all_gallery_pages_native_sanitizers(tmp_path):
     src=Path(__file__).resolve().parents[2]/'official-addon/research/app-runtime-v1';exe=tmp_path/'views'
-    cc=['clang']
     if shutil.which('xcrun'):
         sdk=subprocess.check_output(['xcrun','--sdk','macosx','--show-sdk-path'],text=True).strip()
         cc=['xcrun','clang','-isysroot',sdk]
+    elif shutil.which('clang'):
+        cc=['clang']
+    else:
+        pytest.skip('clang with sanitizers not available')
     subprocess.run(cc+['-std=c11','-O1','-g','-fsanitize=address,undefined',str(src/'app.c'),str(src/'app_view.c'),str(src/'test_view.c'),'-o',str(exe)],check=True)
     for item in catalog():
         f=tmp_path/(item['id']+'.tap');f.write_bytes(encode(snapshot_doc(item['id'])))

@@ -2,6 +2,7 @@ import os
 import shutil
 import subprocess
 from pathlib import Path
+import pytest
 from turbo_dashboard.app_wire import encode
 from test_app_package import example
 
@@ -14,8 +15,10 @@ def test_native_decoder_under_sanitizers(tmp_path):
     if shutil.which('xcrun'):
         sdk = subprocess.check_output(['xcrun', '--sdk', 'macosx', '--show-sdk-path'], text=True).strip()
         cc = ['xcrun', '--sdk', 'macosx', 'clang', '-isysroot', sdk]
-    else:
+    elif shutil.which('clang'):
         cc = ['clang']
+    else:
+        pytest.skip('clang with sanitizers not available')
     subprocess.run(cc+['-std=c11', '-O1', '-g', '-fsanitize=address,undefined', '-fno-omit-frame-pointer',
                        str(src/'app.c'), str(src/'test_app.c'), '-o', str(binary)], check=True)
     result = subprocess.run([str(binary), str(wire)], check=True, text=True, capture_output=True, timeout=60)
@@ -80,7 +83,7 @@ def test_js_authoring_to_zip(tmp_path):
     root = Path(__file__).resolve().parents[1]
     source = tmp_path/'tasks.json'
     subprocess.run(['node', str(root/'examples/tasks.mjs'), '--out', str(source)], check=True)
-    document = json.loads(source.read_text())
+    document = json.loads(source.read_text(encoding='utf-8'))
     compiled = encode(document)
     checked = read_package(build_package(document))
     assert checked['budget']['components'] == 6
