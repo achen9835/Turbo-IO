@@ -221,9 +221,8 @@ m8_hook_{name}:
         if music_runtime:units+=['music-runtime-v1/music','music-runtime-v1/music_service']+['diagnostics-v1/'+s for s in ['diagnostics','command','native_light','diagnostics_service']]
     units+=['weread-v1/reader','weread-v1/reader_view','weread-v1/reader_service']
     units+=['focus-v1/focus','focus-v1/focus_view','focus-v1/focus_service','focus-v1/focus_menu','focus-v1/focus_menu_native']
-    units+=['didi-v1/ride','didi-v1/ride_view','didi-v1/ride_service']
     units+=['dashboard-v1/card','dashboard-v1/native','dashboard-editor-v1/editor','dashboard-editor-v1/editor_native']
-    units += ['app-runtime-v1/app', 'app-runtime-v1/app_view', 'app-runtime-v1/app_store', 'app-runtime-v1/app_runner', 'app-runtime-v1/app_files', 'app-runtime-v1/app_files_native', 'app-runtime-v1/app_lvgl', 'app-runtime-v1/app_command', 'app-runtime-v1/app_shelf', 'app-runtime-v1/app_service']
+    # didi-v1 ride and app-runtime-v1 shelf intentionally excluded; menu is 12.
     animation_units=[]
     if animation_runtime:
         asset=SRC/'animation-runtime-v1/assets/encoded-v1/anime-idle-192x176-l8.bin'
@@ -232,7 +231,7 @@ m8_hook_{name}:
         put(generated/'animation-asset.S','.section .rodata.ta_asset,"a",%progbits\n.balign 64\n.global ta_asset\n.type ta_asset,%object\nta_asset:\n.incbin "'+str(asset)+'", 0, 33792\n.size ta_asset, .-ta_asset\n')
         units+=['animation-runtime-v1/animation']
         animation_units=[generated/'animation-asset.S']
-    for source in [SRC/(s+'.c') for s in units]+([] if display_runtime else [generated/'photo-payload.c'])+[generated/'trampolines.S']+animation_units+[SRC/'app-runtime-v1/app_abi.S']:
+    for source in [SRC/(s+'.c') for s in units]+([] if display_runtime else [generated/'photo-payload.c'])+[generated/'trampolines.S']+animation_units:
         obj=generated/(source.stem+'.o');run([compiler,*flags,'-c',source,'-o',obj]);objects.append(obj)
     elf=generated/'menu8-experiment.elf'
     run([linker,'-T',generated/'link.ld','--entry=m8_hook_ctor',*objects,'-o',elf])
@@ -369,7 +368,7 @@ m8_hook_{name}:
     report['readyBlockers']=['Reader native lifecycle/menu/phone verification pending','Fresh explicit flash authorization required']
     report.update(kind='TAP1-developer-runtime-experimental-candidate',menuProfile='native-fourteen-TAP1')
     report['focusProfile']={'menuIndex':11,'protocol':'TFP1','timerOwner':'independent bounded heap service','screenLeaseMs':10000,'compactAfterMs':3000,'noOtherPayloadChanges':True,'physicalSleepValidated':False}
-    report['sourceInputs'] += [{'path':str(p.relative_to(ROOT)),'sha256':digest(p.read_bytes())} for part in ['focus-v1','didi-v1','app-runtime-v1'] for p in sorted((SRC/part).glob('*.[ch]'))]
+    report['sourceInputs'] += [{'path':str(p.relative_to(ROOT)),'sha256':digest(p.read_bytes())} for part in ['focus-v1'] for p in sorted((SRC/part).glob('*.[ch]'))]
     put(out/'report.json',json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     print(json.dumps({k:report[k] for k in ['candidateAP','candidateAPBytes','moduleVA','moduleBytes','unchangedPayloads','archive','unresolved']}))
     return report

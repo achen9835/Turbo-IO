@@ -15,8 +15,8 @@ static TNWidgets api(Mock *m){return (TNWidgets){m,idle,create,create,label,plac
 int main(void){
  TNScene s={.icon=TN_RIGHT,.distance_m=80,.point_count=3,.position={512,512},.heading=90};
  strcpy(s.road,"测试道路");strcpy(s.turn,"前方右转");s.points[0]=(TNPoint){512,1023};s.points[1]=(TNPoint){512,512};s.points[2]=(TNPoint){1023,512};
- for(unsigned fail=1;fail<=11;fail++){Mock m={.fail_at=fail};TNWidgets a=api(&m);TNView v={0};
-  assert(!tn_view_open(&v,&a,&m,&s));assert(!v.open&&!v.root);assert(m.destroyed==(fail!=1));}
+ for(unsigned fail=1;fail<=11;fail++){Mock fm={.fail_at=fail};TNWidgets fa=api(&fm);TNView fv={0};
+  assert(!tn_view_open(&fv,&fa,&fm,&s));assert(!fv.open&&!fv.root);assert(fm.destroyed==(fail!=1));}
  Mock m={0};TNWidgets a=api(&m);TNView v={0};assert(tn_view_open(&v,&a,&m,&s));assert(m.alloc==11&&m.buffers==3&&m.texts==7);
  assert(!strcmp(m.strings[0],"80 m"));const uint8_t *first=m.pixels[0];uint32_t original=tn_crc(first,128*128);
  assert(original!=tn_crc((const uint8_t[128*128]){0},128*128));
