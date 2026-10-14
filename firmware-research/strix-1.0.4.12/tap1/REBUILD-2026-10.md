@@ -44,3 +44,17 @@ bash firmware-research/strix-1.0.4.12/tap1/build-tap1.sh \
 - 本机已验证：导航 codec/visual/view gcc 测试全绿（四树矩阵）、被改 C 文件三组括号配平零差、弯引号零命中、构建脚本 python 语法通过、模块外引用零残留。
 - **未验证**：OHOS clang 真实编译、arm 测试（test_service_arm 等）、镜像链接（云 Mac）、真机（一切以肉眼为准）。
 - 手机侧插件不带 `TIO_APP_SDK` 宏构建即无应用广场入口，无需改手机端代码。
+
+## 2026-10-14 本机复检（构建前必读）
+
+复检发现并修复/待办如下，云 Mac 构建前逐项确认：
+
+1. **已修·构建脚本**：`build-tap1.sh` 原在 `cd $OUT/...` 后用相对级数反推仓库根（仅当输出目录恰埋在仓库内两层深才碰巧正确）——已在进入输出目录前捕获 `$PWD`；并补参数个数检查。
+2. **已修·菜单滚轮几何**：`menu10.c` 剔除两模块时帧几何仍按 14 项（`clamp(index,0,13)`、帧上限 419/405、滑条 14.0f、`app_id` 残留 12/13→TurboRide/TurboApps），滚轮可滚进两个空白死位。已按 9 项树同款公式改为 12 项（帧上限 359=15+30×11+14，滑条 12.0f，app_id 止于 11）。
+3. **已修·menu10.c 编译断点**：`m8_hook_names` 开头整段 `TAPMenu *a=apps(app)…"我的应用"` 行残留（apps()/TAPMenu 已随 app-runtime-v1 删除，引用即编译失败）——已整行摘除。
+4. **已修·_Static_assert 误改**：`focus_menu_native.c` 的 `offsetof(TNNavSlot,quad)` 断言被从 44 改成 40；实际 32 位目标下删字段后 quad 偏移仍是 44（10 指针 40B + back_until），只有 sizeof 56→48。已用 `-m32` 模型实证并改回 44/48。
+5. **已修·缺失头文件**：`diagnostics-v1/` 五个头（command/diagnostics/diagnostics_service/native_light/stock_abi）与 `dashboard-editor-v1/editor.h` 从未进过 git，已按字节相同的 .c 消费方分别从 focus 树与主树拷回。
+6. **阻塞·遗失文件**：`dashboard-v1/card.h` 与 `dashboard-v1/icons.inc` 全仓库及 git 历史均不存在（67ac6e2 引入 .c 时即未提交）。card.h 可由用法机械重建（DCValues 十字段/DCAPI 六槽/dc_parse/dc_render），但 `DC_SURFACE`/`DC_COMPONENT` 字面量与 icons.inc 的 `dc_images[3]` 图标数据属设计产物，**必须从当初构建 TAP1-TEST-01 的机器取回**，否则云 Mac 编译直接失败。取回前不要执行构建。
+7. **已修·报告元数据**：构建器 `menuProfile` 仍为 `native-fourteen-TAP1`，已改 `native-twelve-TAP1`（全仓无其他引用）。
+8. **待办·独立审计**：刷机清单第 1 条的 `audit-image-rx-candidate.py` 现仅存于 native-navigation 三棵树，且其 kind 白名单不含 `TAP1-developer-runtime-experimental-candidate`、菜单断言不含 12 项配置——需按本树报告实际字段配一份 tap1 版审计后再执行刷机清单。
+9. **新增本机验证基线**：上述修复后，全构建单元 30/30 通过 `gcc -m32 -fsyntax-only`（构建器同款 -D 宏组合；host gcc 非目标 clang，仅作语法/断言级证据）。dashboard-v1 两件因第 6 条除外。

@@ -6,7 +6,9 @@
 # 只离线构建，不触碰眼镜、不授权刷写。输出目录必须不存在。
 set -euo pipefail
 cd "$(dirname "$0")/../../.."   # 仓库根
+REPO_ROOT="$PWD"
 
+[ $# -eq 3 ] || { echo "用法: bash $0 <OHOS_LLVM_BIN> <原厂rollback.zip> <新输出目录>"; exit 1; }
 LLVM_BIN="$1"; STOCK="$2"; OUT="$3"
 [ -d "$LLVM_BIN" ] || { echo "LLVM bin 目录不存在"; exit 1; }
 [ -f "$STOCK" ] || { echo "原厂 rollback ZIP 不存在（Release firmware-strix-1.0.4.12-turbophoto-r3 附件）"; exit 1; }
@@ -28,7 +30,6 @@ cp "$SHARED/assets/turbo-photo-firmware.png" "$PNG_DIR/turbo-photo-gray16-rgba-8
 # 3) 以全运行时组合驱动快照构建器（wide + native-eight + display + navigation + animation + music）
 export PATH="$LLVM_BIN:$PATH"
 cd "$OUT/official-addon/research"
-REPO_ROOT="$(cd ../../../.. && pwd)"
 PYTHONPATH="$PWD:$PWD/music-runtime-v1:$PWD/navigation-runtime-v1" "$REPO_ROOT/$SHARED/.venv/bin/python" - <<'PY'
 import importlib.util, json, hashlib
 from pathlib import Path

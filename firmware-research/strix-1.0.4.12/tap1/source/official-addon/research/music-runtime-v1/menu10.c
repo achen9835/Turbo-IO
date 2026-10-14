@@ -80,17 +80,16 @@ static void *block(void *parent,int w,int h,int x,int y){
 }
 /* Assembler entry shims preserve r1-r3: stock callers use whole-unit register
  * knowledge beyond ordinary AAPCS (snap keeps a frame in r2 across this call). */
-int m8_impl_frame_start(int index){return 15+30*clamp(index,0,13);}
-int m8_impl_frame_index(int frame){return clamp(frame,0,419)/30;}
+int m8_impl_frame_start(int index){return 15+30*clamp(index,0,11);}
+int m8_impl_frame_index(int frame){return clamp(frame,0,359)/30;}
 void m8_hook_render_slide(void *app){
- float value=*(float *)((uint8_t *)app+0xa8);if(!(value>=-1.0f))value=-1.0f;if(value>14.0f)value=14.0f;
- int frame=(int)(value*30.0f+15.5f);(void)m8_hook_frame(app,clamp(frame,0,419));
+ float value=*(float *)((uint8_t *)app+0xa8);if(!(value>=-1.0f))value=-1.0f;if(value>12.0f)value=12.0f;
+ int frame=(int)(value*30.0f+15.5f);(void)m8_hook_frame(app,clamp(frame,0,359));
 }
 const char *m8_hook_app_id(int index){
-  return index==13?"TurboApps":index==12?"TurboRide":index==11?"TurboFocus":index==10?"TurboWeRead":index==9?"TurboMusic":index==8?"TurboNavigation":index==7?"TurboDisplay":stock_app_id(index);
+  return index==11?"TurboFocus":index==10?"TurboWeRead":index==9?"TurboMusic":index==8?"TurboNavigation":index==7?"TurboDisplay":stock_app_id(index);
 }
 void m8_hook_names(void *app){
-  TAPMenu *a=apps(app);if(a&&!a->row&&ptr(app,4)){a->row=tio_lv_obj_create_ex(ptr(app,4),0);if(a->row){clean_style(a->row);tio_lv_obj_set_size(a->row,260,26);native_align(a->row,5,0,-60);hidden(a->row,true);a->label=native_label_create(a->row);if(a->label){clean_style(a->label);native_label_text(a->label,"我的应用");void *f=menu_font(20,0);if(f)menu_text_font(a->label,f,0);native_text_color(a->label,0x00ff00,0);menu_text_align(a->label,2,0);tio_lv_obj_set_size(a->label,260,26);native_align(a->label,9,0,0);}}}
   stock_names(app);M8NativeTail *t=tail(app);
   if(t->row || !ptr(app,4))return;
   void *row=tio_lv_obj_create_ex(ptr(app,4),0);if(!row){t->errors|=1;return;}
@@ -188,7 +187,7 @@ void m8_hook_lottie(void *app){
   for(unsigned i=0;i<sizeof tomato/sizeof *tomato;i++)if(!block(f->icon,tomato[i][0],tomato[i][1],tomato[i][2],tomato[i][3])){tio_lv_obj_delete(f->icon);f->icon=NULL;break;}
 }
 void m8_hook_label_frame(void *app,int frame){
-  frame=clamp(frame,0,419);
+  frame=clamp(frame,0,359);
   for(unsigned i=0;i<12;i++){
     void *row=i==11?(focus(app)?focus(app)->row:NULL):i==10?(reader(app)?reader(app)->row:NULL):i==9?(music(app)?music(app)->row:NULL):i==8?(slot(app)?slot(app)->row:NULL):i==7?tail(app)->row:ptr(app,0xc+4*i);
     if(!row)continue;
@@ -202,7 +201,7 @@ void m8_hook_label_frame(void *app,int frame){
 void m8_hook_label_index(void *app,int index){m8_hook_label_frame(app,m8_hook_frame_start(index));}
 void m8_hook_indicator(void *app,int frame,int previous){
   (void)previous;if(!ptr(app,0x60))return;
-  frame=clamp(frame,15,405);
+  frame=clamp(frame,15,345);
   for(unsigned i=0;i<12;i++){
     void *dot=i==11?(focus(app)?focus(app)->dot:NULL):i==10?(reader(app)?reader(app)->dot:NULL):i==9?(music(app)?music(app)->dot:NULL):i==8?(slot(app)?slot(app)->dot:NULL):i==7?tail(app)->dot:ptr(app,0x64+4*i);if(!dot)continue;
     int d=frame-m8_hook_frame_start((int)i);if(d<0)d=-d;
@@ -212,7 +211,7 @@ void m8_hook_indicator(void *app,int frame,int previous){
   }
 }
 bool m8_hook_frame(void *app,int frame){
-  void *lottie=ptr(app,8);if(!lottie || frame<0 || frame>419)return false;
+  void *lottie=ptr(app,8);if(!lottie || frame<0 || frame>359)return false;
   int previous=(int)*word(app,0x90);
   if(previous==frame)return false;
   *word(app,0x90)=(uint32_t)frame;

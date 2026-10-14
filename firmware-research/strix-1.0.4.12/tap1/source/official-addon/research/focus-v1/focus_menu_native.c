@@ -22,7 +22,7 @@ extern int64_t fm_local_time(void *);
 extern int fm_battery_level(void *);
 typedef struct {FMView view;void *app,*timer;uint32_t refreshed;int selection;bool enabled,closing;} FMControl;
 _Static_assert(sizeof(FMControl)<=49152,"quad menu retained storage capped at 48 KiB");
-_Static_assert(offsetof(TNNavSlot,quad)==40,"never overlap existing slot fields");
+_Static_assert(offsetof(TNNavSlot,quad)==44,"never overlap existing slot fields");
 _Static_assert(sizeof(TNNavSlot)==48,"quad extends only separately allocated slot");
 static void *ptr(void *p,unsigned o){return p?*(void **)((uint8_t *)p+o):NULL;}
 static TNNavSlot *slot(void *a){return a?((M8NativeTail *)((uint8_t *)a+0xdc))->navigation:NULL;}

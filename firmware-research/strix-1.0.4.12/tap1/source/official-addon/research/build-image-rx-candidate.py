@@ -366,7 +366,7 @@ m8_hook_{name}:
     report['readerProfile']={'protocol':'TWR1','menuIndex':10,'banksBytes':49152,'cover':[64,88],'booksPerPage':4,'speedMaxCPM':480,'packetMax':512,'leaseMs':90000}
     report['sourceInputs'] += [{'path':str(p.relative_to(ROOT)),'sha256':digest(p.read_bytes())} for p in sorted((SRC/'weread-v1').glob('*.[ch]'))]
     report['readyBlockers']=['Reader native lifecycle/menu/phone verification pending','Fresh explicit flash authorization required']
-    report.update(kind='TAP1-developer-runtime-experimental-candidate',menuProfile='native-fourteen-TAP1')
+    report.update(kind='TAP1-developer-runtime-experimental-candidate',menuProfile='native-twelve-TAP1')
     report['focusProfile']={'menuIndex':11,'protocol':'TFP1','timerOwner':'independent bounded heap service','screenLeaseMs':10000,'compactAfterMs':3000,'noOtherPayloadChanges':True,'physicalSleepValidated':False}
     report['sourceInputs'] += [{'path':str(p.relative_to(ROOT)),'sha256':digest(p.read_bytes())} for part in ['focus-v1'] for p in sorted((SRC/part).glob('*.[ch]'))]
     put(out/'report.json',json.dumps(report,ensure_ascii=False,indent=2)+'\n')
