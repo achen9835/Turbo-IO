@@ -14,14 +14,14 @@ assert not a.out.exists(), 'Use a new staging directory'
 shutil.copytree(a.base,a.out,ignore=shutil.ignore_patterns('build','*-verification','__pycache__'))
 def replace(name,old,new):
     path=a.out/name
-    text=path.read_text()
+    text=path.read_text(encoding='utf-8')
     assert text.count(old)==1,(name,old)
-    path.write_text(text.replace(old,new))
+    path.write_text(text.replace(old,new),encoding='utf-8')
 for f in (root/'Addon').iterdir():
     if f.suffix in ('.m','.h'):shutil.copy2(f,a.out/f.name)
 for name in ['remote.c','remote.h']:shutil.copy2(root/'Firmware'/name,a.out/name)
-replace('build.sh','LocalTranslationEntry.m ExperimentalOTA.m',
-        '-framework WatchConnectivity WatchRemoteGate.m WatchGlobalBridge.m remote.c WatchRemoteAddon.m LocalTranslationEntry.m ExperimentalOTA.m')
+replace('build.sh','ExperimentalOTA.m',
+        '-framework WatchConnectivity WatchRemoteGate.m WatchGlobalBridge.m remote.c WatchRemoteAddon.m ExperimentalOTA.m')
 replace('DisplayPhoneUI.m','#import "DisplayPhoneUI.h"','#import "DisplayPhoneUI.h"\n#import "WatchGlobalBridge.h"')
 replace('DisplayPhoneUI.m',' if(TDDiagnosticsConsume(e))return YES;',' if(TIOWatchGlobalConsume(e))return YES;\n if(TDDiagnosticsConsume(e))return YES;')
 replace('DisplayPhoneUI.m','if(!TFDecodeReply(event)&&','if(!TIOWatchGlobalIsReply(event)&&!TFDecodeReply(event)&&')
