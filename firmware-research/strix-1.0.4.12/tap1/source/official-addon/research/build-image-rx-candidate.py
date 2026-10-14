@@ -221,7 +221,10 @@ m8_hook_{name}:
         if music_runtime:units+=['music-runtime-v1/music','music-runtime-v1/music_service']+['diagnostics-v1/'+s for s in ['diagnostics','command','native_light','diagnostics_service']]
     units+=['weread-v1/reader','weread-v1/reader_view','weread-v1/reader_service']
     units+=['focus-v1/focus','focus-v1/focus_view','focus-v1/focus_service','focus-v1/focus_menu','focus-v1/focus_menu_native']
-    units+=['dashboard-v1/card','dashboard-v1/native','dashboard-editor-v1/editor','dashboard-editor-v1/editor_native']
+    units+=['dashboard-editor-v1/editor','dashboard-editor-v1/editor_native']
+    # dashboard-v1 (author's private TDC1 template card) intentionally excluded:
+    # card.h/icons.inc were never committed and no user card matched that
+    # surface; the dc_text hook now lives in editor_native (TCE1 -> stock).
     # didi-v1 ride and app-runtime-v1 shelf intentionally excluded; menu is 12.
     animation_units=[]
     if animation_runtime:

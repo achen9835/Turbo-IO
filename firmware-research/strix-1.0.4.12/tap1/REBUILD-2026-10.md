@@ -54,7 +54,7 @@ bash firmware-research/strix-1.0.4.12/tap1/build-tap1.sh \
 3. **已修·menu10.c 编译断点**：`m8_hook_names` 开头整段 `TAPMenu *a=apps(app)…"我的应用"` 行残留（apps()/TAPMenu 已随 app-runtime-v1 删除，引用即编译失败）——已整行摘除。
 4. **已修·_Static_assert 误改**：`focus_menu_native.c` 的 `offsetof(TNNavSlot,quad)` 断言被从 44 改成 40；实际 32 位目标下删字段后 quad 偏移仍是 44（10 指针 40B + back_until），只有 sizeof 56→48。已用 `-m32` 模型实证并改回 44/48。
 5. **已修·缺失头文件**：`diagnostics-v1/` 五个头（command/diagnostics/diagnostics_service/native_light/stock_abi）与 `dashboard-editor-v1/editor.h` 从未进过 git，已按字节相同的 .c 消费方分别从 focus 树与主树拷回。
-6. **阻塞·遗失文件**：`dashboard-v1/card.h` 与 `dashboard-v1/icons.inc` 全仓库及 git 历史均不存在（67ac6e2 引入 .c 时即未提交）。card.h 可由用法机械重建（DCValues 十字段/DCAPI 六槽/dc_parse/dc_render），但 `DC_SURFACE`/`DC_COMPONENT` 字面量与 icons.inc 的 `dc_images[3]` 图标数据属设计产物，**必须从当初构建 TAP1-TEST-01 的机器取回**，否则云 Mac 编译直接失败。取回前不要执行构建。
+6. **已解除·遗失文件（2026-10-15 改为摘除）**：`dashboard-v1/card.h` 与 `icons.inc` 全仓库及 git 历史均不存在（67ac6e2 引入 .c 时即未提交）。复查确认该模块是**作者自用的 TDC1 模板卡拦截器**（"Codex Pro/Claude Max"服务监控卡：surface 名字面量无源、图标为设计产物、任何用户卡都不会命中该分支），重建既不可能也无收益——已整模块摘除（目录删除、构建清单移除），`dc_text` hook 的 TCE1 前置分流（`tce_owns → tce_native → stock`）已并入 `dashboard-editor-v1/editor_native.c`，**用户的 TCE1 仪表盘渲染不受影响**。阻塞解除，可执行构建。
 7. **已修·报告元数据**：构建器 `menuProfile` 仍为 `native-fourteen-TAP1`，已改 `native-twelve-TAP1`（全仓无其他引用）。
 8. **待办·独立审计**：刷机清单第 1 条的 `audit-image-rx-candidate.py` 现仅存于 native-navigation 三棵树，且其 kind 白名单不含 `TAP1-developer-runtime-experimental-candidate`、菜单断言不含 12 项配置——需按本树报告实际字段配一份 tap1 版审计后再执行刷机清单。
-9. **新增本机验证基线**：上述修复后，全构建单元 30/30 通过 `gcc -m32 -fsyntax-only`（构建器同款 -D 宏组合；host gcc 非目标 clang，仅作语法/断言级证据）。dashboard-v1 两件因第 6 条除外。
+9. **新增本机验证基线**：上述修复后，全构建单元通过 `gcc -m32 -fsyntax-only`（构建器同款 -D 宏组合；host gcc 非目标 clang，仅作语法/断言级证据）。2026-10-15 摘除 dashboard-v1 并并入 TCE1 分流后复跑：**29/29 通过**（清单少两件属预期）。
