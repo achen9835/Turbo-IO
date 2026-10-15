@@ -119,7 +119,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property MAPolyline *routeLine;
 @property NSArray<NSNumber *> *trafficBarLevels;
 @property NSInteger cameraKind,cameraLimit,eventKind;
-@property NSUInteger cameraMeters,eventMeters;
+@property NSUInteger cameraMeters,eventMeters,lightMeters;
 @property double navLat,navLon;
 #endif
 @end
@@ -611,29 +611,32 @@ static NSMutableArray *TIONavAheadCoords(NSArray<AMapNaviSegment *> *segments,NS
  for(AMapNaviTrafficStatus *t in status){if(levels.count>=24)break; /* TN_BAR_MAX：多出的段截断，不得拒帧 */NSInteger v=0;
   switch(t.status){case AMapNaviRouteStatusSmooth:case AMapNaviRouteStatusFineOpen:v=1;break;case AMapNaviRouteStatusSlow:v=2;break;case AMapNaviRouteStatusJam:v=3;break;case AMapNaviRouteStatusSeriousJam:v=4;break;default:break;}
   [levels addObject:@(v)];}return levels;}
-- (void)clearSceneExtensionState{self.trafficBarLevels=nil;self.cameraKind=0;self.cameraLimit=-1;self.cameraMeters=65535;self.eventKind=0;self.eventMeters=65535;}
+- (void)clearSceneExtensionState{self.trafficBarLevels=nil;self.cameraKind=0;self.cameraLimit=-1;self.cameraMeters=65535;self.eventKind=0;self.eventMeters=65535;self.lightMeters=65535;}
 // TNV is a full-scene replace: extension keys must ride EVERY navigating frame,
 // otherwise the 1 Hz naviInfo frame wipes the bar/alert lines between callbacks.
 - (void)applySceneExtensions:(NSMutableDictionary *)frame{
  if(self.trafficBarLevels)frame[@"barLevels"]=self.trafficBarLevels;
+ if(self.lightMeters<65535)frame[@"lightsMeters"]=@(self.lightMeters); /* nearest red-light camera = real distance to a light-controlled junction */
  if(self.cameraKind){NSMutableDictionary *camera=[@{@"kind":@(self.cameraKind),@"limit":@(self.cameraLimit)} mutableCopy];if(self.cameraMeters<65535)camera[@"m"]=@(self.cameraMeters);frame[@"camera"]=camera;}
  if(self.eventKind){NSMutableDictionary *event=[@{@"kind":@(self.eventKind)} mutableCopy];if(self.eventMeters<65535)event[@"m"]=@(self.eventMeters);frame[@"event"]=event;}}
 - (void)offerSceneRefresh{if(![self.display[@"phase"] isEqual:@"navigating"])return;NSMutableDictionary *f=[self.display mutableCopy];[self applySceneExtensions:f];[self setFrame:f];}
 - (void)driveManager:(AMapNaviDriveManager *)m updateNaviLocation:(AMapNaviLocation *)loc{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active||!loc)return;self.navLat=loc.coordinate.latitude;self.navLon=loc.coordinate.longitude;});}
 - (void)driveManager:(AMapNaviDriveManager *)m updateTrafficStatus:(NSArray<AMapNaviTrafficStatus *> *)status{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active)return;self.trafficBarLevels=[self levelsFromTrafficStatus:status];[self offerSceneRefresh];});}
 - (void)driveManager:(AMapNaviDriveManager *)m updateCameraInfos:(NSArray<AMapNaviCameraInfo *> *)cams{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active)return;
- AMapNaviCameraInfo *best=nil;for(AMapNaviCameraInfo *c in cams)if(c.distance>=0&&(!best||c.distance<best.distance))best=c;
+ AMapNaviCameraInfo *best=nil;NSInteger lightM=65535;for(AMapNaviCameraInfo *c in cams)if(c.distance>=0){if(!best||c.distance<best.distance)best=c;
+  if(c.cameraType==AMapNaviCameraTypeTrafficLight&&c.distance<lightM)lightM=c.distance>65534?65534:(NSInteger)c.distance;} /* red-light cameras sit on light-controlled junctions: nearest one approximates lights_m with real data */
  NSInteger kind=0,limit=-1;NSUInteger meters=65535;
  if(best){switch(best.cameraType){case AMapNaviCameraTypeSpeed:kind=1;break;case AMapNaviCameraTypeTrafficLight:kind=2;break;case AMapNaviCameraTypeSurveillance:kind=3;break;case AMapNaviCameraTypeIntervalVelocityStart:case AMapNaviCameraTypeIntervalVelocityEnd:kind=4;break;default:kind=5;}
   limit=best.cameraSpeed>0?(NSInteger)best.cameraSpeed:-1;meters=best.distance>65534?65534:(NSUInteger)best.distance;}
- self.cameraKind=kind;self.cameraLimit=limit;self.cameraMeters=meters;[self offerSceneRefresh];});}
+ self.cameraKind=kind;self.cameraLimit=limit;self.cameraMeters=meters;self.lightMeters=(NSUInteger)lightM;[self offerSceneRefresh];});}
 - (void)driveManager:(AMapNaviDriveManager *)m updateTrafficEvents:(NSArray<AMapNaviRouteTrafficEventInfo *> *)events{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active)return;
- NSInteger kind=0;NSUInteger meters=65535;BOOL found=NO;
+ NSInteger kind=0;NSUInteger meters=65535;BOOL found=NO; /* nearest event wins, matching the camera rule */
  for(AMapNaviRouteTrafficEventInfo *route in events){for(AMapNaviTrafficEventItem *it in route.infoList){
-  kind=(NSInteger)it.type;if(kind<0||kind>4)kind=0;
-  if(self.navLat!=0||self.navLon!=0){double dlat=it.coord.latitude-self.navLat,dlon=it.coord.longitude-self.navLon,dm=hypot(dlat*111000,dlon*111000*cos(self.navLat*M_PI/180));meters=dm>65534?65534:(NSUInteger)dm;}
-  found=YES;break;}if(found)break;}
- self.eventKind=kind;self.eventMeters=meters;[self offerSceneRefresh];});}
+  NSInteger k=(NSInteger)it.type;if(k<0||k>4)k=0;
+  NSUInteger dm=65535;
+  if(self.navLat!=0||self.navLon!=0){double dlat=it.coord.latitude-self.navLat,dlon=it.coord.longitude-self.navLon,d=hypot(dlat*111000,dlon*111000*cos(self.navLat*M_PI/180));dm=d>65534?65534:(NSUInteger)d;}
+  if(!found||dm<meters){found=YES;kind=k;meters=dm;}}}
+ self.eventKind=found?kind:0;self.eventMeters=meters;[self offerSceneRefresh];});}
 #endif
 #include "NavigationDisplayHUD.inc"
 #include "NavigationWorkspace.inc"

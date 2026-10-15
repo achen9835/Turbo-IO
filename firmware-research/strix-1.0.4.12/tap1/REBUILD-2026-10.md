@@ -32,7 +32,8 @@ bash firmware-research/strix-1.0.4.12/tap1/build-tap1.sh \
 
 ## 刷机安全清单（每次执行前逐条核对）
 
-1. 固件 ZIP 构建产物先过脚本审计（`audit-image-rx-candidate.py` 输出独立审计 JSON）；**哈希与 TAP1-TEST-01 不同是预期的**（源码已变），但清单里仅 `nuttx_ap.bin` 一项改变的结构必须保持。
+1. 固件 ZIP 构建产物先过脚本审计（本树 `source/official-addon/research/audit-tap1-candidate.py`，`build-tap1.sh` 第 4 步已自动执行并产出 `candidate-audit.json`）；**哈希与 TAP1-TEST-01 不同是预期的**（源码已变），但清单里仅 `nuttx_ap.bin` 一项改变的结构必须保持。
+2. **升级顺序：先装新 IPA（dylib），后刷眼镜固件**。旧 dylib 发的扩展尾字节 e+34/35 从未初始化，新固件会把它当红绿灯距离渲染出假标记；两边都换新后该窗口关闭。
 2. 眼镜电量充足（>50%）；手机端停止全部会话（导航/字幕/音乐/番茄/OTA 查询页）。
 3. 刷写中保持蓝牙距离与静止；**禁止**同时进行 OTA 之外的任何眼镜操作。
 4. 保留一份哈希核验过的原版 1.0.4.12 ZIP 与 TAP1-TEST-01 ZIP 用于回滚重刷（回滚不是救砖保证，仅最优先恢复手段）。
@@ -56,5 +57,5 @@ bash firmware-research/strix-1.0.4.12/tap1/build-tap1.sh \
 5. **已修·缺失头文件**：`diagnostics-v1/` 五个头（command/diagnostics/diagnostics_service/native_light/stock_abi）与 `dashboard-editor-v1/editor.h` 从未进过 git，已按字节相同的 .c 消费方分别从 focus 树与主树拷回。
 6. **已解除·遗失文件（2026-10-15 改为摘除）**：`dashboard-v1/card.h` 与 `icons.inc` 全仓库及 git 历史均不存在（67ac6e2 引入 .c 时即未提交）。复查确认该模块是**作者自用的 TDC1 模板卡拦截器**（"Codex Pro/Claude Max"服务监控卡：surface 名字面量无源、图标为设计产物、任何用户卡都不会命中该分支），重建既不可能也无收益——已整模块摘除（目录删除、构建清单移除），`dc_text` hook 的 TCE1 前置分流（`tce_owns → tce_native → stock`）已并入 `dashboard-editor-v1/editor_native.c`，**用户的 TCE1 仪表盘渲染不受影响**。阻塞解除，可执行构建。
 7. **已修·报告元数据**：构建器 `menuProfile` 仍为 `native-fourteen-TAP1`，已改 `native-twelve-TAP1`（全仓无其他引用）。
-8. **待办·独立审计**：刷机清单第 1 条的 `audit-image-rx-candidate.py` 现仅存于 native-navigation 三棵树，且其 kind 白名单不含 `TAP1-developer-runtime-experimental-candidate`、菜单断言不含 12 项配置——需按本树报告实际字段配一份 tap1 版审计后再执行刷机清单。
+8. **已解除·独立审计（2026-10-16）**：新增本树专用 `tap1/source/official-addon/research/audit-tap1-candidate.py`（kind 锁 `TAP1-developer-runtime-experimental-candidate`、菜单锁 `native-twelve-TAP1`、`focusProfile.menuIndex==11`；字节级复核 changes 白名单/模块零填充分区/build-info 原文/7+6 入口跳板与回跳/trampoline 回读/ELF 无未定义符号/14 行清单 13 项不变/ZIP 回读；**剔除验证**：sourceInputs 不得含 didi-v1/app-runtime-v1/dashboard-v1，focus_menu.c、focus_menu_native.c、menu10.c、nav_view.c 四个 12 项/路况关键源按 SHA-256 钉住）。`build-tap1.sh` 第 4 步自动执行并产出 `candidate-audit.json`。审计只证字节，不替代云 Mac ARM 模拟与真机验收。
 9. **新增本机验证基线**：上述修复后，全构建单元通过 `gcc -m32 -fsyntax-only`（构建器同款 -D 宏组合；host gcc 非目标 clang，仅作语法/断言级证据）。2026-10-15 摘除 dashboard-v1 并并入 TCE1 分流后复跑：**29/29 通过**（清单少两件属预期）。

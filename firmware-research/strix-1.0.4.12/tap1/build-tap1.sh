@@ -40,3 +40,9 @@ ap = Path("candidate/payload/nuttx_ap.bin").read_bytes()
 print(json.dumps({"candidateAP": hashlib.sha256(ap).hexdigest(), "candidateAPBytes": len(ap), "archive": report["archive"]["name"]}, indent=2))
 print("Built offline; no flash authorized. 把 candidateAP 记入 REBUILD-2026-10.md 刷机清单。")
 PY
+
+# 4) 独立字节级审计（REBUILD-2026-10.md 第8条；只读，不授权刷写）
+PYTHONPATH="$PWD:$PWD/music-runtime-v1:$PWD/navigation-runtime-v1" "$REPO_ROOT/$SHARED/.venv/bin/python" \
+  audit-tap1-candidate.py candidate --out candidate-audit.json
+echo "审计通过：candidate-audit.json 已生成。仍需云Mac ARM 模拟与真机验收后才可授权刷写。"
+
