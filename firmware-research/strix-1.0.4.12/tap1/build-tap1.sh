@@ -46,6 +46,10 @@ SHARED=firmware-research/strix-1.0.4.12
 mkdir -p "$OUT"
 cp -R "$TAP1_DIR/source/." "$OUT/"
 "$SHARED/.venv/bin/python" "$SHARED/src/prepare-baseline.py" "$STOCK" --output "$OUT/firmware-inspection/StrixOS-1.0.4.12"
+# TAP1 用 focus 研究树的全量符号表（35062 条，含 libc/tap_fs_* 符号）；
+# prepare-baseline 默认装的 metadata/symbols.json 只有 35 条（R3 小表），解析不了 tap_fs_*。
+cp "$REPO_ROOT/firmware-research/strix-1.0.4.12/native-navigation/focus/symbols.json" \
+   "$OUT/firmware-inspection/StrixOS-1.0.4.12/symbols.json"
 PNG_DIR="$OUT/official-addon/build/turbo-photo-png-10412-20260921"
 mkdir -p "$PNG_DIR"
 cp "$SHARED/assets/turbo-photo-firmware.png" "$PNG_DIR/turbo-photo-gray16-rgba-88x98.png"
