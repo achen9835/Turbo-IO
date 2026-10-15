@@ -53,6 +53,10 @@ cp "$REPO_ROOT/firmware-research/strix-1.0.4.12/native-navigation/focus/symbols.
 PNG_DIR="$OUT/official-addon/build/turbo-photo-png-10412-20260921"
 mkdir -p "$PNG_DIR"
 cp "$SHARED/assets/turbo-photo-firmware.png" "$PNG_DIR/turbo-photo-gray16-rgba-88x98.png"
+# 动画资产：快照不带 405KB 二进制，构建时从 src 树拷入（哈希由构建器钉值校验）
+ANIM_DIR="$OUT/official-addon/research/animation-runtime-v1/assets/encoded-v1"
+mkdir -p "$ANIM_DIR"
+cp "$REPO_ROOT/firmware-research/strix-1.0.4.12/native-navigation/src/official-addon/research/animation-runtime-v1/assets/encoded-v1/anime-idle-192x176-l8.bin" "$ANIM_DIR/"
 
 # 3) 以全运行时组合驱动快照构建器（wide + native-eight + display + navigation + animation + music）
 export PATH="$LLVM_BIN:$PATH"
