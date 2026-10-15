@@ -9,7 +9,7 @@ located relative to it, so the audit never depends on the caller's working direc
 import argparse,hashlib,json,struct,subprocess,zipfile
 from pathlib import Path
 import capstone
-import menu8_native_profile as native_menu
+import menu10_profile as native_menu  # mirrors build-tap1.sh: nav_* aliases, vm_event, 12-item springs
 
 BASE=0x10190000
 CAPACITY=0x9f0000

@@ -57,6 +57,8 @@ import importlib.util, json, hashlib
 from pathlib import Path
 spec = importlib.util.spec_from_file_location("bir", "build-image-rx-candidate.py")
 mod = importlib.util.module_from_spec(spec); spec.loader.exec_module(mod)
+import menu10_profile
+mod.native_menu = menu10_profile  # nav_* aliases + vm_event wrapper (author's build_candidate.py pattern)
 report = mod.build(Path("candidate"), True, True, True, True, True, True)
 ap = Path("candidate/payload/nuttx_ap.bin").read_bytes()
 print(json.dumps({"candidateAP": hashlib.sha256(ap).hexdigest(), "candidateAPBytes": len(ap), "archive": report["archive"]["name"]}, indent=2))

@@ -3,7 +3,7 @@
 Output is an untested experimental OTA candidate, not a proven bootable release.
 The private PNG is embedded; generated artifacts must not be published.
 """
-import argparse, hashlib, json, os, shutil, struct, subprocess, zipfile
+import argparse, hashlib, json, os, re, shutil, struct, subprocess, zipfile
 from pathlib import Path
 import capstone
 import menu8_native_profile as native_menu
@@ -133,6 +133,40 @@ def build(out,wide=False,native_eight=False,display_runtime=False,navigation_run
     run(['node',SRC/'prepare-menu8-linkcheck.mjs',firmware,png,generated])
     assignments=(generated/'native-symbols.ld').read_text()
     resolved=[]
+    # TLC1 lifelog coexistence (author-validated on device 2026-09-30): relocate
+    # the stock idle predicate with ONLY the isLifeLogEnabled rejection elided, so
+    # nav/music/reader/focus open while the all-day lifelog switch is on. The
+    # extension services bind our module copy; diagnostics keep the stock gate.
+    DISPLAY_IDLE_START,DISPLAY_IDLE_END,LIFELOG_CALL=0x106d334c,0x106d33f6,0x106d336e
+    idle_lines=['.syntax unified','.cpu cortex-m33','.thumb','.section .text.display_idle,"ax",%progbits',
+        '.global nav_business_idle','.type nav_business_idle,%function','.thumb_func','nav_business_idle:']
+    idle_imports={}
+    idle_md=capstone.Cs(capstone.CS_ARCH_ARM,capstone.CS_MODE_THUMB|capstone.CS_MODE_MCLASS)
+    for inst in idle_md.disasm(ap[DISPLAY_IDLE_START-BASE:DISPLAY_IDLE_END-BASE],DISPLAY_IDLE_START):
+        op=inst.op_str
+        idle_lines.append(f'L_{inst.address:x}:')
+        if inst.address==LIFELOG_CALL:
+            assert inst.mnemonic=='bl' and op=='#0x106d308c',(inst.mnemonic,op)
+            idle_lines+=['movs r0, #0','nop']
+        elif inst.mnemonic in ('bl','b','b.w','beq','bne','cbz','cbnz'):
+            m=re.search(r'#(0x[0-9a-f]+)$',op);assert m,(inst.mnemonic,op)
+            dest=int(m.group(1),16)
+            label=f'L_{dest:x}' if DISPLAY_IDLE_START<=dest<DISPLAY_IDLE_END else f'ext_{dest:x}'
+            if label.startswith('ext_'):idle_imports[label]=dest|1
+            idle_lines.append(inst.mnemonic+' '+op[:m.start()]+label)
+        elif '[pc,' in op:
+            m=re.fullmatch(r'(\w+), \[pc, #(0x[0-9a-f]+|\d+)\]',op);assert m,(inst.mnemonic,op)
+            lit=((inst.address+4)&~3)+int(m.group(2),0)
+            idle_lines.append('ldr %s, =%#x'%(m.group(1),struct.unpack_from('<I',ap,lit-BASE)[0]))
+        else:
+            assert 'pc' not in op or inst.mnemonic=='pop',(inst.mnemonic,op)
+            idle_lines.append(inst.mnemonic+' '+op)
+    idle_lines+=['.size nav_business_idle, .-nav_business_idle','.ltorg']
+    put(generated/'display-idle.S','\n'.join(idle_lines)+'\n')
+    for k,v in idle_imports.items():
+        assignments+=f'{k} = {v:#x};\n';resolved.append(dict(alias=k,name='stock-literal',address=hex(v)))
+    aliases.pop('nav_business_idle',None)  # module provides the lifelog-lenient copy
+    aliases['diag_business_idle']='rayneo::service::launcher::LauncherAPI::isBussinessIdle'
     for alias,name in aliases.items():
         if isinstance(name,tuple):
             name,expected=name;addr=symbol(name,expected)
@@ -234,7 +268,7 @@ m8_hook_{name}:
         put(generated/'animation-asset.S','.section .rodata.ta_asset,"a",%progbits\n.balign 64\n.global ta_asset\n.type ta_asset,%object\nta_asset:\n.incbin "'+str(asset)+'", 0, 33792\n.size ta_asset, .-ta_asset\n')
         units+=['animation-runtime-v1/animation']
         animation_units=[generated/'animation-asset.S']
-    for source in [SRC/(s+'.c') for s in units]+([] if display_runtime else [generated/'photo-payload.c'])+[generated/'trampolines.S']+animation_units:
+    for source in [SRC/(s+'.c') for s in units]+([] if display_runtime else [generated/'photo-payload.c'])+[generated/'trampolines.S',generated/'display-idle.S']+animation_units:
         obj=generated/(source.stem+'.o');run([compiler,*flags,'-c',source,'-o',obj]);objects.append(obj)
     elf=generated/'menu8-experiment.elf'
     run([linker,'-T',generated/'link.ld','--entry=m8_hook_ctor',*objects,'-o',elf])
