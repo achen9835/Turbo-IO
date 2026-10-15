@@ -36,7 +36,7 @@ fi
 [ -f "$STOCK" ] || { echo "原厂 rollback ZIP 不存在: $STOCK"; exit 1; }
 [ ! -e "$OUT" ] || { echo "输出目录已存在，换新目录: $OUT"; exit 1; }
 export PATH="$LLVM_BIN:$PATH"   # 工具检查前先注入，避免撞上系统 /usr/bin/clang
-for t in clang ld.lld llvm-nm llvm-objcopy node; do command -v "$t" >/dev/null || { echo "缺少 $t（LLVM_BIN=$LLVM_BIN）"; exit 1; }; done
+for t in clang ld.lld llvm-nm llvm-objcopy node; do command -v "$t" >/dev/null || { echo "缺少 ${t}（LLVM_BIN=${LLVM_BIN}）"; exit 1; }; done
 
 # 1) 共享 venv（capstone/unicorn）
 SHARED=firmware-research/strix-1.0.4.12

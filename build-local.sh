@@ -58,7 +58,7 @@ echo "==> [3/6] 固件（TAP1 自建 或 缓存 FOCUS-04）"
 if [[ -n "${TAP1_FW:-}" ]]; then
   [[ -n "${TAP1_CANDIDATE:-}" && -f "$TAP1_FW" && -f "$TAP1_CANDIDATE" ]] || { echo "错误：TAP1_FW 需同时给 TAP1_CANDIDATE，且两文件存在"; exit 1; }
   FIRMWARE_SRC="$(cd "$(dirname "$TAP1_FW")" && pwd)/$(basename "$TAP1_FW")"
-  echo "    使用自建 TAP1 固件：$FIRMWARE_SRC（候选描述 $TAP1_CANDIDATE）"
+  echo "    使用自建 TAP1 固件：${FIRMWARE_SRC}（候选描述 ${TAP1_CANDIDATE}）"
 else
   if [[ ! -f focus-firmware.zip ]]; then
     fetch_github focus-firmware.zip "$FIRMWARE_URL"
@@ -87,7 +87,7 @@ TAP_COUNT=$(nm -g "$ADDON" | grep -c TAPAppsController || true)
 TCE_COUNT=$(nm -g "$ADDON" | grep -c TCEEditorController || true)
 echo "    符号核验：TAPAppsController×$TAP_COUNT TCEEditorController×$TCE_COUNT"
 if [[ "$TAP_COUNT" -eq 0 || "$TCE_COUNT" -eq 0 ]]; then
-  echo "错误：App SDK 符号缺失（TAP=$TAP_COUNT TCE=$TCE_COUNT，APP_SDK=$TIO_APP_SDK）"; exit 1
+  echo "错误：App SDK 符号缺失（TAP=$TAP_COUNT TCE=${TCE_COUNT}，APP_SDK=${TIO_APP_SDK}）"; exit 1
 fi
 echo "    扩展就绪：$ADDON"
 
