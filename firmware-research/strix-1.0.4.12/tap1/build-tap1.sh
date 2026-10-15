@@ -83,7 +83,7 @@ PYTHONPATH="$PWD:$PWD/music-runtime-v1:$PWD/navigation-runtime-v1" "$REPO_ROOT/$
 CAND_JSON="$OUT/candidate-ota.json"
 
 # 5) 刷机三步卡
-ZIP_PATH="$(cd candidate && pwd)/$(python3 -c "import json;print(json.load(open('report.json'))['archive']['name'])")"
+ZIP_PATH="$(cd candidate && pwd)/$(python3 -c "import json;print(json.load(open('candidate/report.json'))['archive']['name'])")"
 cat <<CARD
 
 ================= 构建完成 · 刷机三步 =================
