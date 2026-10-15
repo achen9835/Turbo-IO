@@ -29,7 +29,7 @@ static const TNXY uturn[]={{18,84},{18,30},{30,16},{58,16},{72,30},{72,78},{52,5
 static const TNXY roundabout[]={{48,84},{48,65},{24,48},{24,30},{44,15},{64,30},{64,48},{48,65},{48,15},{32,30},{48,15},{64,30}};
 static const TNXY arrive[]={{22,84},{22,12},{76,12},{76,50},{22,50}};
 static const TNXY unknown[]={{28,25},{38,15},{58,15},{70,26},{70,38},{48,54},{48,66},{48,75},{48,82}};
-static TNXY map(TNPoint p){return (TNXY){406+(int32_t)p.x*112/1023,10+(int32_t)p.y*112/1023};}
+static TNXY map(TNPoint p){return (TNXY){406+(int32_t)p.x*100/1023,10+(int32_t)p.y*100/1023};}
 bool tn_visual(const TNScene *s,bool stale,TNVisual *v){
  if(!s||!v||s->icon>=TN_ICON_COUNT||s->point_count>TN_POINTS_MAX||s->heading>=360||s->position.x>1023||s->position.y>1023)return false;
  memset(v,0,sizeof *v);v->stale=stale;const TNXY *icon=unknown;size_t n=sizeof unknown/sizeof *unknown;bool flip=false;
@@ -66,13 +66,16 @@ bool tn_visual(const TNScene *s,bool stale,TNVisual *v){
  /* Lens real estate is 128 px per side line, so every string here stays short
   * and the nearest camera outranks a route event on the alert line. */
  v->bar_count=s->bar_count;for(unsigned i=0;i<s->bar_count;i++)v->bar[i]=s->bar[i];
+ v->camera_kind=s->camera_kind;v->event_kind=s->event_kind;v->camera_m=s->camera_m;v->event_m=s->event_m;v->camera_limit=s->camera_limit;
+ v->lights=s->lights;v->lights_m=s->lights_m;
  static const char *const camera_names[]={"","测速","闯红灯","监控","区间测速","电子眼"};
  static const char *const event_names[]={"","事故","施工","封路","管制"};
  if(s->camera_kind){p=append(v->alert,camera_names[s->camera_kind]);
-  if(s->camera_limit>0)p=decimal(p,(uint32_t)s->camera_limit);
-  if(s->camera_m!=65535){*p++=' ';p=distance(p,s->camera_m);}} /* worst case 23 bytes < 64 */
+  if(s->camera_limit>0){*p++=' ';p=decimal(p,(uint32_t)s->camera_limit);}
+  if(s->camera_m!=65535){p=append(p," · ");p=distance(p,s->camera_m);}} /* worst case 28 bytes < 64 */
  else if(s->event_kind){p=append(v->alert,event_names[s->event_kind]);
-  if(s->event_m!=65535){*p++=' ';p=distance(p,s->event_m);}}
- if(s->lights!=255){p=append(v->secondary,"灯 ×");p=decimal(p,s->lights);}
+  if(s->event_m!=65535){p=append(p," · ");p=distance(p,s->event_m);}}
+ if(s->lights!=255){p=append(v->secondary,"红绿灯 ×");p=decimal(p,s->lights);
+  if(s->lights_m!=65535){p=append(p," · ");p=distance(p,s->lights_m);}}
  return true;
 }

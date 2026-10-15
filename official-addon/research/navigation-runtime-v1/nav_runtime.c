@@ -35,11 +35,11 @@ static bool decode_scene(TNScene *s,const uint8_t *p,size_t n){
  if(!text_ok(p+24,p[22])||!text_ok(p+24+p[22],p[23]))return false;
  memcpy(s->road,p+24,p[22]);memcpy(s->turn,p+24+p[22],p[23]);p+=24+p[22]+p[23];
  for(unsigned i=0;i<s->point_count;i++)s->points[i]=(TNPoint){u16(p+4*i),u16(p+4*i+2)};
- s->lights=255;s->camera_limit=-1;s->camera_m=65535;s->event_m=65535;
+ s->lights=255;s->camera_limit=-1;s->camera_m=65535;s->event_m=65535;s->lights_m=65535;
  if(n==base+TN_SCENE_EXT){const uint8_t *e=p+4u*s->point_count;
   s->lights=e[0];s->bar_count=e[1];s->camera_kind=e[2];s->event_kind=e[3];
   unsigned lim=u16(e+4);s->camera_limit=lim>32767?(int)(lim)-65536:(int)lim;
-  s->camera_m=u16(e+6);s->event_m=u16(e+8);memcpy(s->bar,e+10,TN_BAR_MAX);}
+  s->camera_m=u16(e+6);s->event_m=u16(e+8);memcpy(s->bar,e+10,TN_BAR_MAX);s->lights_m=u16(e+34);}
  return valid(s);
 }
 bool tn_packet_valid(const uint8_t *p,size_t n){
@@ -62,7 +62,7 @@ size_t tn_encode(uint8_t *p,size_t cap,enum TNOp op,uint32_t sid,uint32_t seq,co
   memcpy(q+24,s->road,a);memcpy(q+24+a,s->turn,b);q+=24+a+b;
   for(unsigned i=0;i<s->point_count;i++){p16(q+4*i,s->points[i].x);p16(q+4*i+2,s->points[i].y);}
   if(ext){uint8_t *e=q+4u*s->point_count;e[0]=s->lights;e[1]=s->bar_count;e[2]=s->camera_kind;e[3]=s->event_kind;
-   p16(e+4,(uint16_t)s->camera_limit);p16(e+6,s->camera_m);p16(e+8,s->event_m);memcpy(e+10,s->bar,TN_BAR_MAX);}}
+   p16(e+4,(uint16_t)s->camera_limit);p16(e+6,s->camera_m);p16(e+8,s->event_m);memcpy(e+10,s->bar,TN_BAR_MAX);p16(e+34,s->lights_m);}}
  p32(p+20,wire_crc(p,n));return n;
 }
 static TNReply reply(const TNRuntime *r,enum TNResult e){return (TNReply){e,r->sid,r->sequence,r->active,r->awake,r->stale,r->scene.mode};}

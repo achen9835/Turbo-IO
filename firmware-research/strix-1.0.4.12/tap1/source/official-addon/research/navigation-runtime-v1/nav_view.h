@@ -17,10 +17,10 @@ typedef struct {
 } TNWidgets;
 #define TN_ICON_W 128u
 #define TN_ICON_H 128u
-#define TN_MAP_W 128u
-#define TN_MAP_H 128u
+#define TN_MAP_W 112u
+#define TN_MAP_H 112u
 #define TN_BAR_W 280u
-#define TN_BAR_H 12u
+#define TN_BAR_H 40u
 typedef struct {
  TNVisual visual;
  _Alignas(64) uint8_t icon[TN_ICON_W*TN_ICON_H];

@@ -10,7 +10,7 @@ static bool render(void *p,const TNScene *s,bool stale){(void)stale;assert(s);Mo
 static bool power(void *p,enum TNPower a){Mock *m=p;if(a==TN_POWER_WAKE_HOLD)m->wake++;else if(a==TN_POWER_RELEASE)m->release++;else m->sleep++;return !m->fail_power;}
 static void leave(void *p){((Mock *)p)->leave++;}
 static TNUI api(Mock *m){return (TNUI){m,available,enter,render,power,leave};}
-static TNScene scene(void){TNScene s={.distance_m=80,.remaining_m=1200,.remaining_s=480,.icon=TN_RIGHT,.point_count=3,.position={500,500},.lights=255,.camera_limit=-1,.camera_m=65535,.event_m=65535};
+static TNScene scene(void){TNScene s={.distance_m=80,.remaining_m=1200,.remaining_s=480,.icon=TN_RIGHT,.point_count=3,.position={500,500},.lights=255,.camera_limit=-1,.camera_m=65535,.event_m=65535,.lights_m=65535};
  strcpy(s.road,"测试道路");strcpy(s.turn,"前方右转");s.points[0]=(TNPoint){500,1000};s.points[1]=(TNPoint){500,500};s.points[2]=(TNPoint){1000,500};return s;}
 static TNReply send(TNRuntime *r,TNUI *u,enum TNOp op,uint32_t sid,uint32_t seq,TNScene *s,uint32_t now){uint8_t b[512];size_t n=tn_encode(b,sizeof b,op,sid,seq,s);assert(n);return tn_receive(r,u,b,n,now,true);}
 static void state_tests(void){
@@ -67,17 +67,17 @@ static void ext_tests(void){
  uint8_t b[512];size_t n=tn_encode(b,sizeof b,TN_START,90,1,&s);assert(n);
  size_t legacy=32u+24u+strlen(s.road)+strlen(s.turn)+4u*s.point_count;assert(n==legacy);
  assert(tn_receive(&r,&u,b,n,0,true).result==TN_OK);
- assert(r.scene.lights==255&&r.scene.camera_limit==-1&&r.scene.camera_m==65535&&r.scene.event_m==65535);
+ assert(r.scene.lights==255&&r.scene.camera_limit==-1&&r.scene.camera_m==65535&&r.scene.event_m==65535&&r.scene.lights_m==65535);
  assert(!r.scene.bar_count&&!r.scene.camera_kind&&!r.scene.event_kind);
  /* Full tail round trip on UPDATE. */
- TNScene e=scene();e.lights=3;e.camera_kind=TN_CAMERA_SPEED;e.camera_limit=80;e.camera_m=300;
+ TNScene e=scene();e.lights=3;e.lights_m=3500;e.camera_kind=TN_CAMERA_SPEED;e.camera_limit=80;e.camera_m=300;
  e.event_kind=TN_EVENT_CONSTRUCTION;e.event_m=400;e.bar_count=3;e.bar[0]=1;e.bar[1]=2;e.bar[2]=4;
  assert(send(&r,&u,TN_UPDATE,90,2,&e,1000).result==TN_OK);
- assert(r.scene.lights==3&&r.scene.bar_count==3&&r.scene.bar[0]==1&&r.scene.bar[1]==2&&r.scene.bar[2]==4);
+ assert(r.scene.lights==3&&r.scene.lights_m==3500&&r.scene.bar_count==3&&r.scene.bar[0]==1&&r.scene.bar[1]==2&&r.scene.bar[2]==4);
  assert(r.scene.camera_kind==TN_CAMERA_SPEED&&r.scene.camera_limit==80&&r.scene.camera_m==300);
  assert(r.scene.event_kind==TN_EVENT_CONSTRUCTION&&r.scene.event_m==400);
- TNVisual vis;assert(tn_visual(&r.scene,false,&vis));assert(vis.bar_count==3);
- assert(!strcmp(vis.alert,"测速80 300 m")&&!strcmp(vis.secondary,"灯 ×3"));
+ TNVisual vis;assert(tn_visual(&r.scene,false,&vis));assert(vis.bar_count==3&&vis.lights_m==3500);
+ assert(!strcmp(vis.alert,"测速 80 · 300 m")&&!strcmp(vis.secondary,"红绿灯 ×3 · 3.5 km"));
  /* Invalid extension values are rejected by the encoder, never put on wire. */
  e.bar_count=TN_BAR_MAX+1;assert(!tn_encode(b,sizeof b,TN_UPDATE,90,3,&e));
  e=scene();e.bar_count=2;e.bar[1]=5;assert(!tn_encode(b,sizeof b,TN_UPDATE,90,3,&e));
