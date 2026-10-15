@@ -27,7 +27,7 @@ FORBIDDEN_SUBSTRINGS=('didi-v1','app-runtime-v1','dashboard-v1')
 def sha(b):return hashlib.sha256(b).hexdigest()
 
 def audit(folder):
- folder=Path(folder);root=folder.parents[2]
+ folder=Path(folder).resolve();root=folder.parents[2]
  report=json.loads((folder/'report.json').read_text())
  assert report['kind']=='TAP1-developer-runtime-experimental-candidate','unexpected kind'
  assert report['menuProfile']=='native-twelve-TAP1','unexpected menu profile'
