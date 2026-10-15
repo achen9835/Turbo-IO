@@ -263,11 +263,9 @@ m8_hook_{name}:
     animation_units=[]
     if animation_runtime:
         asset=SRC/'animation-runtime-v1/assets/encoded-v1/anime-idle-192x176-l8.bin'
-        # The repo asset is the 12-frame encoded-v1 container (192*176*12*12 bytes,
-        # full-file SHA pinned below); only frame 0 is embedded via .incbin, matching
-        # the single-pose animation page. The old 192*176*12 size assert was a stale
-        # leftover from the author's pre-container single-frame file.
-        assert asset.stat().st_size==192*176*12*12
+        # 192*176*12 == 405,504: the 12-frame encoded-v1 container; only the first
+        # 192*176-byte frame is embedded via .incbin (single-pose animation page).
+        assert asset.stat().st_size==192*176*12
         assert digest(asset.read_bytes())=='f758dd6e3cdf5fc6550238df26e46111e9d45d098b9d95f649626ea58210ee1d'
         put(generated/'animation-asset.S','.section .rodata.ta_asset,"a",%progbits\n.balign 64\n.global ta_asset\n.type ta_asset,%object\nta_asset:\n.incbin "'+str(asset)+'", 0, 33792\n.size ta_asset, .-ta_asset\n')
         units+=['animation-runtime-v1/animation']
