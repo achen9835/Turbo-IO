@@ -73,13 +73,13 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
         // recovery loop can establish that no glasses transfer is active.
         if((t==1||t==2||t==11)&&empty)return YES;
         NSUInteger n=0;
-        if(t==3&&dict&&[j count]==1&&Number(j[@"OtaSize"],&n)&&n==9300112&&!binary.length)return YES;
+        if(t==3&&dict&&[j count]==1&&Number(j[@"OtaSize"],&n)&&TIOOTACandidate()&&n==(NSUInteger)[TIOOTACandidate()[@"otaSize"] unsignedLongLongValue]&&!binary.length)return YES;
         if(!_stage){if(t==4)_failure=@"TFP1 试刷尚未授权；开始指令未发送。请先在实验固件页完成 TFP1 风险确认。";return NO;}
         if(_stage==3||!isfinite(now)||now<0)return NO;
         if(_stage==1&&now>=_deadline){[self cancel];return NO;}
         BOOL ok=[device isEqual:_device];
         if(t==4)ok=ok&&_stage==1&&dict&&[j count]==1&&Number(j[@"Mode"],&n)&&n==2&&!binary.length;
-        else if(t==5)ok=ok&&_stage==2&&dict&&[j isEqual:@{@"OtaVersion":@"Strix OS 1.0.4.12"}]&&!binary.length;
+        else if(t==5)ok=ok&&_stage==2&&dict&&TIOOTACandidate()&&[j isEqual:@{@"OtaVersion":TIOOTACandidate()[@"baseVersion"]}]&&!binary.length;
         else if(t==6)ok=ok&&_stage==2&&_versionSent&&[j isKindOfClass:NSArray.class]&&[j isEqual:_manifest]&&!binary.length;
         else if(t==7){
             NSUInteger start=0,size=0;NSString *name=dict?j[@"Name"]:nil;NSData *file=[name isKindOfClass:NSString.class]?_files[name]:nil;
@@ -188,7 +188,7 @@ void TIOOTAFlashObserveEvent(NSDictionary *event){
     NSDictionary *m=event[@"message"];NSUInteger business=0;if(![m isKindOfClass:NSDictionary.class]||!Number(m[@"businessId"],&business)||business!=9)return;
     NSDictionary *f=TIOOTAFrame(m[@"payload"]);id j=f[@"json"];
     if([f[@"type"] isEqual:@1]){@synchronized(NSProcessInfo.processInfo){ObservedDevice=nil;ObservedAt=0;}}
-    if([f[@"type"] isEqual:@1]&&[j isKindOfClass:NSDictionary.class]&&[j[@"OsVersion"] isEqual:@"Strix OS 1.0.4.12"]&&[j[@"OtaValidationConfirmed"] isEqual:@YES]&&[m[@"deviceId"] isKindOfClass:NSString.class]){
+    if([f[@"type"] isEqual:@1]&&[j isKindOfClass:NSDictionary.class]&&TIOOTACandidate()&&[j[@"OsVersion"] isEqual:TIOOTACandidate()[@"baseVersion"]]&&[j[@"OtaValidationConfirmed"] isEqual:@YES]&&[m[@"deviceId"] isKindOfClass:NSString.class]){
         @synchronized(NSProcessInfo.processInfo){ObservedDevice=[m[@"deviceId"] copy];ObservedAt=NSProcessInfo.processInfo.systemUptime;}
     }
 }

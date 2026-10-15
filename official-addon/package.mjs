@@ -20,12 +20,19 @@ export function validateOptions(o) {
   if(['TNV1','TMU1','TFP1'].includes(o['experimental-ota']) && (typeof o.firmware!=='string'||!path.isAbsolute(o.firmware)))throw Error('research_requires_explicit_firmware');
   if(o.firmware && !['TNV1','TMU1','TFP1'].includes(o['experimental-ota']))throw Error('unexpected_firmware');
 }
+function tfp1Candidate(){
+  try{
+    const c=JSON.parse(fs.readFileSync(path.join(here,'focus-edition','candidates','tfp1-focus-04.json'),'utf8'));
+    if(c.schema!==1||!Number.isInteger(c.zip&&c.zip.size)||!/^[0-9a-f]{64}$/.test((c.zip&&c.zip.sha256)||''))throw Error('bad candidate');
+    return c;
+  }catch(e){throw Error('tfp1_candidate_descriptor_missing')}
+}
 export function validateResearchPair(symbols, kind, firmware) {
   const native=symbols.includes('_TNVStart');
   const music=symbols.includes('_TMMusicConsume');
   const focus=symbols.includes('_TFFocusConsume');
   if(native!==['TNV1','TMU1','TFP1'].includes(kind)||music!==['TMU1','TFP1'].includes(kind)||focus!==(kind==='TFP1'))throw Error('native_addon_and_option_must_match');
-  if(kind==='TFP1' && (!Buffer.isBuffer(firmware)||firmware.length!==9300112||createHash('sha256').update(firmware).digest('hex')!=='ad5054e3d7bda90e94d293bea882bd8dd5a125bcc8f42c13a59b2e149313c9e3'))throw Error('tfp1_firmware_identity_mismatch');
+  if(kind==='TFP1'){const c=tfp1Candidate();if(!Buffer.isBuffer(firmware)||firmware.length!==c.zip.size||createHash('sha256').update(firmware).digest('hex')!==c.zip.sha256)throw Error('tfp1_firmware_identity_mismatch');}
   if(kind==='TNV1' && (!Buffer.isBuffer(firmware)||firmware.length!==9258094||
     createHash('sha256').update(firmware).digest('hex')!=='e2a76fdcf0d3d07d766a7329d2d93b32350cb8309b73fc9c73726498fafddecb'))throw Error('tnv1_firmware_identity_mismatch');
   if(kind==='TMU1' && (!Buffer.isBuffer(firmware)||firmware.length!==9468398||

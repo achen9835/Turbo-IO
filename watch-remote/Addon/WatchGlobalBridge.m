@@ -57,7 +57,7 @@ BOOL TIOWatchGlobalIsReply(NSDictionary *e){return Raw(e)!=nil;}
  unsigned result=p[5];
  if(_op==TGR_HELLO){if(result!=TGR_OK||!U32(p+12)||Now()-_queried>1.5){_session=0;[self finish:@"blocked" note:@"眼镜拒绝握手或链路延迟过高"];return YES;}
   _session=U32(p+12);_sequence=U32(p+16);_eyeTick=U32(p+20);_clockAt=Now();[self finish:@"ready" note:@"眼镜全局输入已连接 · 表冠/按键可测试"];return YES;}
- if(U32(p+12)!=_session&&result!=TGR_BLOCKED)return YES;
+ if(U32(p+12)!=_session&&result!=TGR_BLOCKED){[self finish:@"blocked" note:@"眼镜回执会话不符；本次按键已丢弃，请重新连接"];return YES;}
  if(result==TGR_OK||result==TGR_WAKE_ONLY){[self finish:result==TGR_OK?@"dispatched":@"wake-only" note:result==TGR_OK?@"眼镜已分发输入；以镜片变化为准":@"眼镜已唤醒；本次没有确认或翻项"];}
  else {if(result==TGR_SESSION||result==TGR_BLOCKED)_session=0;[self finish:@"blocked" note:[NSString stringWithFormat:@"眼镜未执行（%u）；不重试旧按键",result]];}return YES;
 }

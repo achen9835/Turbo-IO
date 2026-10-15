@@ -24,6 +24,10 @@ if [[ ${TIO_AMAP_ENABLED:-0} == 1 ]]; then
   nav_options+=(-F "$nav_root/search" -framework AMapSearchKit)
 fi
 sdk_path=$(xcrun --sdk iphoneos --show-sdk-path)
+# Embed the pinned OTA candidate descriptor (single source of truth, shared with
+# watch-remote/flash_check.py and the Android assets) as C byte arrays.
+candidate_file=${TIO_OTA_CANDIDATE:-candidates/tfp1-focus-04.json}
+python3 gen_otacandidate.py "$candidate_file" build/OTACandidate.gen.m
 link_options=()
 if [[ ${TIO_OTA_FLASH_ENABLED:-0} == 1 ]]; then
   [[ ${TIO_OTA_PREPARATION_ENABLED:-0} != 1 && "$mode" == embedded ]] || { echo 'Flash gate requires separate embedded build' >&2; exit 2; }
@@ -67,6 +71,7 @@ xcrun --sdk iphoneos clang -arch arm64 -isysroot "$sdk_path" -miphoneos-version-
   -fobjc-arc -fmodules -dynamiclib -Wall -Wextra -Wno-unused-parameter -Wno-incompatible-pointer-types \
   -framework Foundation -framework UIKit -framework Security -framework UniformTypeIdentifiers -framework CoreLocation -framework AVFAudio \
   ExperimentalOTA.m ExperimentalOTAGuard.m ExperimentalOTAFlash.m ExperimentalOTAFeed.m ExperimentalOTAUI.m NavigationModes.m ProtocolContext.m NavigationSubtitleHUD.m NavigationPlaces.m NavigationPlacePicker.m \
+  build/OTACandidate.gen.m \
   ${nav_options[@]+"${nav_options[@]}"} \
   ${image_options[@]+"${image_options[@]}"} \
   ${app_options[@]+"${app_options[@]}"} \

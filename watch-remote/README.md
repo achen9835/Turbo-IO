@@ -97,7 +97,14 @@ python3 watch-remote/stage-firmware.py \
 
 该步骤仅复制原创源码、增加编译单元并扩展既有消息 hook，不生成可刷 ZIP。完整链接还依赖原厂基线、符号和构建输入，见 [TAP1 源码边界](../firmware-research/strix-1.0.4.12/tap1/README.md)。公开 TAP1、FOCUS-04 和原厂固件不能假定已支持 TGR1；不要把其他 Release 的固件当作配套包。
 
-后续候选必须重新核对：仅 `nuttx_ap.bin` 改变，其他 13 个负载逐字节一致，AP 长度、MD5、OTA 清单及 ZIP SHA-256 一致，并检查 AP 分区预算。仅改 AP 仍可能崩溃、失去升级能力或损坏设备，回滚不保证救砖。**当前输入问题未闭环；另附的原样归档包仅供开发研究，不应盲刷。** 公开源码派生脚本不会自动开启 TGR1 OTA，旧版公开 APK 也不能直接刷这个包；详见[发布与兼容条件](FIRMWARE_RELEASE.md)。
+后续候选必须重新核对：仅 `nuttx_ap.bin` 改变，其他 13 个负载逐字节一致，AP 长度、MD5、OTA 清单及 ZIP SHA-256 一致，并检查 AP 分区预算。一条命令完成离线预检：
+
+```sh
+python3 watch-remote/flash_check.py --zip <候选.zip> \
+  --candidate watch-remote/candidates/<候选>.json --stock <原厂1.0.4.12基线目录>
+```
+
+候选的固定值只写在候选描述 JSON 一份文件里；手机端（Android assets `otacandidate.json` / iOS 构建嵌入的 `candidates/*.json`）与上面的预检读同一份描述，不再多处硬编码。仅改 AP 仍可能崩溃、失去升级能力或损坏设备，回滚不保证救砖。**当前输入问题未闭环；另附的原样归档包仅供开发研究，不应盲刷。** 公开源码派生脚本不会自动开启 TGR1 OTA，旧版公开 APK 也不能直接刷这个包；详见[发布与兼容条件](FIRMWARE_RELEASE.md)。
 
 协议、内存所有权、时限和逐页验收见 [GLOBAL_REMOTE.md](GLOBAL_REMOTE.md)。`tests/global_arm.py` 供具备完整候选 BIN/ELF 时运行 ARM 模型测试，需要 Unicorn、llvm-nm；不是真机证明，本次抽取没有重新链接候选。
 
