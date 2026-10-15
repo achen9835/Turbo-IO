@@ -42,7 +42,7 @@ bool tn_visual(const TNScene *s,bool stale,TNVisual *v){
  v->position[2]=(TNXY){pos.x-dx*4+dy*4,pos.y-dy*4-dx*4};v->position[3]=v->position[0];
  char *p=meters(v->distance,s->distance_m);
  memcpy(v->turn,s->turn,sizeof v->turn);memcpy(v->road,s->road,sizeof v->road);v->turn[TN_TURN_MAX]=0;v->road[TN_ROAD_MAX]=0;
- p=decimal(v->summary,s->remaining_m);p=append(p," m / ");p=decimal(p,s->remaining_s/60+(s->remaining_s%60!=0));append(p," min");
+ p=meters(v->summary,s->remaining_m);p=append(p," / ");p=decimal(p,s->remaining_s/60+(s->remaining_s%60!=0));append(p," min");
  append(v->status,stale?"导航数据已过期 · 请查看手机":s->mode==TN_ALWAYS?"导航 · 常亮":"导航 · 60秒无更新息屏");
  /* Lens real estate is 128 px per side line, so every string here stays short
   * and the nearest camera outranks a route event on the alert line. */
