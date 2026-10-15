@@ -68,15 +68,22 @@ PY
 PYTHONPATH="$PWD:$PWD/music-runtime-v1:$PWD/navigation-runtime-v1" "$REPO_ROOT/$SHARED/.venv/bin/python" \
   audit-tap1-candidate.py candidate --out candidate-audit.json
 
+# 4.5) 生成手机端 OTA 候选描述（刷机链路用：dylib 门禁只认这个 JSON 描述的 ZIP）
+"$REPO_ROOT/$SHARED/.venv/bin/python" "$TAP1_DIR/make-ota-candidate.py" \
+  candidate "$OUT/candidate-ota.json" --code TAP1-2026-10
+CAND_JSON="$OUT/candidate-ota.json"
+
 # 5) 刷机三步卡
 ZIP_PATH="$(cd candidate && pwd)/$(python3 -c "import json;print(json.load(open('report.json'))['archive']['name'])")"
 cat <<CARD
 
 ================= 构建完成 · 刷机三步 =================
-① 手机先装新 IPA（focus-edition dylib 构建产物）——顺序不能反
-② 眼镜刷: $ZIP_PATH
-   （电量>50%；手机停掉导航/字幕/音乐/番茄全部会话；刷时贴近静止）
-③ 刷后看三样: 菜单12项无滴滴/我的应用 · 模拟导航有路况柱与标记 · TCE1仪表盘正常
+① 云Mac 出新 IPA（一条命令，自动嵌入本固件与候选描述）：
+   TAP1_FW="$ZIP_PATH" TAP1_CANDIDATE="$CAND_JSON" bash build-local.sh
+   → IPA/TurboIO-merged-adhoc.ipa 回 Windows 爱思安装到手机（先装 IPA 顺序红线）
+② 眼镜刷: 手机 App 实验刷机页导入 $ZIP_PATH
+   （或直接用 ① 产物内嵌候选走官方页流程；电量>50%；手机停掉导航/字幕/音乐/番茄全部会话；刷时贴近静止）
+③ 刷后看四样: 菜单12项无滴滴/我的应用 · 模拟导航有路况柱与三类标记 · 开全天智记再进导航 · TCE1仪表盘正常
    异常 → 立刻回滚重刷原版 ZIP，不带病调试
 审计: candidate-audit.json 已生成（PASS 才继续②）
 ======================================================

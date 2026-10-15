@@ -3,6 +3,10 @@
 # 等价于 GitHub Actions「iOS Merge Build」勾选 focus+amap+app_sdk 的 adhoc 流程。
 # 大文件（高德SDK/原厂IPA/固件）首次下载后永久缓存，之后每次构建只重编译 dylib。
 #
+# 刷自建 TAP1 固件（build-tap1.sh 产物）时：
+#   TAP1_FW=<固件zip绝对路径> TAP1_CANDIDATE=<candidate-ota.json绝对路径> bash build-local.sh
+#   → dylib 门禁与内嵌固件自动指向新候选（confirmToken=TAP1-2026-10）
+#
 # 用法（仓库根目录）：
 #   bash build-local.sh                      # 默认 Bundle ID = 证书配套 ID
 #   bash build-local.sh app.aurora7070.potato6444 iPhone18,2
@@ -50,11 +54,19 @@ if [[ ! -f original.ipa ]]; then
 fi
 echo "$EXPECTED_IPA_SHA256  original.ipa" | shasum -a 256 -c -
 
-echo "==> [3/6] FOCUS-04 固件（缓存：focus-firmware.zip）"
-if [[ ! -f focus-firmware.zip ]]; then
-  fetch_github focus-firmware.zip "$FIRMWARE_URL"
+echo "==> [3/6] 固件（TAP1 自建 或 缓存 FOCUS-04）"
+if [[ -n "${TAP1_FW:-}" ]]; then
+  [[ -n "${TAP1_CANDIDATE:-}" && -f "$TAP1_FW" && -f "$TAP1_CANDIDATE" ]] || { echo "错误：TAP1_FW 需同时给 TAP1_CANDIDATE，且两文件存在"; exit 1; }
+  FIRMWARE_SRC="$(cd "$(dirname "$TAP1_FW")" && pwd)/$(basename "$TAP1_FW")"
+  echo "    使用自建 TAP1 固件：$FIRMWARE_SRC（候选描述 $TAP1_CANDIDATE）"
+else
+  if [[ ! -f focus-firmware.zip ]]; then
+    fetch_github focus-firmware.zip "$FIRMWARE_URL"
+  fi
+  echo "$FIRMWARE_SHA256  focus-firmware.zip" | shasum -a 256 -c -
+  FIRMWARE_SRC="$PWD/focus-firmware.zip"
+  echo "    使用缓存 FOCUS-04 固件（默认候选 tfp1-focus-04）"
 fi
-echo "$FIRMWARE_SHA256  focus-firmware.zip" | shasum -a 256 -c -
 
 echo "==> [4/6] 编译 TurboIOPrivateAddon.dylib"
 export TIO_AMAP_ENABLED=1
@@ -65,7 +77,8 @@ export TIO_IMAGE_RX_WIDE=1
 export TIO_DISPLAY_PHONE=1
 export TIO_DISPLAY_FLASH=1
 export TIO_APP_SDK=1
-echo "    开关回显：AMap=$TIO_AMAP_ENABLED APP_SDK=$TIO_APP_SDK PHONE=$TIO_DISPLAY_PHONE RX_LAB=$TIO_IMAGE_RX_LAB FLASH=$TIO_DISPLAY_FLASH OTA=$TIO_OTA_FLASH_ENABLED"
+if [[ -n "${TAP1_CANDIDATE:-}" ]]; then export TIO_OTA_CANDIDATE="$TAP1_CANDIDATE"; fi
+echo "    开关回显：AMap=$TIO_AMAP_ENABLED APP_SDK=$TIO_APP_SDK PHONE=$TIO_DISPLAY_PHONE RX_LAB=$TIO_IMAGE_RX_LAB FLASH=$TIO_DISPLAY_FLASH OTA=$TIO_OTA_FLASH_ENABLED 候选=${TIO_OTA_CANDIDATE:-tfp1-focus-04(默认)}"
 bash official-addon/focus-edition/build.sh embedded "$BUNDLE_ID"
 ADDON=official-addon/focus-edition/build/image-rx-lab/TurboIOPrivateAddon.dylib
 # 注意：不要用 `nm | grep -q`——本脚本开了 pipefail，grep -q 提前退出会让 nm 吃到
@@ -98,11 +111,20 @@ PLIST="merged/Payload/Runner.app/Info.plist"
 if [[ $(plutil -convert json -o - "$PLIST" | grep -c NSLocationWhenInUseUsageDescription || true) -eq 0 ]]; then
   plutil -insert NSLocationWhenInUseUsageDescription -string '用于用户主动选择的地图定位和前台步行导航。' "$PLIST"
 fi
-node .github/scripts/focus-adhoc-package.mjs \
-  "$PWD/merged/Payload/Runner.app" \
-  "$PWD/focus-firmware.zip" \
-  "$PWD/official-addon/build/amap-sdk" \
-  "$PWD/merged/experimental-ota-routing.json"
+if [[ -n "${TAP1_CANDIDATE:-}" ]]; then
+  node .github/scripts/focus-adhoc-package.mjs \
+    "$PWD/merged/Payload/Runner.app" \
+    "$FIRMWARE_SRC" \
+    "$PWD/official-addon/build/amap-sdk" \
+    "$PWD/merged/experimental-ota-routing.json" \
+    "$TAP1_CANDIDATE"
+else
+  node .github/scripts/focus-adhoc-package.mjs \
+    "$PWD/merged/Payload/Runner.app" \
+    "$FIRMWARE_SRC" \
+    "$PWD/official-addon/build/amap-sdk" \
+    "$PWD/merged/experimental-ota-routing.json"
+fi
 # 原厂包按机型裁剪（列表只到 iPhone16,2），补进当前机型避免安装报错
 if [[ $(plutil -convert json -o - "$PLIST" | grep -c UISupportedDevices || true) -gt 0 \
    && $(plutil -convert json -o - "$PLIST" | grep -c "\"$PRODUCT\"" || true) -eq 0 ]]; then

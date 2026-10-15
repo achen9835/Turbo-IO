@@ -10,16 +10,23 @@ import {fileURLToPath} from 'node:url';
 import {patch as patchExperimentalOTA} from '../../firmware-research/strix-1.0.4.12/src/patch-ios105-ota-source.mjs';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const [appArg, fwArg, sdkArg, reportArg] = process.argv.slice(2);
-if (process.argv.length !== 6) throw Error('Usage: focus-adhoc-package.mjs <Runner.app> <firmware.zip> <amap-sdk-root> <report.json>');
+const [appArg, fwArg, sdkArg, reportArg, candidateArg] = process.argv.slice(2);
+if (process.argv.length !== 6 && process.argv.length !== 7)
+  throw Error('Usage: focus-adhoc-package.mjs <Runner.app> <firmware.zip> <amap-sdk-root> <report.json> [candidate.json]');
 const app = path.resolve(appArg), firmware = path.resolve(fwArg), sdkRoot = path.resolve(sdkArg), report = path.resolve(reportArg);
 if (!app.endsWith('.app')) throw Error('use_app_input');
 for (const p of [app, firmware, sdkRoot]) if (!path.isAbsolute(p)) throw Error('absolute_paths_required');
 
-// 固件精确校验（与 package.mjs validateResearchPair 的 TFP1 规则一致）
+// 固件精确校验：传入候选描述时按其 zip.size/sha256 校验（TAP1 等任意候选），
+// 否则回落到 package.mjs validateResearchPair 的 TFP1 规则。
 const fw = fs.readFileSync(firmware);
-if (fw.length !== 9300112
-  || createHash('sha256').update(fw).digest('hex') !== 'ad5054e3d7bda90e94d293bea882bd8dd5a125bcc8f42c13a59b2e149313c9e3')
+const fwSha = () => createHash('sha256').update(fw).digest('hex');
+if (candidateArg) {
+  const cand = JSON.parse(fs.readFileSync(path.resolve(candidateArg), 'utf8'));
+  if (fw.length !== cand.zip.size || fwSha() !== cand.zip.sha256)
+    throw Error('candidate_firmware_identity_mismatch:' + cand.codeName);
+} else if (fw.length !== 9300112
+  || fwSha() !== 'ad5054e3d7bda90e94d293bea882bd8dd5a125bcc8f42c13a59b2e149313c9e3')
   throw Error('tfp1_firmware_identity_mismatch');
 
 // 1. OTA 回环补丁：宿主 Flutter 二进制（补丁模块自带原始哈希自校验）
