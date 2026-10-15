@@ -74,9 +74,9 @@ def audit(folder):
   inst=next(md.disasm(entry[:4],at))
   assert inst.mnemonic=='b.w' and inst.operands[0].imm==(syms['m8_hook_'+name]&~1)
   assert entry[4:]==b'\x00\xbf'*((n-4)//2)
-  tramp=(syms['stock_'+name]&~1)-BASE
-  assert blob[tramp:tramp+n]==old[at-BASE:at-BASE+n]
-  back=next(md.disasm(blob[tramp+n:tramp+n+4],syms['stock_'+name]+n))
+  tramp=(syms['stock_'+name]&~1)-BASE  # file offset into the flat AP image
+  assert new[tramp:tramp+n]==old[at-BASE:at-BASE+n]
+  back=next(md.disasm(new[tramp+n:tramp+n+4],(syms['stock_'+name]&~1)+n))
   assert back.mnemonic=='b.w' and back.operands[0].imm==at+n
  for name,at,n in native_menu.REPLACEMENTS:
   inst=next(md.disasm(new[at-BASE:at-BASE+4],at))
