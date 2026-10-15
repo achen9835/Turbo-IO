@@ -356,7 +356,7 @@ m8_hook_{name}:
     report['imageProfile']={'wide':wide,'width':512 if wide else 128,'height':128 if wide else 64,'version':2 if wide else 1}
     report['menuProfile']='native-eight-v1' if native_eight else 'virtual-eight-r4'
     report['sourceInputs']=[{'path':str(p.relative_to(ROOT)),'sha256':digest(p.read_bytes())}
-      for p in sorted({SRC/(s+'.c') for s in units}|set(SRC.glob('*.h'))|set((SRC/'image-upload-test').glob('*.h'))|{Path(__file__),SRC/'menu8_native_profile.py',ROOT/'official-addon/ImageWireFormat.h'})]
+      for p in sorted({SRC/(s+'.c') for s in units}|set(SRC.glob('*.h'))|set((SRC/'image-upload-test').glob('*.h'))|{Path(__file__).resolve(),SRC/'menu8_native_profile.py',ROOT/'official-addon/ImageWireFormat.h'})]
     if native_eight:
         report['readyBlockers'].append('Native eight-slot integration, callbacks and UI allocation failure tests pending')
     if display_runtime:
