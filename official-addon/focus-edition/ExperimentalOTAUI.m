@@ -27,7 +27,7 @@ static NSURL *StoreDirectory(void){return [NSURL fileURLWithPath:[NSHomeDirector
 }
 - (void)refresh{TIORefreshExperimentalOTAReport();[self.tableView reloadData];}
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView{return 4;}
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{return section==2&&TIOOTAFlashBuild()?6:(section==2&&TIOOTAPreparationBuild()?3:(section==0||section==3?2:1));}
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{return section==2&&TIOOTAFlashBuild()?7:(section==2&&TIOOTAPreparationBuild()?3:(section==0||section==3?2:1));}
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section{return @[@"本地包",@"改动与安装范围",@"官方升级流程",@"手机解压目录 · 只读复核"][section];}
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)path{
     UITableViewCell *cell=[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];TIOStyleResearchCell(cell);
@@ -36,6 +36,7 @@ static NSURL *StoreDirectory(void){return [NSURL fileURLWithPath:[NSHomeDirector
     else if(path.section==1){NSDictionary *c=TIOOTACandidate();cell.textLabel.text=@"仅 AP 内容变化，不代表只写 AP";cell.detailTextLabel.text=[NSString stringWithFormat:@"%@ · %@\n仅 AP 修改，其他13个负载原样。音乐旋钮防误触、文字边距、阅读本地长按返回；新增第十二项番茄时钟。\n短暂查看后释放亮屏，断连继续计时；到时空闲提醒。息屏/头控/休眠唤醒尚需本轮实测。\nAP MD5：%@\n试验固件有风险，回滚不保证恢复。",c[@"baseVersion"]?:@"Strix OS 1.0.4.12",c[@"codeName"]?:@"固定候选",c[@"ap"][@"md5"]?:@"-"];}
     else if(path.section==2){NSDictionary *feed=TIOExperimentalOTAFeedStatus(),*guard=TIOOTAGuardStatus();
         if(path.row==5){cell.textLabel.text=@"★ 核对官方目录并授权一次试刷（一键）";cell.detailTextLabel.text=@"自动逐字节核对官方解压目录 15 项，通过后再输入确认字完成冻结授权；一步替代上面两项。仍须回官方页手动开始安装。";cell.accessibilityIdentifier=@"experimental-ota-oneclick";}
+        else if(path.row==6){NSDictionary *f6=TIOExperimentalOTAFeedStatus(),*g6=TIOOTAGuardStatus();id cur6=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];BOOL off6=[cur6 isKindOfClass:NSNumber.class]&&![cur6 boolValue];cell.textLabel.text=off6?@"版本改写：已关（回真实版本）":@"版本改写：开（99.99.99 · 默认）";cell.detailTextLabel.text=[NSString stringWithFormat:@"点击切换。本机源查询 %@ 次 · 固件类 %@ · App类 %@ · 未匹配 %@ · 下载 %@ · 拒收 %@ · 改写 %@ 次\n官方页不出卡片时先关本项再回官方页重查；关掉后启动也不再强制关官方自动更新。",f6[@"queryCount"]?:@0,f6[@"firmwareQueries"]?:@0,f6[@"appQueries"]?:@0,f6[@"unknownQueries"]?:@0,f6[@"downloadRequests"]?:@0,f6[@"rejectedCount"]?:@0,g6[@"silencedVersionReads"]?:@0];cell.accessibilityIdentifier=@"experimental-ota-silence-toggle";}
         else if(path.row==3){cell.textLabel.text=[NSString stringWithFormat:@"允许一次 %@ 实验试刷",TIOOTACandidate()[@"codeName"]?:@"固定候选"];cell.detailTextLabel.text=@"重新校验并冻结实际待传文件；限定本次设备、Mode 2、固定清单及每个分片。授权后再点官方“开始安装”。不保证启动或可救砖。";cell.accessibilityIdentifier=@"experimental-ota-authorize-tfp1";}
         else if(path.row==4){cell.textLabel.text=@"撤销尚未开始的试刷授权";cell.detailTextLabel.text=@"只有未开始时能撤销。开始后不要强停 App、断电或切换版本。";}
         else if(path.row==0&&TIOOTAFlashBuild()){NSDictionary *s=TIOOTAFlashStatus();cell.textLabel.text=@"DISPLAY TFP1 · 默认锁定";cell.detailTextLabel.text=[NSString stringWithFormat:@"授权：%@ · 已开始：%@\n清单匹配：%@ · 已核对分片 %@\n%@\n固件业务帧：共 %@ 次（类型：%@）· 版本回包已改写 %@ 次（显示为 99.99.99；默认开，试刷期间自动放行；TIOUpdateCheckSilence=NO 恢复官方）",s[@"authorized"],s[@"started"],s[@"manifestMatched"],s[@"validatedSlices"],s[@"failure"],guard[@"businessNineCalls"]?:@0,guard[@"businessNineTypes"]?:@"-",guard[@"silencedVersionReads"]?:@0];}
@@ -71,6 +72,7 @@ static NSURL *StoreDirectory(void){return [NSURL fileURLWithPath:[NSHomeDirector
 }
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path{
     [tableView deselectRowAtIndexPath:path animated:YES];if(self.busy)return;
+    if(path.section==2&&path.row==6&&TIOOTAFlashBuild()){NSUserDefaults *d6=NSUserDefaults.standardUserDefaults;id cur6=[d6 objectForKey:@"TIOUpdateCheckSilence"];if([cur6 isKindOfClass:NSNumber.class]&&![cur6 boolValue])[d6 removeObjectForKey:@"TIOUpdateCheckSilence"];else [d6 setBool:NO forKey:@"TIOUpdateCheckSilence"];[d6 synchronize];[self refresh];return;}
     if(path.section==2&&path.row==5&&TIOOTAFlashBuild()){[self checkDirectoryThenAuthorize];return;}
     if(path.section==2&&path.row==4&&TIOOTAFlashBuild()){self.statusText=TIOOTAFlashCancel()?@"未开始的授权已撤销":@"会话已开始，未中断传输；请保持供电和连接";[self refresh];return;}
     if(path.section==2&&path.row==3&&TIOOTAFlashBuild()){[self promptAuthorize];return;}
