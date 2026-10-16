@@ -68,10 +68,9 @@ static void Reply(int fd,NSInteger status,NSData *body,NSString *mime,NSDictiona
 #if !TIO_OTA_FEED_ARMING_ENABLED
     (void)url;(void)seconds;if(error)*error=FeedError(@"刷机门禁尚未开放：需先验收官方入口与同版本缓存。");return NO;
 #else
-    // 刷机红线（自启动闸门移入此处，语义更准）：提供实验固件（武装）仅限官方
-    // 包名宿主。自定义包名的日常构建里本机应答器只答「无更新」，无论 UI 操作
-    // 走到哪一步都不能进入武装路径。
-    if(![NSBundle.mainBundle.bundleIdentifier isEqual:@"com.rayneo.venus.pub"]){if(error)*error=FeedError(@"实验升级来源的宿主身份不匹配，拒绝提供实验包。");return NO;}
+    // 私用放宽（2026-10-14 用户决策）：上游「武装仅限官方包名宿主」的分发红线
+    // 已移除——固件完整性由候选 SHA pin、原厂 AP 指纹、分片逐项核对独立保证，
+    // 与宿主包名无关；自定义包名本机构建同样允许武装，仅限自刷自验。
 #if TARGET_OS_IPHONE
     if(!TIOOTAPreparationProtected()&&!TIOOTAFlashProtected()){if(error)*error=FeedError(@"未确认发送保护，拒绝提供实验包。");return NO;}
 #endif
