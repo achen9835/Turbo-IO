@@ -25,7 +25,7 @@ static const TNXY straight[]={{48,84},{48,12},{20,40},{48,12},{76,40}};
 static const TNXY right[]={{18,84},{18,36},{76,36},{52,12},{76,36},{52,60}};
 static const TNXY slight[]={{22,84},{22,55},{72,15},{36,15},{72,15},{72,50}};
 static const TNXY sharp[]={{18,84},{18,16},{74,66},{38,66},{74,66},{74,30}};
-static const TNXY uturn[]={{18,84},{18,30},{30,16},{58,16},{72,30},{72,78},{52,58},{72,78},{88,58}};
+static const TNXY uturn[]={{78,84},{78,30},{66,16},{38,16},{24,30},{24,78},{44,58},{24,78},{8,58}}; /* left-hand loop: China U-turns swing left */
 static const TNXY roundabout[]={{48,84},{48,65},{24,48},{24,30},{44,15},{64,30},{64,48},{48,65},{48,15},{32,30},{48,15},{64,30}};
 static const TNXY arrive[]={{22,84},{22,12},{76,12},{76,50},{22,50}};
 static const TNXY unknown[]={{28,25},{38,15},{58,15},{70,26},{70,38},{48,54},{48,66},{48,75},{48,82}};
@@ -50,7 +50,7 @@ bool tn_visual(const TNScene *s,bool stale,TNVisual *v){
  }
  v->icon_count=(unsigned)n;for(unsigned i=0;i<n;i++)v->icon[i]=(TNXY){8+(flip?96-icon[i].x:icon[i].x),12+icon[i].y};
  v->route_count=s->point_count;for(unsigned i=0;i<s->point_count;i++){if(s->points[i].x>1023||s->points[i].y>1023)return false;v->route[i]=map(s->points[i]);}
- TNXY pos=map(s->position);
+ TNXY pos=map(s->position);v->nav_pos=pos;v->heading=s->heading;v->icon_kind=s->icon;
  /* Eight-way position arrow; no libm or per-frame heap allocation. */
  static const int8_t dirs[8][2]={{0,-1},{1,-1},{1,0},{1,1},{0,1},{-1,1},{-1,0},{-1,-1}};
  unsigned dir=((s->heading+22u)/45u)%8u;int dx=dirs[dir][0],dy=dirs[dir][1];
@@ -68,6 +68,8 @@ bool tn_visual(const TNScene *s,bool stale,TNVisual *v){
  v->bar_count=s->bar_count;for(unsigned i=0;i<s->bar_count;i++)v->bar[i]=s->bar[i];
  v->camera_kind=s->camera_kind;v->event_kind=s->event_kind;v->camera_m=s->camera_m;v->event_m=s->event_m;v->camera_limit=s->camera_limit;
  v->lights=s->lights;v->lights_m=s->lights_m;
+ v->light_count=s->light_count;memcpy(v->light_m,s->light_m,sizeof v->light_m);
+ v->speed_kmh=s->speed_kmh;if(s->speed_kmh!=65535){p=decimal(v->speed,s->speed_kmh);append(p," km/h");}
  static const char *const camera_names[]={"","测速","闯红灯","监控","区间测速","电子眼"};
  static const char *const event_names[]={"","事故","施工","封路","管制"};
  if(s->camera_kind){p=append(v->alert,camera_names[s->camera_kind]);
@@ -75,7 +77,8 @@ bool tn_visual(const TNScene *s,bool stale,TNVisual *v){
   if(s->camera_m!=65535){p=append(p," · ");p=distance(p,s->camera_m);}} /* worst case 28 bytes < 64 */
  else if(s->event_kind){p=append(v->alert,event_names[s->event_kind]);
   if(s->event_m!=65535){p=append(p," · ");p=distance(p,s->event_m);}}
- if(s->lights!=255){p=append(v->secondary,"红绿灯 ×");p=decimal(p,s->lights);
-  if(s->lights_m!=65535){p=append(p," · ");p=distance(p,s->lights_m);}}
+ if(s->lights!=255){p=append(v->secondary,"红绿灯"); /* count is not shown; each light rides the bar */
+  unsigned near=s->light_count?s->light_m[0]:s->lights_m;
+  if(near!=65535){p=append(p," ");p=distance(p,near);}}
  return true;
 }

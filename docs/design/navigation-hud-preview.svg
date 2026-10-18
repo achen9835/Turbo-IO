@@ -16,6 +16,7 @@
 
   <!-- 中部信息列 -->
   <text x="112" y="42" font-family="system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-size="36" font-weight="700" fill="#4fff54">350<tspan font-size="16" font-weight="400" fill="#8fd99a"> m</tspan></text>
+  <text x="388" y="42" text-anchor="end" font-family="system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-size="30" font-weight="700" fill="#4fff54">46<tspan font-size="14" font-weight="400" fill="#8fd99a"> km/h</tspan></text>
   <text x="112" y="62" font-family="system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-size="13" fill="#8fd99a">右转进入</text>
   <text x="112" y="87" font-family="system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-size="19" font-weight="600" fill="#c6ffcb">中关村大街</text>
   <text x="112" y="104" font-family="system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-size="11.5" fill="#7cc786">剩余 12.4 km · 约 18 min · 路况 +6 min</text>
@@ -81,13 +82,18 @@
     <text x="183" y="130" font-family="system-ui,sans-serif" font-size="6.5" font-weight="700" fill="#9fe6a8" text-anchor="middle">!</text>
     <text x="190" y="132" font-family="system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-size="8" fill="#9fe6a8">事故 · 1.2 km</text>
   </g>
-  <!-- 信号灯标记（3.5 km 处，与固件 lights_m 锚点一致） -->
+  <!-- 信号灯标记（2.8 km / 3.5 km 两盏，与固件逐灯距离一致） -->
   <g>
+    <rect x="262" y="123" width="9" height="13" rx="2.5" fill="#061806" stroke="#9fe6a8" stroke-width="0.9"/>
+    <circle cx="266.5" cy="126.5" r="1.4" fill="#4fff54"/>
+    <circle cx="266.5" cy="129.5" r="1.3" fill="#2aa233"/>
+    <circle cx="266.5" cy="132.5" r="1.3" fill="#123f17" stroke="#2aa233" stroke-width="0.4"/>
+    <text x="274" y="133" font-family="system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-size="8" fill="#9fe6a8">2.8 km</text>
     <rect x="299" y="123" width="9" height="13" rx="2.5" fill="#061806" stroke="#9fe6a8" stroke-width="0.9"/>
     <circle cx="303.5" cy="126.5" r="1.4" fill="#4fff54"/>
     <circle cx="303.5" cy="129.5" r="1.3" fill="#2aa233"/>
     <circle cx="303.5" cy="132.5" r="1.3" fill="#123f17" stroke="#2aa233" stroke-width="0.4"/>
-    <text x="311" y="133" font-family="system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-size="8" fill="#9fe6a8">×2</text>
+    <text x="311" y="133" font-family="system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-size="8" fill="#9fe6a8">3.5 km</text>
   </g>
 
   <!-- 整公里刻度 -->
@@ -143,5 +149,5 @@
   <circle cx="409" cy="152.5" r="1.1" fill="#4fff54"/>
   <circle cx="409" cy="155.5" r="1" fill="#2aa233"/>
   <circle cx="409" cy="158" r="1" fill="#123f17" stroke="#2aa233" stroke-width="0.3"/>
-  <text x="416" y="159" font-family="system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-size="9" fill="#9fe6a8">红绿灯 ×2 · 3.5 km</text>
+  <text x="416" y="159" font-family="system-ui,'PingFang SC','Microsoft YaHei',sans-serif" font-size="9" fill="#9fe6a8">红绿灯 2.0 km</text>
 </svg>
