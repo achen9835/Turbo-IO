@@ -38,14 +38,17 @@ fi
 export PATH="$LLVM_BIN:$PATH"   # 工具检查前先注入，避免撞上系统 /usr/bin/clang
 for t in clang ld.lld llvm-nm llvm-objcopy node; do command -v "$t" >/dev/null || { echo "缺少 ${t}（LLVM_BIN=${LLVM_BIN}）"; exit 1; }; done
 
-# 1) 共享 venv（capstone/unicorn）
+# 1) 共享 venv（capstone/unicorn）——跨平台：macOS .venv/bin，Windows .venv/Scripts
 SHARED=firmware-research/strix-1.0.4.12
-[ -d "$SHARED/.venv" ] || { python3 -m venv "$SHARED/.venv"; "$SHARED/.venv/bin/pip" install -r "$SHARED/requirements.txt"; }
+[ -d "$REPO_ROOT/$SHARED/.venv" ] || { "$(command -v python3 || command -v python)" -m venv "$REPO_ROOT/$SHARED/.venv"; }
+VP="$REPO_ROOT/$SHARED/.venv/bin/python"; [ -x "$VP" ] || VP="$REPO_ROOT/$SHARED/.venv/Scripts/python.exe"
+[ -x "$VP" ] || { echo "venv Python 不可用（删掉 $REPO_ROOT/$SHARED/.venv 后重跑可重建）"; exit 1; }
+"$VP" -m pip install -q -r "$REPO_ROOT/$SHARED/requirements.txt"
 
 # 2) 复制源快照 + 准备基线 + 放置 PNG
 mkdir -p "$OUT"
 cp -R "$TAP1_DIR/source/." "$OUT/"
-"$SHARED/.venv/bin/python" "$SHARED/src/prepare-baseline.py" "$STOCK" --output "$OUT/firmware-inspection/StrixOS-1.0.4.12"
+"$VP" "$SHARED/src/prepare-baseline.py" "$STOCK" --output "$OUT/firmware-inspection/StrixOS-1.0.4.12"
 # TAP1 用 focus 研究树的全量符号表（35062 条，含 libc/tap_fs_* 符号）；
 # prepare-baseline 默认装的 metadata/symbols.json 只有 35 条（R3 小表），解析不了 tap_fs_*。
 cp "$REPO_ROOT/firmware-research/strix-1.0.4.12/native-navigation/focus/symbols.json" \
@@ -61,7 +64,7 @@ cp "$REPO_ROOT/firmware-research/strix-1.0.4.12/native-navigation/src/official-a
 # 3) 以全运行时组合驱动快照构建器（wide + native-eight + display + navigation + animation + music）
 export PATH="$LLVM_BIN:$PATH"
 cd "$OUT/official-addon/research"
-PYTHONPATH="$PWD:$PWD/music-runtime-v1:$PWD/navigation-runtime-v1" "$REPO_ROOT/$SHARED/.venv/bin/python" - <<'PY'
+PYTHONPATH="$PWD:$PWD/music-runtime-v1:$PWD/navigation-runtime-v1" "$VP" - <<'PY'
 import importlib.util, json, hashlib
 from pathlib import Path
 spec = importlib.util.spec_from_file_location("bir", "build-image-rx-candidate.py")
@@ -74,22 +77,24 @@ print(json.dumps({"candidateAP": hashlib.sha256(ap).hexdigest(), "candidateAPByt
 PY
 
 # 4) 独立字节级审计（REBUILD-2026-10.md 第8条；只读，不授权刷写）
-PYTHONPATH="$PWD:$PWD/music-runtime-v1:$PWD/navigation-runtime-v1" "$REPO_ROOT/$SHARED/.venv/bin/python" \
+PYTHONPATH="$PWD:$PWD/music-runtime-v1:$PWD/navigation-runtime-v1" "$VP" \
   audit-tap1-candidate.py candidate --out candidate-audit.json
 
 # 4.5) 生成手机端 OTA 候选描述（刷机链路用：dylib 门禁只认这个 JSON 描述的 ZIP）
-"$REPO_ROOT/$SHARED/.venv/bin/python" "$TAP1_DIR/make-ota-candidate.py" \
+"$VP" "$TAP1_DIR/make-ota-candidate.py" \
   candidate "$OUT/candidate-ota.json" --code TAP1-2026-10
 CAND_JSON="$OUT/candidate-ota.json"
 
 # 5) 刷机三步卡
-ZIP_PATH="$(cd candidate && pwd)/$(python3 -c "import json;print(json.load(open('candidate/report.json'))['archive']['name'])")"
+ZIP_PATH="$(cd candidate && pwd)/$("$VP" -c "import json;print(json.load(open('candidate/report.json'))['archive']['name'])")"
 cat <<CARD
 
 ================= 构建完成 · 刷机三步 =================
-① 云Mac 出新 IPA（一条命令，自动嵌入本固件与候选描述）：
-   TAP1_FW="$ZIP_PATH" TAP1_CANDIDATE="$CAND_JSON" bash build-local.sh
-   → IPA/TurboIO-merged-adhoc.ipa 回 Windows 爱思安装到手机（先装 IPA 顺序红线）
+① 出嵌入了本固件的新 IPA（GitHub Actions，无需云 Mac）：
+   ①a 把 candidate/ 下的固件 ZIP 与 candidate-ota.json 上传到 fork 的 Release（附件）
+   ①b Actions → ios-merge → Run workflow → 分支选 daily，勾 enable_focus/enable_app_sdk，
+       tap1_firmware_url / tap1_candidate_url 填两个附件的直链 → 出 IPA/TurboIO-merged-adhoc.ipa
+       回 Windows 爱思安装到手机（先装 IPA 顺序红线）
 ② 眼镜刷: 手机 App 实验刷机页导入 $ZIP_PATH
    （或直接用 ① 产物内嵌候选走官方页流程；电量>50%；手机停掉导航/字幕/音乐/番茄全部会话；刷时贴近静止）
 ③ 刷后看四样: 菜单12项无滴滴/我的应用 · 模拟导航有路况柱与三类标记 · 开全天智记再进导航 · TCE1仪表盘正常
