@@ -18,7 +18,10 @@ def prepare(archive, output):
         raise ValueError('Output exists; choose a new directory. Nothing removed.')
     with archive.open('rb') as stream:
         blob = stream.read(gate.MAX_ZIP + 1)
-    if hashlib.sha256(blob).hexdigest() != '22c1d844a7b30715f7f2406032042a2caa74a4442e2bd9437c1ac67a6e3990a3':
+    # 钉值 = stock-strix-1.0.4.12-archive Release 正式资产（SHA256SUMS.txt 认证
+    # 54eb155b…）；2026-10-19 更新，旧值 22c1d844… 为云 Mac 时代的早期副本。
+    # 更新前已做成员级核对：ZIP 内 14/14 负载与 metadata/baseline.json 指纹一致。
+    if hashlib.sha256(blob).hexdigest() != '54eb155b1b9980c0334005c2051720879204b6b5448180ee594eb735b92e905a':
         raise ValueError('Not the pinned original baseline ZIP')
     baseline = json.loads((ROOT / 'metadata/baseline.json').read_text())
     pins = {r['name']: r for r in baseline['files']}

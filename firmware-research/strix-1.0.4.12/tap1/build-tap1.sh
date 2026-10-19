@@ -39,8 +39,14 @@ export PATH="$LLVM_BIN:$PATH"   # 工具检查前先注入，避免撞上系统 
 for t in clang ld.lld llvm-nm llvm-objcopy node; do command -v "$t" >/dev/null || { echo "缺少 ${t}（LLVM_BIN=${LLVM_BIN}）"; exit 1; }; done
 
 # 1) 共享 venv（capstone/unicorn）——跨平台：macOS .venv/bin，Windows .venv/Scripts
+# Python 候选必须实测可执行：Windows 的 python3 常是 Microsoft Store 假别名（存在但跑不了）
+PYBASE=""
+for c in python3 python; do
+  command -v "$c" >/dev/null 2>&1 && "$c" -c "import sys" >/dev/null 2>&1 && { PYBASE="$c"; break; }
+done
+[ -n "$PYBASE" ] || { echo "未找到可用 Python（python3/python 都不可执行）"; exit 1; }
 SHARED=firmware-research/strix-1.0.4.12
-[ -d "$REPO_ROOT/$SHARED/.venv" ] || { "$(command -v python3 || command -v python)" -m venv "$REPO_ROOT/$SHARED/.venv"; }
+[ -d "$REPO_ROOT/$SHARED/.venv" ] || { "$PYBASE" -m venv "$REPO_ROOT/$SHARED/.venv"; }
 VP="$REPO_ROOT/$SHARED/.venv/bin/python"; [ -x "$VP" ] || VP="$REPO_ROOT/$SHARED/.venv/Scripts/python.exe"
 [ -x "$VP" ] || { echo "venv Python 不可用（删掉 $REPO_ROOT/$SHARED/.venv 后重跑可重建）"; exit 1; }
 "$VP" -m pip install -q -r "$REPO_ROOT/$SHARED/requirements.txt"
