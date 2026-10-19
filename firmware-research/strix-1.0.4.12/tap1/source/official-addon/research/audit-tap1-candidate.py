@@ -106,7 +106,7 @@ def audit(folder):
   expected=['OtaFileInfo.json']+[r['Name'] for r in manifest]
   assert z.namelist()==expected and z.testzip() is None
   for n in expected:assert z.read(n)==(folder/'payload'/n).read_bytes()
- inputs={i['path']:i['sha256'] for i in report['sourceInputs']}
+ inputs={i['path'].replace('\\','/'):i['sha256'] for i in report['sourceInputs']}
  for banned in FORBIDDEN_SUBSTRINGS:
   assert not any(banned in p for p in inputs),'removed module leaked into build: '+banned
  for rel in PINNED_SOURCES:

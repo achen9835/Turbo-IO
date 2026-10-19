@@ -356,7 +356,7 @@ m8_hook_{name}:
       archive=dict(name=archive.name,bytes=archive.stat().st_size,sha256=digest(archive.read_bytes())))
     report['imageProfile']={'wide':wide,'width':512 if wide else 128,'height':128 if wide else 64,'version':2 if wide else 1}
     report['menuProfile']='native-eight-v1' if native_eight else 'virtual-eight-r4'
-    report['sourceInputs']=[{'path':str(p.relative_to(ROOT)),'sha256':digest(p.read_bytes())}
+    report['sourceInputs']=[{'path':p.relative_to(ROOT).as_posix(),'sha256':digest(p.read_bytes())}
       for p in sorted({SRC/(s+'.c') for s in units}|set(SRC.glob('*.h'))|set((SRC/'image-upload-test').glob('*.h'))|{Path(__file__).resolve(),SRC/'menu8_native_profile.py',ROOT/'official-addon/ImageWireFormat.h'})]
     if native_eight:
         report['readyBlockers'].append('Native eight-slot integration, callbacks and UI allocation failure tests pending')
@@ -372,14 +372,14 @@ m8_hook_{name}:
           '139 tiny native file transfers may exceed the frame deadline; real throughput unverified',
           'UI_SUBMITTED is not physical display acknowledgement; actual LVGL/DMA remains unverified',
           'No real navigation feed or rotary/button event protocol in this candidate']
-        report['sourceInputs'] += [{'path':str(p.relative_to(ROOT)),'sha256':digest(p.read_bytes())}
+        report['sourceInputs'] += [{'path':p.relative_to(ROOT).as_posix(),'sha256':digest(p.read_bytes())}
           for p in sorted((SRC/'display-runtime-v1').glob('*.h'))]
     if navigation_runtime:
         report['menuProfile']='native-nine-TDP1-and-TNV1'
         report['navigationProfile']={'protocol':'TNV1','packetMax':512,'sceneMax':328,'idleMs':60000,'fileName':'turbo-navigation.tnv','replyCommand':'turbo_nav_v1','menuIndex':8,'phoneAutoOpen':True}
         report['readyBlockers']=['Nine-slot and native navigation ARM integration tests pending','Phone TNV1 sender and OTA candidate pinning pending','Independent artifact audit pending','Explicit flash authorization pending']
         report['unresolved']=['New native navigation page and power behavior not device tested','Local mini map is route schematic, not map tiles','Only native launcher idle can auto-open; active stock tasks are not interrupted']
-        report['sourceInputs'] += [{'path':str(p.relative_to(ROOT)),'sha256':digest(p.read_bytes())} for p in sorted((SRC/'navigation-runtime-v1').glob('*.h'))]+[{'path':str(SRC/'navigation-runtime-v1/menu9_profile.py'),'sha256':digest((SRC/'navigation-runtime-v1/menu9_profile.py').read_bytes())}]
+        report['sourceInputs'] += [{'path':p.relative_to(ROOT).as_posix(),'sha256':digest(p.read_bytes())} for p in sorted((SRC/'navigation-runtime-v1').glob('*.h'))]+[{'path':(SRC/'navigation-runtime-v1/menu9_profile.py').as_posix(),'sha256':digest((SRC/'navigation-runtime-v1/menu9_profile.py').read_bytes())}]
     if animation_runtime:
         report['kind']='ANIM60-offline-experimental-candidate'
         report['animationProfile']={'width':192,'height':176,'format':'L8','sourceFrames':1,
@@ -387,7 +387,7 @@ m8_hook_{name}:
           'benchmark':'Disabled: one static frame, one submission, no moving marker',
           'additionalPixelHeapBytes':0,'assetBytes':33792,'assetSHA256':digest(asset.read_bytes()[:33792]),
           'menu':'Turbo Display shows first pose; valid TDP upload replaces it; TNV1 retained'}
-        report['sourceInputs'] += [{'path':str(p.relative_to(ROOT)),'sha256':digest(p.read_bytes())}
+        report['sourceInputs'] += [{'path':p.relative_to(ROOT).as_posix(),'sha256':digest(p.read_bytes())}
           for p in [SRC/'animation-runtime-v1/animation.h',asset]]
         report['readyBlockers']=['Animation native lifecycle and patched-ARM regression review pending',
           'Private phone OTA gate not pinned to ANIM60; do not bypass it',
@@ -399,16 +399,16 @@ m8_hook_{name}:
         report['kind']='TMU1-offline-experimental-candidate'
         report['menuProfile']='native-ten-TDP1-TNV1-TMU1'
         report['musicProfile']={'protocol':'TMU1','file':'turbo-music.tmu','packetMax':4096,'menuIndex':9,'cover':[144,144],'lyricsBytes':24576,'linesMax':192,'canvasFPS':30,'idleModes':[0,30,60],'replyCommand':'turbo_music_v1'}
-        report['sourceInputs'] += [{'path':str(p.relative_to(ROOT)),'sha256':digest(p.read_bytes())} for p in sorted((SRC/'music-runtime-v1').glob('*.h'))]
+        report['sourceInputs'] += [{'path':p.relative_to(ROOT).as_posix(),'sha256':digest(p.read_bytes())} for p in sorted((SRC/'music-runtime-v1').glob('*.h'))]
         report['readyBlockers']=['Music/menu ARM and host tests pending','Matching phone package pending','Fresh flash authorization required']
         report['unresolved']=['New music page and native audio/controls not device validated','Background relaunch and transfer throughput require physical tests']
     report.update(kind='TWR1-offline-experimental-candidate',menuProfile='native-eleven-TDP1-TNV1-TMU1-TWR1')
     report['readerProfile']={'protocol':'TWR1','menuIndex':10,'banksBytes':49152,'cover':[64,88],'booksPerPage':4,'speedMaxCPM':480,'packetMax':512,'leaseMs':90000}
-    report['sourceInputs'] += [{'path':str(p.relative_to(ROOT)),'sha256':digest(p.read_bytes())} for p in sorted((SRC/'weread-v1').glob('*.[ch]'))]
+    report['sourceInputs'] += [{'path':p.relative_to(ROOT).as_posix(),'sha256':digest(p.read_bytes())} for p in sorted((SRC/'weread-v1').glob('*.[ch]'))]
     report['readyBlockers']=['Reader native lifecycle/menu/phone verification pending','Fresh explicit flash authorization required']
     report.update(kind='TAP1-developer-runtime-experimental-candidate',menuProfile='native-twelve-TAP1')
     report['focusProfile']={'menuIndex':11,'protocol':'TFP1','timerOwner':'independent bounded heap service','screenLeaseMs':10000,'compactAfterMs':3000,'noOtherPayloadChanges':True,'physicalSleepValidated':False}
-    report['sourceInputs'] += [{'path':str(p.relative_to(ROOT)),'sha256':digest(p.read_bytes())} for part in ['focus-v1'] for p in sorted((SRC/part).glob('*.[ch]'))]
+    report['sourceInputs'] += [{'path':p.relative_to(ROOT).as_posix(),'sha256':digest(p.read_bytes())} for part in ['focus-v1'] for p in sorted((SRC/part).glob('*.[ch]'))]
     put(out/'report.json',json.dumps(report,ensure_ascii=False,indent=2)+'\n')
     print(json.dumps({k:report[k] for k in ['candidateAP','candidateAPBytes','moduleVA','moduleBytes','unchangedPayloads','archive','unresolved']}))
     return report
