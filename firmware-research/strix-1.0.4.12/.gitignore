@@ -7,3 +7,5 @@ __pycache__/
 *.bin
 *.zip
 *.log
+# 例外：自建 TAP1 候选固件随源码入库（CI 打包从仓库直接取，免去 Release 上传）
+!tap1/candidate-release/*.zip
