@@ -267,7 +267,8 @@ m8_hook_{name}:
         # 192*176-byte frame is embedded via .incbin (single-pose animation page).
         assert asset.stat().st_size==192*176*12
         assert digest(asset.read_bytes())=='f758dd6e3cdf5fc6550238df26e46111e9d45d098b9d95f649626ea58210ee1d'
-        put(generated/'animation-asset.S','.section .rodata.ta_asset,"a",%progbits\n.balign 64\n.global ta_asset\n.type ta_asset,%object\nta_asset:\n.incbin "'+str(asset)+'", 0, 33792\n.size ta_asset, .-ta_asset\n')
+        # .incbin 路径必须正斜杠：反斜杠被汇编器当转义序列（Windows 上 \D \a 直接报错）
+        put(generated/'animation-asset.S','.section .rodata.ta_asset,"a",%progbits\n.balign 64\n.global ta_asset\n.type ta_asset,%object\nta_asset:\n.incbin "'+asset.as_posix()+'", 0, 33792\n.size ta_asset, .-ta_asset\n')
         units+=['animation-runtime-v1/animation']
         animation_units=[generated/'animation-asset.S']
     for source in [SRC/(s+'.c') for s in units]+([] if display_runtime else [generated/'photo-payload.c'])+[generated/'trampolines.S',generated/'display-idle.S']+animation_units:
