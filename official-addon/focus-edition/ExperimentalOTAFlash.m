@@ -145,9 +145,10 @@ void TIOOTAAutoUpdateDisableForSilence(void){
     id toggle=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];if(toggle&&![toggle boolValue])return;
     NSUserDefaults *p=NSUserDefaults.standardUserDefaults;NSMutableArray *keys=[NSMutableArray new];
     for(NSString *key in p.dictionaryRepresentation)if([key hasSuffix:@"_ota_firmware_auto_update"])[keys addObject:key];
-    if(keys.count!=1)return;id v=[p objectForKey:keys[0]];
+    if(keys.count>1)return;id v=keys.count?[p objectForKey:keys[0]]:nil;
     if([v isKindOfClass:NSString.class]&&[v isEqual:@"true"])[p setObject:@"false" forKey:keys[0]];
     else if([v isKindOfClass:NSNumber.class]&&CFGetTypeID((__bridge CFTypeRef)v)==CFBooleanGetTypeID()&&[v boolValue])[p setBool:NO forKey:keys[0]];
+    else if(!v)[p setBool:NO forKey:@"ota_firmware_auto_update"]; /* 键从未落盘（官方页显示的"关"只是缺省值，重装即丢）：补一条显式关闭记录，试刷前置检查才读得到 */
     else return;
     [p synchronize];
 }
