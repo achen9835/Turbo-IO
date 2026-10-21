@@ -29,6 +29,10 @@ static void ring(uint8_t *p,int w,int h,int cx,int cy,int r,uint8_t gray){
  for(int dy=-r;dy<=r;dy++)for(int dx=-r;dx<=r;dx++){int d=dx*dx+dy*dy;
   if(d>=r*r-r&&d<=r*r+r)pixel(p,w,h,cx+dx,cy+dy,0,gray);}
 }
+/* Q14 sine via 0..90 degree symmetry: the AP payload has no libm. */
+static const int16_t TN_SINQ14[91]={0,286,572,857,1143,1428,1713,1997,2280,2563,2845,3126,3406,3686,3964,4240,4516,4790,5063,5334,5604,5872,6138,6402,6664,6924,7182,7438,7692,7943,8192,8438,8682,8923,9162,9397,9630,9860,10087,10311,10531,10749,10963,11174,11381,11585,11786,11982,12176,12365,12551,12733,12911,13085,13255,13421,13583,13741,13894,14044,14189,14330,14466,14598,14726,14849,14968,15082,15191,15296,15396,15491,15582,15668,15749,15826,15897,15964,16026,16083,16135,16182,16225,16262,16294,16322,16344,16362,16374,16382,16384};
+static int tsin(unsigned d){d%=360;return d<=90?TN_SINQ14[d]:d<=180?TN_SINQ14[180-d]:d<=270?-TN_SINQ14[d-180]:-TN_SINQ14[360-d];}
+static int tcos(unsigned d){return tsin(d+90);}
 /* 3x5 dot matrix: digits plus the few letters/symbols the marker labels need. */
 static const uint8_t TN_GLYPH3X5[14][5]={{7,5,5,5,7},{2,6,2,2,7},{7,1,7,4,7},{7,1,7,1,7},{5,5,7,1,1},{7,4,7,1,7},{7,4,7,5,7},{7,1,1,2,2},{7,5,7,5,7},{7,5,7,1,7},
  {0,0,0,0,2},{5,6,4,6,5},{0,7,7,5,5},{0,5,2,5,0}}; /* 10='.' 11='k' 12='m' 13='×' */
@@ -53,10 +57,6 @@ static unsigned dist3x5(char out[6],unsigned m){
 }
 #define TN_BAR_BASE ((int)TN_BAR_H-10) /* columns sit on this row; km ticks and scale digits drop below */
 static int anchor(unsigned m){return 8+(int)(m>5000?5000:m)*(int)(TN_BAR_W-16u)/5000;}
-/* Q14 sine via 0..90 degree symmetry: the AP payload has no libm. */
-static const int16_t TN_SINQ14[91]={0,286,572,857,1143,1428,1713,1997,2280,2563,2845,3126,3406,3686,3964,4240,4516,4790,5063,5334,5604,5872,6138,6402,6664,6924,7182,7438,7692,7943,8192,8438,8682,8923,9162,9397,9630,9860,10087,10311,10531,10749,10963,11174,11381,11585,11786,11982,12176,12365,12551,12733,12911,13085,13255,13421,13583,13741,13894,14044,14189,14330,14466,14598,14726,14849,14968,15082,15191,15296,15396,15491,15582,15668,15749,15826,15897,15964,16026,16083,16135,16182,16225,16262,16294,16322,16344,16362,16374,16382,16384};
-static int tsin(unsigned d){d%=360;return d<=90?TN_SINQ14[d]:d<=180?TN_SINQ14[180-d]:d<=270?-TN_SINQ14[d-180]:-TN_SINQ14[360-d];}
-static int tcos(unsigned d){return tsin(d+90);}
 static void marker(TNViewFrame *f,int x,uint8_t gray,bool round){
  uint8_t stem=(uint8_t)(gray>>1);
  if(round){ring(f->bar,TN_BAR_W,TN_BAR_H,x,10,4,gray);pixel(f->bar,TN_BAR_W,TN_BAR_H,x,10,0,gray);}
@@ -89,20 +89,8 @@ static void draw(TNViewFrame *f){
   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){g,2},(TNXY){g,TN_MAP_H-3},0,(uint8_t)(22>>shift));
   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){2,g},(TNXY){TN_MAP_W-3,g},0,(uint8_t)(22>>shift));}
  frame(f->map,TN_MAP_W,TN_MAP_H,0,0,TN_MAP_W-1,TN_MAP_H-1,10,(uint8_t)(45>>shift));
- /* Orientation: north-up while stopped, crawling, or in the two complex
-  * glyphs; heading-up elsewhere — the world rotates around the car at the
-  * canvas centre, zoomed so the remaining route fills the frame. */
- bool north_up=v->icon_kind==TN_UTURN||v->icon_kind==TN_ROUNDABOUT||(v->speed_kmh!=65535&&v->speed_kmh<=5);
- if(north_up){
-  for(unsigned i=1;i<v->route_count;i++){
-   TNXY a=v->route[i-1],b=v->route[i];a.x-=400;a.y-=4;b.x-=400;b.y-=4;
-   line(f->map,TN_MAP_W,TN_MAP_H,a,b,2,v->stale?60:160);
-  }
-  if(v->route_count)for(unsigned i=1;i<4;i++){
-   TNXY a=v->position[i-1],b=v->position[i];a.x-=400;a.y-=4;b.x-=400;b.y-=4;
-   line(f->map,TN_MAP_W,TN_MAP_H,a,b,1,gray);
-  }
- }else{
+ /* Orientation: always heading-up (真机拍板) — the world rotates around the car
+  * at the canvas centre, zoomed so the remaining route fills the frame. */
   int rm=25;
   for(unsigned i=0;i<v->route_count;i++){int dx=v->route[i].x-v->nav_pos.x,dy=v->route[i].y-v->nav_pos.y;
    if(dx>rm)rm=dx;if(-dx>rm)rm=-dx;if(dy>rm)rm=dy;if(-dy>rm)rm=-dy;}
@@ -115,7 +103,6 @@ static void draw(TNViewFrame *f){
   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){56,50},(TNXY){52,58},1,gray);
   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){56,50},(TNXY){60,58},1,gray);
   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){52,58},(TNXY){60,58},1,gray);
- }
  /* Traffic bar chart: per-segment columns encode congestion in both height
   * and brightness (severe adds a dark hatch), over a 1 px baseline with
   * whole-kilometre ticks and 3x5 scale digits, all inside a rounded panel.
@@ -124,7 +111,7 @@ static void draw(TNViewFrame *f){
   * line and can never overflow the way a 16 px label would. */
  frame(f->bar,TN_BAR_W,TN_BAR_H,0,0,TN_BAR_W-1,TN_BAR_H-1,8,(uint8_t)(40>>shift));
  rect(f->bar,TN_BAR_W,TN_BAR_H,0,TN_BAR_BASE,TN_BAR_W,TN_BAR_BASE+1,(uint8_t)(48>>shift));
- static const uint8_t congestion[5]={0,112,150,210,255},height[5]={0,4,7,10,13};
+ static const uint8_t congestion[5]={0,168,198,226,255},height[5]={0,4,7,10,13}; /* 真机反馈畅通档(112)亮度不可见，整体提亮 */
  for(unsigned i=0;i<v->bar_count&&i<TN_BAR_MAX;i++){
   if(!v->bar[i]||v->bar[i]>4)continue;
   int x0=(int)(4u+i*(TN_BAR_W-8u)/TN_BAR_MAX),x1=(int)(4u+(i+1u)*(TN_BAR_W-8u)/TN_BAR_MAX);

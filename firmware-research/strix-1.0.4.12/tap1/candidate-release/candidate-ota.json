@@ -5,21 +5,21 @@
   "confirmToken": "TAP1-2026-10",
   "baseVersion": "Strix OS 1.0.4.12",
   "zip": {
-    "size": 9308580,
-    "sha256": "382f62144db8d0ac73534501f1e75cc1c7cb11a066096299238810f075383be7"
+    "size": 9308473,
+    "sha256": "0ed37777a6eb7a74d861dff6955a8973b214c23d1d6f8f65cf429e2c0a36b26f"
   },
-  "otaSize": 9308580,
+  "otaSize": 9308473,
   "ap": {
     "name": "nuttx_ap.bin",
-    "size": 9569480,
-    "sha256": "c4304273aa3d4afc8905e99b51ef060d0610873aa404c7fe107b1c3997d1565e",
-    "md5": "76839f2c5ac4393f5889298a9443747d"
+    "size": 9569352,
+    "sha256": "80d6b326dc5444c817d5e57919b63927def31fb9ac0c8295e3708953338e767b",
+    "md5": "9d94256dbe1a254079de6de5dbe9c168"
   },
   "apBudgetBytes": 9600000,
   "manifest": {
     "name": "OtaFileInfo.json",
     "size": 2515,
-    "sha256": "255e08fd945fd17ade657b4f1574f0f870bd50c80d06b386d45c8d638897b478"
+    "sha256": "763b71c703f9d05b2acff78b1806e7d7c40166b3e534f797164da83cc2ca1f44"
   },
   "stockAPSHA256": "53afdf5298815849eafca6f315a70606d2a605aff2e563f79050f797d615a988",
   "payloadPins": [
@@ -45,8 +45,8 @@
     },
     {
       "name": "nuttx_ap.bin",
-      "size": 9569480,
-      "sha256": "c4304273aa3d4afc8905e99b51ef060d0610873aa404c7fe107b1c3997d1565e"
+      "size": 9569352,
+      "sha256": "80d6b326dc5444c817d5e57919b63927def31fb9ac0c8295e3708953338e767b"
     },
     {
       "name": "nuttx_apc1.bin",
@@ -71,7 +71,7 @@
     {
       "name": "OtaFileInfo.json",
       "size": 2515,
-      "sha256": "255e08fd945fd17ade657b4f1574f0f870bd50c80d06b386d45c8d638897b478"
+      "sha256": "763b71c703f9d05b2acff78b1806e7d7c40166b3e534f797164da83cc2ca1f44"
     },
     {
       "name": "pil_algo_up_demo_nand.dll",
