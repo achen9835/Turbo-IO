@@ -40,3 +40,6 @@ secrets.local.md
 
 # 浏览器会话工件，永不提交
 .playwright-mcp/
+
+# Mimosa 本地状态
+**/.mimosa/
