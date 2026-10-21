@@ -28,7 +28,10 @@ void TIOA2UIObserveCall(id plugin,NSString *method,NSDictionary *args){
     NSString *device=args[@"deviceId"];if(Device&&![Device isEqual:device]){Route=nil;Baseline=nil;TextAccepted=NO;ReadRequested=NO;PendingSequence=0;Note=@"连接目标变化，请重新读取基线";}
     Device=device;Plugin=plugin;RouteAt=NSDate.date.timeIntervalSince1970;
     NSMutableDictionary *r=[args mutableCopy];[r removeObjectForKey:@"payload"];Route=r;
-    // No outgoing/incoming official content is saved by passive observation.
+    /* 后台保活实验（2026-10-22 用户提出）：记录每一条官方看板通道出站包的
+     * 时间与类型（不含内容——只记 type/长度），用于验证官方 App 锁屏后是否
+     * 仍有看板刷新流量。若有，我们的卡可同通道捎带数据更新。 */
+    if(e)Changed(@"board-traffic",@{@"type":e[@"type"],@"sequence":e[@"sequence"],@"jsonBytes":@([e[@"json"] length])});
 }
 static BOOL Send(NSDictionary *json,NSString *operation){
     if(![operation isEqual:@"query"]&&(!OwnedDevice||![OwnedDevice isEqual:Device])){Note=@"未发送：测试卡所属眼镜与当前连接不一致";Changed(@"device_mismatch",@{});return NO;}
