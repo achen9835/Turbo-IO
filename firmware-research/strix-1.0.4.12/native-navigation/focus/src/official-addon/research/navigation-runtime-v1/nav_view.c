@@ -89,20 +89,8 @@ static void draw(TNViewFrame *f){
   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){g,2},(TNXY){g,TN_MAP_H-3},0,(uint8_t)(22>>shift));
   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){2,g},(TNXY){TN_MAP_W-3,g},0,(uint8_t)(22>>shift));}
  frame(f->map,TN_MAP_W,TN_MAP_H,0,0,TN_MAP_W-1,TN_MAP_H-1,10,(uint8_t)(45>>shift));
- /* Orientation: north-up while stopped, crawling, or in the two complex
-  * glyphs; heading-up elsewhere — the world rotates around the car at the
-  * canvas centre, zoomed so the remaining route fills the frame. */
- bool north_up=v->icon_kind==TN_UTURN||v->icon_kind==TN_ROUNDABOUT||(v->speed_kmh!=65535&&v->speed_kmh<=5);
- if(north_up){
-  for(unsigned i=1;i<v->route_count;i++){
-   TNXY a=v->route[i-1],b=v->route[i];a.x-=400;a.y-=4;b.x-=400;b.y-=4;
-   line(f->map,TN_MAP_W,TN_MAP_H,a,b,2,v->stale?60:160);
-  }
-  if(v->route_count)for(unsigned i=1;i<4;i++){
-   TNXY a=v->position[i-1],b=v->position[i];a.x-=400;a.y-=4;b.x-=400;b.y-=4;
-   line(f->map,TN_MAP_W,TN_MAP_H,a,b,1,gray);
-  }
- }else{
+  /* Orientation: always heading-up (真机拍板) — the world rotates around the
+   * car at the canvas centre, zoomed so the remaining route fills the frame. */
   int rm=25;
   for(unsigned i=0;i<v->route_count;i++){int dx=v->route[i].x-v->nav_pos.x,dy=v->route[i].y-v->nav_pos.y;
    if(dx>rm)rm=dx;if(-dx>rm)rm=-dx;if(dy>rm)rm=dy;if(-dy>rm)rm=-dy;}
@@ -115,7 +103,6 @@ static void draw(TNViewFrame *f){
   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){56,50},(TNXY){52,58},1,gray);
   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){56,50},(TNXY){60,58},1,gray);
   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){52,58},(TNXY){60,58},1,gray);
- }
  /* Traffic bar chart: per-segment columns encode congestion in both height
   * and brightness (severe adds a dark hatch), over a 1 px baseline with
   * whole-kilometre ticks and 3x5 scale digits, all inside a rounded panel.
@@ -124,7 +111,7 @@ static void draw(TNViewFrame *f){
   * line and can never overflow the way a 16 px label would. */
  frame(f->bar,TN_BAR_W,TN_BAR_H,0,0,TN_BAR_W-1,TN_BAR_H-1,8,(uint8_t)(40>>shift));
  rect(f->bar,TN_BAR_W,TN_BAR_H,0,TN_BAR_BASE,TN_BAR_W,TN_BAR_BASE+1,(uint8_t)(48>>shift));
- static const uint8_t congestion[5]={0,112,150,210,255},height[5]={0,4,7,10,13};
+  static const uint8_t congestion[5]={0,168,198,226,255},height[5]={0,4,7,10,13}; /* 真机反馈畅通档(112)亮度不可见，整体提亮并拉开档差 */
  for(unsigned i=0;i<v->bar_count&&i<TN_BAR_MAX;i++){
   if(!v->bar[i]||v->bar[i]>4)continue;
   int x0=(int)(4u+i*(TN_BAR_W-8u)/TN_BAR_MAX),x1=(int)(4u+(i+1u)*(TN_BAR_W-8u)/TN_BAR_MAX);

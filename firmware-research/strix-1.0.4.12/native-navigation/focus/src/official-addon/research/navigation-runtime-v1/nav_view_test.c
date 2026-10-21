@@ -35,8 +35,8 @@ int main(void){
  assert(tn_crc(m.pixels[2],TN_BAR_W*TN_BAR_H)!=tn_crc((const uint8_t[TN_BAR_W*TN_BAR_H]){0},TN_BAR_W*TN_BAR_H)); /* rail+segments drawn */
  assert(!strcmp(m.strings[5],"测速 80 · 300 m")&&!strcmp(m.strings[6],"红绿灯 2.0 km"));
  {const uint8_t *b=m.pixels[2];bool l2=false,l3=false,l4=false;
-  for(unsigned i=0;i<TN_BAR_W*TN_BAR_H;i++){l2|=b[i]==150;l3|=b[i]==210;l4|=b[i]==255;}
-  assert(l2&&l3&&l4); /* per-level column brightness 150/210/255 present */
+  for(unsigned i=0;i<TN_BAR_W*TN_BAR_H;i++){l2|=b[i]==198;l3|=b[i]==226;l4|=b[i]==255;}
+  assert(l2&&l3&&l4); /* per-level column brightness 198/226/255 present */
   assert(b[10*TN_BAR_W+19]==200); /* camera ring west pixel at x=23 r=4 (300 m of 5 km) */
   assert(b[8*TN_BAR_W+20]==200&&b[8*TN_BAR_W+24]==200); /* limit digits 80 inside the ring */
   assert(b[28]==200); /* camera distance label "300m" in the top strip */
@@ -47,13 +47,13 @@ int main(void){
   assert(b[7*TN_BAR_W+192]==200); /* second light housing at x=192 (3.5 km) */
   assert(b[197]==200); /* its label "3.5km" east of the housing */
   assert(b[34*TN_BAR_W+3]==90); /* scale digit 0 below the baseline */
-  assert(b[24*TN_BAR_W+9]==150&&b[22*TN_BAR_W+9]==0); /* level-2 column rises 7 px */}
+  assert(b[24*TN_BAR_W+9]==198&&b[22*TN_BAR_W+9]==0); /* level-2 column rises 7 px */}
  s.light_count=1;s.light_m[0]=300;s.lights_m=300;assert(tn_view_update(&v,&s,false));assert(m.buffers==12);
  {const uint8_t *b=m.pixels[2];
   assert(b[7*TN_BAR_W+34]==200); /* co-located light nudges east of the camera ring */
   assert(b[10*TN_BAR_W+19]==200);} /* camera ring keeps its own anchor */
  s.icon=TN_UTURN;assert(tn_view_update(&v,&s,false));assert(m.buffers==15);
- {const uint8_t *mp=m.pixels[1];assert(mp[106*112+56]==160);} /* complex glyph flips back to north-up */
+ {const uint8_t *mp=m.pixels[1];assert(mp[16*112+56]==160);} /* complex glyphs stay heading-up (真机拍板始终车头朝上) */
  s.bar_count=0;
  for(unsigned i=0;i<1000;i++){s.icon=(uint8_t)(i%TN_ICON_COUNT);s.heading=(uint16_t)(i%360);s.distance_m=i;assert(tn_view_update(&v,&s,i%2));}
  assert(m.alloc==12);m.busy=true;assert(!tn_view_close(&v));assert(v.retiring&&m.destroyed==0);assert(!tn_view_update(&v,&s,false));
