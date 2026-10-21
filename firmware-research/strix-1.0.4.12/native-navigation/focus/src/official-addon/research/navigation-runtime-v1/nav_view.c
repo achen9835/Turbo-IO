@@ -89,11 +89,11 @@ static void draw(TNViewFrame *f){
   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){g,2},(TNXY){g,TN_MAP_H-3},0,(uint8_t)(22>>shift));
   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){2,g},(TNXY){TN_MAP_W-3,g},0,(uint8_t)(22>>shift));}
  frame(f->map,TN_MAP_W,TN_MAP_H,0,0,TN_MAP_W-1,TN_MAP_H-1,10,(uint8_t)(45>>shift));
- /* Orientation: hybrid (2026-10-21 真机拍板恢复) — north-up while stopped or
-  * crawling (speed fed and <=5 km/h) or in the two complex glyphs; heading-up
-  * elsewhere. Heading/speed now arrive from AMapNaviLocation, so both
-  * branches are live on device (previously heading stayed 0 = fake north). */
- bool north_up=v->icon_kind==TN_UTURN||v->icon_kind==TN_ROUNDABOUT||(v->speed_kmh!=65535&&v->speed_kmh<=5);
+ /* Orientation: hybrid (2026-10-21 真机拍板) — north-up only when truly
+  * standing (speed fed and <=2 km/h) or in the two complex glyphs; heading-up
+  * elsewhere. Threshold is 2 not 5: walking pace is 3-6 km/h and must stay
+  * heading-up (5 would pin walkers to north-up); a car at a light reads 0-1. */
+ bool north_up=v->icon_kind==TN_UTURN||v->icon_kind==TN_ROUNDABOUT||(v->speed_kmh!=65535&&v->speed_kmh<=2);
  if(north_up){
   for(unsigned i=1;i<v->route_count;i++){
    TNXY a=v->route[i-1],b=v->route[i];a.x-=400;a.y-=4;b.x-=400;b.y-=4;
