@@ -53,7 +53,11 @@ int main(void){
   assert(b[7*TN_BAR_W+34]==200); /* co-located light nudges east of the camera ring */
   assert(b[10*TN_BAR_W+19]==200);} /* camera ring keeps its own anchor */
  s.icon=TN_UTURN;assert(tn_view_update(&v,&s,false));assert(m.buffers==15);
- {const uint8_t *mp=m.pixels[1];assert(mp[16*112+56]==160);} /* complex glyphs stay heading-up (真机拍板始终车头朝上) */
+ {const uint8_t *mp=m.pixels[1];assert(mp[106*112+56]==160);} /* complex glyph flips back to north-up */
+ s.icon=TN_RIGHT;s.speed_kmh=3;assert(tn_view_update(&v,&s,false));assert(m.buffers==18);
+ {const uint8_t *mp=m.pixels[1];assert(mp[106*112+56]==160);} /* stopped <=5 km/h flips to north-up */
+ s.speed_kmh=46;assert(tn_view_update(&v,&s,false));assert(m.buffers==21);
+ {const uint8_t *mp=m.pixels[1];assert(mp[16*112+56]==160);} /* moving again: heading-up */
  s.bar_count=0;
  for(unsigned i=0;i<1000;i++){s.icon=(uint8_t)(i%TN_ICON_COUNT);s.heading=(uint16_t)(i%360);s.distance_m=i;assert(tn_view_update(&v,&s,i%2));}
  assert(m.alloc==12);m.busy=true;assert(!tn_view_close(&v));assert(v.retiring&&m.destroyed==0);assert(!tn_view_update(&v,&s,false));
