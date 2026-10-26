@@ -36,6 +36,10 @@ NSDictionary *TIOOTACandidate(void){
 }
 
 NSString *TIOExperimentalOTASHA(void){return TIOOTACandidate()[@"zip"][@"sha256"]?:@"0000000000000000000000000000000000000000000000000000000000000000";}
+NSString *TIOOTAOfficialDirectoryName(void){
+    NSString *base=[TIOOTACandidate()[@"baseVersion"] stringByReplacingOccurrencesOfString:@"Strix OS " withString:@""];
+    return [NSString stringWithFormat:@"Strix_OS_%@",base.length?base:@"1.0.4.12"];
+}
 static id Fail(NSError **error,NSString *message){if(error)*error=[NSError errorWithDomain:@"TurboIO.ExperimentalOTA" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];return nil;}
 NSDictionary *TIOCheckExperimentalOTA(NSData *data,NSError **error){
     NSDictionary *candidate=TIOOTACandidate();

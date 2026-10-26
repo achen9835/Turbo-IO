@@ -32,6 +32,19 @@ static void Reply(int fd,NSInteger status,NSData *body,NSString *mime,NSDictiona
     for(NSString *key in extra)[h appendFormat:@"%@: %@\r\n",key,extra[key]];
     [h appendString:@"\r\n"];if(SendAll(fd,[h dataUsingEncoding:NSUTF8StringEncoding])&&!head)SendAll(fd,body);
 }
+// 候选元数据从内嵌候选描述派生（TAP1: Strix OS 1.0.4.12 / TAP2: Strix OS 1.0.5.5），
+// 不再硬编码——官方 App 按这些字段判定「可升级」并命名下载/解压目录。
+static NSString *OTAZipName(void){
+    NSString *base=[TIOOTACandidate()[@"baseVersion"] stringByReplacingOccurrencesOfString:@"Strix OS " withString:@""];
+    return [NSString stringWithFormat:@"Strix_OS_%@.zip",base.length?base:@"1.0.4.12"];
+}
+static NSString *OTAVersionName(void){ /* "1.0.4.12" -> "0100040012" */
+    NSString *base=[TIOOTACandidate()[@"baseVersion"] stringByReplacingOccurrencesOfString:@"Strix OS " withString:@""];
+    NSArray *parts=[base componentsSeparatedByString:@"."];NSMutableString *out=[NSMutableString string];
+    for(NSUInteger i=0;i<4;i++){NSString *p=i<parts.count?parts[i]:@"0";int v=p.integerValue;[out appendFormat:i==3?@"%04d":@"%02d",v];}
+    return out;
+}
+static long OTAVersionCode(void){return OTAVersionName().longLongValue;} /* "0100040012" -> 100040012 */
 @implementation TIOExperimentalOTAFeed {
     dispatch_queue_t _queue;
     dispatch_source_t _listener;
@@ -115,9 +128,12 @@ static void Reply(int fd,NSInteger status,NSData *body,NSString *mime,NSDictiona
         else if([QueryPaths() containsObject:[[target componentsSeparatedByString:@"?"] firstObject]]){
             _queries++;id data=NSNull.null;
             NSString *kind=QueryKind(target);if([kind isEqual:@"firmware"])_firmwareQueries++;else if([kind isEqual:@"app"])_appQueries++;else _unknownQueries++;
-            if(_archive&&[kind isEqual:@"firmware"])data=@{@"taskName":@"Turbo WeRead TFP1 PRIVATE EXPERIMENT",@"appName":@"Strix OS",@"packageName":@"Strix OS",@"versionName":@"0100040012",@"versionCode":@100040012,@"upgradeType":@1,@"userScope":@0,@"updateDesc":@"PRIVATE EXPERIMENT: AP modified, other 13 payloads unchanged. Runtime unverified.",@"appIcon":@"",@"apkSize":@(_archive.length),@"apkMd5":_md5,@"downloadUrl":[NSString stringWithFormat:@"http://127.0.0.1:%u/p/%@/Strix_OS_1.0.4.12.zip",_port,_token]};
+            if(_archive&&[kind isEqual:@"firmware"]){
+                NSDictionary *c=TIOOTACandidate();unsigned pins=[c[@"payloadPins"] isKindOfClass:NSArray.class]?[c[@"payloadPins"] count]:0;
+                data=@{@"taskName":[NSString stringWithFormat:@"%@ PRIVATE EXPERIMENT",c[@"codeName"]?:@"TURBO"],@"appName":@"Strix OS",@"packageName":@"Strix OS",@"versionName":OTAVersionName(),@"versionCode":@(OTAVersionCode()),@"upgradeType":@1,@"userScope":@0,@"updateDesc":[NSString stringWithFormat:@"PRIVATE EXPERIMENT %@: AP modified, other %u payloads byte-identical to %@. Runtime unverified.",c[@"codeName"]?:@"",pins>0?pins-2:0,c[@"baseVersion"]?:@""],@"appIcon":@"",@"apkSize":@(_archive.length),@"apkMd5":_md5,@"downloadUrl":[NSString stringWithFormat:@"http://127.0.0.1:%u/p/%@/%@",_port,_token,OTAZipName()]};
+            }
             response=@{@"error_code":@1000,@"error_msg":@"success",@"data":data};
-        }else if(_archive&&[target isEqual:[NSString stringWithFormat:@"/p/%@/Strix_OS_1.0.4.12.zip",_token]]){
+        }else if(_archive&&[target isEqual:[NSString stringWithFormat:@"/p/%@/%@",_token,OTAZipName()]]){
             body=_archive;mime=@"application/zip";extra=@{@"Accept-Ranges":@"bytes"};
             NSString *range=headers[@"range"];
             if(range){
@@ -164,7 +180,7 @@ void TIORefreshExperimentalOTAReport(void){
             if(TIOOTAFlashBuild()){report[@"build"]=@"DIAGNOSTICS-OTA-01";report[@"flashGate"]=TIOOTAFlashStatus();report[@"flashAuthorized"]=report[@"flashGate"][@"authorized"];}
             NSURL *zip=[directory URLByAppendingPathComponent:[TIOExperimentalOTASHA() stringByAppendingString:@".zip"]];error=nil;
             report[@"archive"]=TIOReadExperimentalOTA(zip,&error)?:@{@"integrityPassed":@NO};
-            NSURL *official=[NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/ota/Strix_OS_1.0.4.12"] isDirectory:YES];error=nil;
+            NSURL *official=[NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Library/Application Support/ota/%@",TIOOTAOfficialDirectoryName()]] isDirectory:YES];error=nil;
             report[@"officialDirectory"]=TIOCheckExperimentalOTADirectory(official,&error)?:@{@"integrityPassed":@NO,@"note":error.localizedDescription?:@"尚未读取"};
             NSURL *file=[directory URLByAppendingPathComponent:@"preparation-status.json"];
             NSData *data=[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil];

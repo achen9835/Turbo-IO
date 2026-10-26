@@ -201,8 +201,8 @@ BOOL TIOOTAFlashAuthorize(NSError **error){
     if(!TIOOTAAutoUpdateDisabled(NSUserDefaults.standardUserDefaults.dictionaryRepresentation)){Error(error,@"请先在官方眼镜软件版本页关闭自动更新；未读到明确关闭状态，不授予试刷权限。");return NO;}
     NSString *device;NSTimeInterval at;@synchronized(NSProcessInfo.processInfo){device=ObservedDevice;at=ObservedAt;}
     NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
-    if(!device.length||now-at>120){Error(error,@"请先从官方固件页重新检查版本；需要两分钟内的 1.0.4.12 有效回读。");return NO;}
-    NSURL *dir=[NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/ota/Strix_OS_1.0.4.12"] isDirectory:YES];
+    if(!device.length||now-at>120){Error(error,[NSString stringWithFormat:@"请先从官方固件页重新检查版本；需要两分钟内对 %@ 的有效回读。",TIOOTACandidate()[@"baseVersion"]?:@"候选底座版本"]);return NO;}
+    NSURL *dir=[NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Library/Application Support/ota/%@",TIOOTAOfficialDirectoryName()]] isDirectory:YES];
     return [Current() prepareDirectory:dir device:device uptime:now error:error];
 }
 BOOL TIOOTAFlashCancel(void){return [Current() cancel];}

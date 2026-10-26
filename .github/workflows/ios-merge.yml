@@ -161,6 +161,12 @@ jobs:
             python3 -c "import json;c=json.load(open('candidate-ota.json'));print('TAP1 候选：',c.get('codeName','?'))"
             echo "TIO_OTA_CANDIDATE=$PWD/candidate-ota.json" >> "$GITHUB_ENV"
             echo "自建 TAP1 固件已下载；完整性由候选描述内 SHA pin 在打包时校验"
+          elif [[ -f firmware-research/strix-1.0.5.5-tvp2/candidate-release/firmware.zip ]]; then
+            cp firmware-research/strix-1.0.5.5-tvp2/candidate-release/firmware.zip focus-firmware.zip
+            cp firmware-research/strix-1.0.5.5-tvp2/candidate-release/candidate-ota.json candidate-ota.json
+            python3 -c "import json;c=json.load(open('candidate-ota.json'));print('TAP2 候选：',c.get('codeName','?'),'底座',c.get('baseVersion','?'))"
+            echo "TIO_OTA_CANDIDATE=$PWD/candidate-ota.json" >> "$GITHUB_ENV"
+            echo "使用仓库内随源码提交的 TAP2 候选（1.0.5.5 底座；URL 输入留空即可）"
           elif [[ -f firmware-research/strix-1.0.4.12/tap1/candidate-release/firmware.zip ]]; then
             cp firmware-research/strix-1.0.4.12/tap1/candidate-release/firmware.zip focus-firmware.zip
             cp firmware-research/strix-1.0.4.12/tap1/candidate-release/candidate-ota.json candidate-ota.json
