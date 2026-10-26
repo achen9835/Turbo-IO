@@ -10,6 +10,8 @@
 #include <unistd.h>
 #include <errno.h>
 #include <math.h>
+#include <stdint.h>
+#include <string.h>
 
 #ifndef TIO_OTA_FEED_ARMING_ENABLED
 #define TIO_OTA_FEED_ARMING_ENABLED 0
@@ -181,16 +183,38 @@ void TIOStartExperimentalOTAFeedIfMarked(void){
         // 且该构建 TIO_OTA_FEED_ARMING_ENABLED=1），更新检查会被打到本机回环端口
         // ——应答器必须常驻，否则官方把连接拒绝渲染成「软件更新检查失败」全屏页。
         // 610a993 曾按「刷机构建必须官方包名」设门，但日常包本身就是刷机宏构建，
-        // 被该门挡死（真机无效）。改为：启动只要求宿主 1.0.5/201 且 App 内回环
+        // 被该门挡死（真机无效）。改为：启动只要求宿主在已核对清单内且 App 内回环
         // 补丁字节在场（下方校验），未武装时对一切检查只回「无更新」；「官方包名」
         // 红线移入 armArchive——武装（提供固件）仅限官方宿主，红线保留未删。
-        if(![[bundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"] isEqual:@"1.0.5"]||![[bundle objectForInfoDictionaryKey:@"CFBundleVersion"] isEqual:@"201"]){BootstrapFailure=@"实验升级来源的宿主版本不匹配";return;}
-        // Read only two fixed string records. Code signing is handled by packaging;
-        // this check prevents starting a feed with an unpatched/mismatched host.
+        // 2026-10-26：新增 1.0.7/230 宿主（同口径：版本门禁+App 快照回环字节校验）。
+        NSString *version=[bundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
+        NSString *build=[bundle objectForInfoDictionaryKey:@"CFBundleVersion"];
+        BOOL is105=[version isEqual:@"1.0.5"]&&[build isEqual:@"201"];
+        BOOL is107=[version isEqual:@"1.0.7"]&&[build isEqual:@"230"];
+        if(!is105&&!is107){BootstrapFailure=@"实验升级来源的宿主版本不匹配";return;}
+        // Read two fixed Dart string records (cached-hash + length + bytes, the
+        // same record layout the packer wrote). Code signing is handled by
+        // packaging; this check prevents starting a feed with an unpatched or
+        // mismatched host. 1.0.7 的两条 gray/upgrade 路径字符串与 1.0.5 同文、
+        // 同回环替换串（makeRoute 确定性同后缀），仅偏移不同；偏移/缓存哈希
+        // 已在本机解出的 1.0.7 快照上逐字节核对，并与上游 ios107 审计互证。
         NSString *file=[bundle.bundlePath stringByAppendingPathComponent:@"Frameworks/App.framework/App"];
         NSFileHandle *handle=[NSFileHandle fileHandleForReadingAtPath:file];BOOL ok=handle!=nil;
-        @try{NSArray *offsets=@[@39310656,@30324336];NSArray *strings=@[@"http://127.0.0.1:18794/g/xxxxxxxA78p2M",@"http://127.0.0.1:18794/g/xxxxxxxxxxCCXhB"];
-            for(NSUInteger i=0;i<offsets.count&&ok;i++){NSData *expected=[strings[i] dataUsingEncoding:NSASCIIStringEncoding];[handle seekToFileOffset:[offsets[i] unsignedLongLongValue]];ok=[[handle readDataOfLength:expected.length] isEqual:expected];}
+        // 每项：偏移 / 回环替换串 / Dart 缓存哈希（u32，记录头 offset-12）
+        NSArray *records=is105?@[@[@39310656,@352684455u,@"http://127.0.0.1:18794/g/xxxxxxxA78p2M"],@[@30324336,@555237387u,@"http://127.0.0.1:18794/g/xxxxxxxxxxCCXhB"]]
+                               :@[@[@41206352,@352684455u,@"http://127.0.0.1:18794/g/xxxxxxxA78p2M"],@[@32115728,@555237387u,@"http://127.0.0.1:18794/g/xxxxxxxxxxCCXhB"]];
+        @try{for(NSArray *r in records){
+                if(!ok)break;
+                NSData *expected=[r[2] dataUsingEncoding:NSASCIIStringEncoding];
+                [handle seekToFileOffset:[r[0] unsignedLongLongValue]-12];
+                NSData *head=[handle readDataOfLength:12];
+                if(head.length!=12){ok=NO;break;}
+                uint32_t cachedHash;uint64_t wireLen;memcpy(&cachedHash,head.bytes,4);memcpy(&wireLen,(const uint8_t *)head.bytes+4,8);
+                ok=cachedHash==[r[1] unsignedIntValue]&&wireLen==(uint64_t)expected.length*2;
+                if(!ok)break;
+                [handle seekToFileOffset:[r[0] unsignedLongLongValue]];
+                ok=[[handle readDataOfLength:expected.length] isEqual:expected];
+            }
         }@catch(NSException *exception){(void)exception;ok=NO;}@finally{[handle closeFile];}
         if(!ok){BootstrapFailure=@"实验升级查询路径不匹配，未启动服务";return;}
         NSError *error=nil;SharedFeed=[TIOExperimentalOTAFeed new];if(![SharedFeed startOnPort:18794 error:&error]){BootstrapFailure=error.localizedDescription;SharedFeed=nil;}

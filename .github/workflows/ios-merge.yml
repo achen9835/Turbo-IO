@@ -80,8 +80,10 @@ permissions:
 
 env:
   # 项目 Release 公开的原厂砸壳输入；打包前严格校验哈希
-  UPSTREAM_IPA_URL: https://github.com/Turbo1123/Turbo-IO/releases/download/rayneo-ios-1.0.5-201/RayNeo_AI_1.0.5_201_decrypted_original.ipa
-  EXPECTED_IPA_SHA256: 39d12aff8f2b312dc3b40ce784a444e52c536e61378434005255177548df966a
+  # 2026-10-26 升级 1.0.7(230)（与眼镜 1.0.5.5 底座配套，上游实测组合）；
+  # 1.0.5 输入仍可手动取 rayneo-ios-1.0.5-201（SHA 39d12aff…）。
+  UPSTREAM_IPA_URL: https://github.com/Turbo1123/Turbo-IO/releases/download/rayneo-ios-1.0.7-230/RayNeo_AI_1.0.7_230_decrypted_unsigned_original.ipa
+  EXPECTED_IPA_SHA256: 50df3954845e3bc2e34f9ba6def8c3837e9d1a6c232f36f3a975dd08152a3ff7
 
 jobs:
   merge:

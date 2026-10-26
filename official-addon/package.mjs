@@ -71,7 +71,8 @@ function main(){
   let otaPatch;
   if(o['experimental-ota']){
     const info=JSON.parse(run('plutil',['-convert','json','-o','-',path.join(source,'Info.plist')],{encoding:'utf8'}));
-    if(info.CFBundleIdentifier!=='com.rayneo.venus.pub'||info.CFBundleShortVersionString!=='1.0.5'||info.CFBundleVersion!=='201'||info.TIOExperimentalOTAQueryRouting)throw Error('experimental_ota_requires_original_ios105');
+    const paired=(info.CFBundleShortVersionString==='1.0.5'&&info.CFBundleVersion==='201')||(info.CFBundleShortVersionString==='1.0.7'&&info.CFBundleVersion==='230');
+    if(info.CFBundleIdentifier!=='com.rayneo.venus.pub'||!paired||info.TIOExperimentalOTAQueryRouting)throw Error('experimental_ota_requires_original_ios105_or_ios107');
     otaPatch=patchExperimentalOTA(fs.readFileSync(path.join(source,'Frameworks/App.framework/App')));
   }
   if(destination===source||destination.startsWith(source+path.sep))throw Error('output_must_be_separate');
@@ -105,7 +106,8 @@ print(json.dumps({'entitlements':p['Entitlements'],'expires':p['ExpirationDate']
     fs.writeFileSync(path.join(app,'Frameworks/App.framework/App'),otaPatch.output);
     const plist=path.join(app,'Info.plist');
     const music=['TMU1','TFP1'].includes(o['experimental-ota']);
-    run('plutil',['-insert','TIOExperimentalOTAQueryRouting','-string',focusEdition?'ios105-tfp1-loopback-flash-gated':music?'ios105-tmu1-loopback-flash-gated':o['experimental-ota']==='TNV1'?'ios105-tnv1-loopback-flash-gated':'ios105-r3-loopback-flash-gated',plist]);
+    const editionPrefix=otaPatch.report.edition==='1.0.7/230'?'ios107':'ios105';
+    run('plutil',['-insert','TIOExperimentalOTAQueryRouting','-string',focusEdition?`${editionPrefix}-tfp1-loopback-flash-gated`:music?`${editionPrefix}-tmu1-loopback-flash-gated`:o['experimental-ota']==='TNV1'?`${editionPrefix}-tnv1-loopback-flash-gated`:`${editionPrefix}-r3-loopback-flash-gated`,plist]);
     run('plutil',['-insert','TIOExperimentalOTABuild','-string',focusEdition?'FOCUS-04-SOURCE':music?'TMU1-SOURCE-01':o['experimental-ota']==='TNV1'?'TNV1-SOURCE-01':'R3-SOURCE-RESEARCH-01',plist]);
     if(firmware)fs.writeFileSync(path.join(app,focusEdition?'TurboWeReadCandidate.zip':music?'TurboMusicCandidate.zip':'TurboNavigationCandidate.zip'),firmware,{flag:'wx'});
     if(music){

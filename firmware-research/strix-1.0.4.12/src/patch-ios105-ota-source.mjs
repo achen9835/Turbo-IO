@@ -5,7 +5,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import {pathToFileURL} from 'node:url';
-export const originalSHA='f5691eb07c1eaa4270de24ad1a0b09829cb35c2d22a5fab16b818aa519c8c23a';
+// 两条 gray/upgrade 路径在 1.0.5(201) 与 1.0.7(230) 快照中同文、同 Dart 缓存哈希，
+// 因此 makeRoute 的确定性替换串也相同；仅快照整体 SHA 与落点偏移不同。
+// 两个输入 SHA 均与砸壳归档审计值逐字节核对（1.0.7 App 快照 = 041dc97a…）。
+export const originalSHAs={
+  'f5691eb07c1eaa4270de24ad1a0b09829cb35c2d22a5fab16b818aa519c8c23a':'1.0.5/201',
+  '041dc97ad3a864ac322e92a49d3b1ebbd466d371dc427591b0b82c8c56b5090d':'1.0.7/230',
+};
+export const originalSHA=Object.keys(originalSHAs)[0];
 export const originals=['/xrlauncherapi/v1/signApi/gray/upgrade','/xrlauncherhwapi/v1/signApi/gray/upgrade'];
 const sha=b=>crypto.createHash('sha256').update(b).digest('hex');
 const assert=(v,s)=>{if(!v)throw Error(s);};
@@ -41,7 +48,8 @@ export function makeRoute(original){
   throw Error('No compatible route found; do not patch');
 }
 export function patch(input){
-  assert(sha(input)===originalSHA,'Wrong input: only original App.framework 1.0.5/201');
+  const edition=originalSHAs[sha(input)];
+  assert(edition,'Wrong input: only original App.framework 1.0.5/201 or 1.0.7/230');
   const output=Buffer.from(input),changes=[];
   for(const original of originals){
     const offset=input.indexOf(original);assert(offset>=16&&input.indexOf(original,offset+1)===-1,'Path not unique');
@@ -52,7 +60,7 @@ export function patch(input){
     changes.push({offset,bytes:original.length,original,replacement,stringHash:stringHash(original)});
   }
   for(let i=0;i<input.length;i++)if(input[i]!==output[i])assert(changes.some(c=>i>=c.offset&&i<c.offset+c.bytes),'Unexpected patch byte');
-  return {output,report:{inputSHA:sha(input),outputSHA:sha(output),bytes:output.length,changes,
+  return {output,report:{inputSHA:sha(input),edition,outputSHA:sha(output),bytes:output.length,changes,
     instructionsChanged:false,objectHeadersChanged:false,deviceIO:false,runtimeValidated:false,
     note:'Requires explicit local loopback feed, re-signing and real host acceptance. Does not create an installable app by itself.'}};
 }

@@ -29,10 +29,12 @@ if (candidateArg) {
   || fwSha() !== 'ad5054e3d7bda90e94d293bea882bd8dd5a125bcc8f42c13a59b2e149313c9e3')
   throw Error('tfp1_firmware_identity_mismatch');
 
-// 1. OTA 回环补丁：宿主 Flutter 二进制（补丁模块自带原始哈希自校验）
+// 1. OTA 回环补丁：宿主 Flutter 二进制（补丁模块自带原始哈希自校验，
+//    接受 1.0.5/201 或 1.0.7/230 两种原版快照，路由串按实测宿主区分）
 const appBin = path.join(app, 'Frameworks/App.framework/App');
 const otaPatch = patchExperimentalOTA(fs.readFileSync(appBin));
 fs.writeFileSync(appBin, otaPatch.output);
+const routing = `${otaPatch.report.edition === '1.0.7/230' ? 'ios107' : 'ios105'}-tfp1-loopback-flash-gated`;
 
 // 2. FOCUS 美术资源（目标不存在才拷，沿用 errorOnExist 语义）
 fs.cpSync(path.join(root, 'official-addon/focus-edition/TurboIOArt'), path.join(app, 'TurboIOArt'), {recursive: true, errorOnExist: true, force: false});
@@ -44,7 +46,7 @@ fs.copyFileSync(firmware, path.join(app, 'TurboWeReadCandidate.zip'), fs.constan
 const plist = path.join(app, 'Info.plist');
 const run = args => execFileSync('plutil', args, {stdio: 'pipe'});
 const info = () => JSON.parse(execFileSync('plutil', ['-convert', 'json', '-o', '-', plist], {encoding: 'utf8'}));
-run(['-insert', 'TIOExperimentalOTAQueryRouting', '-string', 'ios105-tfp1-loopback-flash-gated', plist]);
+run(['-insert', 'TIOExperimentalOTAQueryRouting', '-string', routing, plist]);
 run(['-insert', 'TIOExperimentalOTABuild', '-string', 'FOCUS-04-SOURCE', plist]);
 // 音乐需要后台音频模式
 let i = info();
@@ -61,4 +63,4 @@ if (!i.NSLocationWhenInUseUsageDescription) run(['-insert', 'NSLocationWhenInUse
 
 // 5. 路由报告
 fs.writeFileSync(report, JSON.stringify(otaPatch.report, null, 2) + '\n', {flag: 'wx', mode: 0o600});
-console.log(JSON.stringify({ok: true, firmwareBytes: fw.length, routing: 'ios105-tfp1-loopback-flash-gated'}));
+console.log(JSON.stringify({ok: true, firmwareBytes: fw.length, routing, edition: otaPatch.report.edition}));

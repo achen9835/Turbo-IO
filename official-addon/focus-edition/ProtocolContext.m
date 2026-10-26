@@ -64,7 +64,9 @@ NSDictionary *TIOProtocolDefaultSubtitle(void){
     return @{@"config":@{@"font_size":@2,@"content_width":@100,@"max_lines":@5,@"position":@"center",@"is_display":@YES,@"straight_view":@"original"}};
 }
 NSDictionary *TIOProtocolDefaultTeleprompter(NSDictionary *i){
-    if(![i[@"CFBundleIdentifier"] isEqual:@"com.rayneo.venus.pub"]||![i[@"CFBundleShortVersionString"] isEqual:@"1.0.5"]||![[i[@"CFBundleVersion"] description] isEqual:@"201"]||!TIOHostExpectedUUID(i))return nil;
+    // 宿主门禁走 TIOHostExpectedUUID 的已核对清单（1.0.5/201 与 1.0.7/230），
+    // 这里不再单独复述版本号，避免新增宿主时两处清单漂移。
+    if(![i[@"CFBundleIdentifier"] isEqual:@"com.rayneo.venus.pub"]||!TIOHostExpectedUUID(i))return nil;
     // 2026-09-18: captured prepare/start keys, layout and four successful
     // official sample receipts on Strix 1.0.4.12. Fresh DID/size/checksum and
     // zero cursor are generated per send; do not copy a sample session.
