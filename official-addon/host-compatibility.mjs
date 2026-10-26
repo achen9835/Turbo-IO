@@ -3,6 +3,8 @@ export const inspectedHosts = Object.freeze([
   Object.freeze({version:'1.0.2',build:'67',uuid:'eeea85e54114313cb65173c90a6b5d3c'}),
   Object.freeze({version:'1.0.4',build:'195',uuid:'261c8e78f9553d7d85f713b9082972cf'}),
   Object.freeze({version:'1.0.5',build:'201',uuid:'748fd301da603095a2449bd0558faca5'}),
+  // 1.0.7/230：本机解包新砸壳 Runner 的 LC_UUID 原始字节序验证，与上游 audit 一致。
+  Object.freeze({version:'1.0.7',build:'230',uuid:'410defdbf93739eaacf2f616abff9d0b'}),
 ]);
 export function inspectedHost(info, uuid) {
   if(info.CFBundleIdentifier!=='com.rayneo.venus.pub'||info.CFBundleExecutable!=='Runner')return null;

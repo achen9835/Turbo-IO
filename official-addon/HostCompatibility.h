@@ -9,6 +9,8 @@ static inline NSString *TIOHostExpectedUUID(NSDictionary *info) {
     if([version isEqual:@"1.0.2"]&&[build isEqual:@"67"])return @"EEEA85E5-4114-313C-B651-73C90A6B5D3C";
     if([version isEqual:@"1.0.4"]&&[build isEqual:@"195"])return @"261C8E78-F955-3D7D-85F7-13B9082972CF";
     if([version isEqual:@"1.0.5"]&&[build isEqual:@"201"])return @"748FD301-DA60-3095-A244-9BD0558FACA5";
+    // 1.0.7/230：砸壳 Runner LC_UUID 已在本机解包验证（与上游 audit 一致）。
+    if([version isEqual:@"1.0.7"]&&[build isEqual:@"230"])return @"410DEFDB-F937-39EA-ACF2-F616ABFF9D0B";
     return nil;
 }
 static inline BOOL TIOHostImageMatches(const struct mach_header *h,NSDictionary *info) {
