@@ -31,7 +31,10 @@ void TIOA2UIObserveCall(id plugin,NSString *method,NSDictionary *args){
     /* 后台保活实验（2026-10-22 用户提出）：记录每一条官方看板通道出站包的
      * 时间与类型（不含内容——只记 type/长度），用于验证官方 App 锁屏后是否
      * 仍有看板刷新流量。若有，我们的卡可同通道捎带数据更新。 */
-    if(e)Changed(@"board-traffic",@{@"type":e[@"type"],@"sequence":e[@"sequence"],@"jsonBytes":@([e[@"json"] length])});
+    /* e[@"json"] 是解码后的字典（A2UIProtocol），没有 length——曾直接 [.. length]
+     * 打出 doesNotRecognizeSelector 闪退（1bfe296 首次真机触发即崩，.ips 定位）。
+     * 流量记录改记整包 BLE 载荷字节数。 */
+    if(e)Changed(@"board-traffic",@{@"type":e[@"type"],@"sequence":e[@"sequence"],@"jsonBytes":@([Bytes(args[@"payload"]) length])});
 }
 static BOOL Send(NSDictionary *json,NSString *operation){
     if(![operation isEqual:@"query"]&&(!OwnedDevice||![OwnedDevice isEqual:Device])){Note=@"未发送：测试卡所属眼镜与当前连接不一致";Changed(@"device_mismatch",@{});return NO;}

@@ -81,11 +81,13 @@ static void MethodHook(id self,SEL cmd,id call,id result){
     // the inbound side instead (TIOOTARewriteVersionReply in the Send hook).
     TIOOTAUpdateCheckBlockCall(call);
     if(TIOGlassesLogBlockCall(call)){if(result)((void(^)(id))result)(@{@"success":@NO,@"message":@"本机日志研究任务隔离中，未重复请求"});return;}
-    {NSString *method=Get(call,@"method");id args=Get(call,@"arguments");if([args isKindOfClass:NSDictionary.class]){void(^work)(void)=^{TIOProtocolObserveCall(self,method,args);TIONewsTeleObserveCall(self,method,args);TIOA2UIObserveCall(self,method,args);TIOGlassesLogObserveCall(self,method,args);TIONavObserveCall(self,method,args);TIOSubtitleObserveCall(self,method,args);
+    // 观测链整体 @try：观察者对宿主数据的任何误判不允许带走官方 App
+    //（2026-10-27 A2UIObserveCall 的 [字典 length] 闪退即此教训）。
+    {NSString *method=Get(call,@"method");id args=Get(call,@"arguments");if([args isKindOfClass:NSDictionary.class]){void(^work)(void)=^{@try{TIOProtocolObserveCall(self,method,args);TIONewsTeleObserveCall(self,method,args);TIOA2UIObserveCall(self,method,args);TIOGlassesLogObserveCall(self,method,args);TIONavObserveCall(self,method,args);TIOSubtitleObserveCall(self,method,args);
 #if TIO_APP_SDK
         TCECardObserveCall(self,method,args);
 #endif
-        };if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);}}
+        }@catch(NSException *e){}};if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);}}
     if([Get(call,@"method") isEqual:@"rayneonet_sendMessage"]){id args=Get(call,@"arguments");if([args isKindOfClass:NSDictionary.class]&&[args[@"businessId"] isEqual:@22]){void (^work)(void)=^{ObserveSnapshot(args);};if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);}}
     id args=Get(call,@"arguments");
     if([Get(call,@"method") isEqual:@"rayneonet_sendFile"]&&[args isKindOfClass:NSDictionary.class]&&result){
