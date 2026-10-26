@@ -40,6 +40,13 @@ NSString *TIOOTAOfficialDirectoryName(void){
     NSString *base=[TIOOTACandidate()[@"baseVersion"] stringByReplacingOccurrencesOfString:@"Strix OS " withString:@""];
     return [NSString stringWithFormat:@"Strix_OS_%@",base.length?base:@"1.0.4.12"];
 }
+BOOL TIOOTAAcceptsReadback(NSString *osVersion){
+    NSDictionary *c=TIOOTACandidate();if(!c||![osVersion isKindOfClass:NSString.class])return NO;
+    if([osVersion isEqual:c[@"baseVersion"]])return YES;
+    NSArray *from=c[@"upgradeFrom"];
+    for(id item in [from isKindOfClass:NSArray.class]?from:@[])if([osVersion isEqual:item])return YES;
+    return NO;
+}
 static id Fail(NSError **error,NSString *message){if(error)*error=[NSError errorWithDomain:@"TurboIO.ExperimentalOTA" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];return nil;}
 NSDictionary *TIOCheckExperimentalOTA(NSData *data,NSError **error){
     NSDictionary *candidate=TIOOTACandidate();

@@ -104,5 +104,9 @@
       "size": 23510,
       "sha256": "2713dc3a302a65c101fa981500cd8b217766c526b6045bf02db5e9e6763d076d"
     }
+  ],
+  "upgradeFrom": [
+    "Strix OS 1.0.4.12",
+    "Strix OS 1.0.5.5"
   ]
 }
