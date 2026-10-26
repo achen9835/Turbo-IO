@@ -13,6 +13,8 @@
 /* Optional scene tail appended after the route points when the phone has any
  * extension data. An absent tail decodes as a plain legacy scene. */
 #define TN_SCENE_EXT 36u
+#define TN_SCENE_EXT2 53u /* + u8 light_count, u16 light_m[8]: per-light distances */
+#define TN_SCENE_EXT3 55u /* TN_SCENE_EXT2 + u16 speed_kmh */
 #define TN_IDLE_MS 60000u
 #define TN_LINK_MS 30000u
 enum TNOp { TN_START=1,TN_UPDATE=2,TN_HEARTBEAT=3,TN_STOP=4,TN_MODE=5,TN_QUERY=6 };
@@ -39,6 +41,8 @@ typedef struct {
  uint8_t bar_count;uint8_t bar[TN_BAR_MAX];
  uint8_t lights,camera_kind,event_kind;
  int16_t camera_limit;uint16_t camera_m,event_m,lights_m;
+ uint8_t light_count;uint16_t light_m[8]; /* individual lights, nearest first */
+ uint16_t speed_kmh; /* 65535 = not reported */
 } TNScene;
 typedef struct {
  void *ctx;

@@ -121,6 +121,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property NSInteger cameraKind,cameraLimit,eventKind;
 @property NSUInteger cameraMeters,eventMeters,lightMeters;
 @property double navLat,navLon;
+@property NSInteger navSpeedKmh,navHeadingDeg; /* -1=尚未从 AMapNaviLocation 读到 */
 #endif
 @end
 @implementation TIONavigationPanel
@@ -565,6 +566,8 @@ static NSMutableArray *TIONavAheadCoords(NSArray<AMapNaviSegment *> *segments,NS
 #endif
 - (void)navigationManager:(id<TIONavigationManager>)manager updateNaviInfo:(AMapNaviInfo *)info{
  if(!info)return;NSMutableDictionary *frame=[TIONavDisplay(@"navigating",info.iconType,info.nextRoadName,info.segmentRemainDistance,info.routeRemainDistance,info.routeRemainTime,self.simulated) mutableCopy];frame[@"segment"]=@(info.currentSegmentIndex);frame[@"remainingMeters"]=@(info.routeRemainDistance);frame[@"remainingSeconds"]=@(info.routeRemainTime);frame[@"lights"]=@(info.routeRemainTrafficLightCount);
+ if(self.navSpeedKmh>=0)frame[@"speedKmh"]=@(self.navSpeedKmh); /* AMapNaviLocation.speed 单位 km/h；喂给 TNV EXT3 尾巴驱动 HUD 限速旁车速读数 */
+ if(self.navHeadingDeg>=0)frame[@"navHeading"]=@(self.navHeadingDeg); /* 车头朝上旋转角；不喂则 HUD 旋转 0 度=假北向 */
  NSInteger segment=info.currentSegmentIndex,link=info.currentLinkIndex,point=info.currentPointIndex;
  dispatch_async(dispatch_get_main_queue(),^{if(manager!=self.manager||!self.active||self.routeReady||self.planning||self.rerouting)return;
   NSArray<AMapNaviSegment *> *segments=manager.naviRoute.routeSegments;NSMutableArray *coords=[NSMutableArray new];
@@ -620,7 +623,9 @@ static NSMutableArray *TIONavAheadCoords(NSArray<AMapNaviSegment *> *segments,NS
  if(self.cameraKind){NSMutableDictionary *camera=[@{@"kind":@(self.cameraKind),@"limit":@(self.cameraLimit)} mutableCopy];if(self.cameraMeters<65535)camera[@"m"]=@(self.cameraMeters);frame[@"camera"]=camera;}
  if(self.eventKind){NSMutableDictionary *event=[@{@"kind":@(self.eventKind)} mutableCopy];if(self.eventMeters<65535)event[@"m"]=@(self.eventMeters);frame[@"event"]=event;}}
 - (void)offerSceneRefresh{if(![self.display[@"phase"] isEqual:@"navigating"])return;NSMutableDictionary *f=[self.display mutableCopy];[self applySceneExtensions:f];[self setFrame:f];}
-- (void)driveManager:(AMapNaviDriveManager *)m updateNaviLocation:(AMapNaviLocation *)loc{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active||!loc)return;self.navLat=loc.coordinate.latitude;self.navLon=loc.coordinate.longitude;});}
+- (void)driveManager:(AMapNaviDriveManager *)m updateNaviLocation:(AMapNaviLocation *)loc{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active||!loc)return;self.navLat=loc.coordinate.latitude;self.navLon=loc.coordinate.longitude;if(loc.speed>=0&&loc.speed<=511)self.navSpeedKmh=(NSInteger)loc.speed;if(loc.heading>=0&&loc.heading<360)self.navHeadingDeg=(NSInteger)loc.heading;});}
+- (void)walkManager:(AMapNaviWalkManager *)m updateNaviLocation:(AMapNaviLocation *)loc{[self driveManager:(AMapNaviDriveManager *)m updateNaviLocation:loc];} /* 步行导航同样喂速度/航向（id 桥接仅取公共属性） */
+- (void)rideManager:(AMapNaviRideManager *)m updateNaviLocation:(AMapNaviLocation *)loc{[self driveManager:(AMapNaviDriveManager *)m updateNaviLocation:loc];}
 - (void)driveManager:(AMapNaviDriveManager *)m updateTrafficStatus:(NSArray<AMapNaviTrafficStatus *> *)status{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active)return;self.trafficBarLevels=[self levelsFromTrafficStatus:status];[self offerSceneRefresh];});}
 - (void)driveManager:(AMapNaviDriveManager *)m updateCameraInfos:(NSArray<AMapNaviCameraInfo *> *)cams{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active)return;
  AMapNaviCameraInfo *best=nil;NSInteger lightM=65535;for(AMapNaviCameraInfo *c in cams)if(c.distance>=0){if(!best||c.distance<best.distance)best=c;

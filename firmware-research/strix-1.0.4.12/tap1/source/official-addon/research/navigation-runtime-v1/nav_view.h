@@ -29,7 +29,7 @@ typedef struct {
 } TNViewFrame;
 typedef struct {
  TNWidgets api;
- void *root,*icon,*map,*bar,*text[7];
+ void *root,*icon,*map,*bar,*text[8];
  TNViewFrame frames[2];
  char clocks[2][64];
  unsigned clock_bank;
