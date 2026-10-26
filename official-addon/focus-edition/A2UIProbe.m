@@ -28,13 +28,7 @@ void TIOA2UIObserveCall(id plugin,NSString *method,NSDictionary *args){
     NSString *device=args[@"deviceId"];if(Device&&![Device isEqual:device]){Route=nil;Baseline=nil;TextAccepted=NO;ReadRequested=NO;PendingSequence=0;Note=@"连接目标变化，请重新读取基线";}
     Device=device;Plugin=plugin;RouteAt=NSDate.date.timeIntervalSince1970;
     NSMutableDictionary *r=[args mutableCopy];[r removeObjectForKey:@"payload"];Route=r;
-    /* 后台保活实验（2026-10-22 用户提出）：记录每一条官方看板通道出站包的
-     * 时间与类型（不含内容——只记 type/长度），用于验证官方 App 锁屏后是否
-     * 仍有看板刷新流量。若有，我们的卡可同通道捎带数据更新。 */
-    /* e[@"json"] 是解码后的字典（A2UIProtocol），没有 length——曾直接 [.. length]
-     * 打出 doesNotRecognizeSelector 闪退（1bfe296 首次真机触发即崩，.ips 定位）。
-     * 流量记录改记整包 BLE 载荷字节数。 */
-    if(e)Changed(@"board-traffic",@{@"type":e[@"type"],@"sequence":e[@"sequence"],@"jsonBytes":@([Bytes(args[@"payload"]) length])});
+    // No outgoing/incoming official content is saved by passive observation.
 }
 static BOOL Send(NSDictionary *json,NSString *operation){
     if(![operation isEqual:@"query"]&&(!OwnedDevice||![OwnedDevice isEqual:Device])){Note=@"未发送：测试卡所属眼镜与当前连接不一致";Changed(@"device_mismatch",@{});return NO;}
@@ -82,30 +76,17 @@ void TIOA2UIObserveEvent(NSDictionary *event){
 - (void)viewDidLoad{[super viewDidLoad];self.title=@"自定义 UI 真机验收";LoadOwner();[NSNotificationCenter.defaultCenter addObserver:self selector:@selector(refresh) name:@"TIOA2UIChanged" object:nil];}
 - (void)dealloc{[NSNotificationCenter.defaultCenter removeObserver:self];}
 - (void)refresh{[self.tableView reloadData];}
-- (NSInteger)tableView:(UITableView *)v numberOfRowsInSection:(NSInteger)s{return 9+(Trace?Trace.count:0);}
+- (NSInteger)tableView:(UITableView *)v numberOfRowsInSection:(NSInteger)s{return 9;}
 - (NSString *)tableView:(UITableView *)v titleForFooterInSection:(NSInteger)s{return @"仅新增/卸载本工具拥有的测试卡，不发送全量看板覆盖，不启用刷新订阅或传感器，不改固件。安装回执 ≠ 镜片可见。退出页面不会删除测试卡，可回来手动卸载。";}
-- (UITableViewCell *)tableView:(UITableView *)v cellForRowAtIndexPath:(NSIndexPath *)p{UITableViewCell *c=[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];c.textLabel.numberOfLines=0;c.detailTextLabel.numberOfLines=0;
- NSInteger traceCount=Trace.count;
- if(p.row<traceCount){ /* 看板通道流量（新在上）：后台保活实验的读数区 */
-  NSDictionary *r=Trace[traceCount-1-p.row];
-  static NSDateFormatter *fmt;static dispatch_once_t once;
-  dispatch_once(&once,^{fmt=NSDateFormatter.new;fmt.dateFormat=@"HH:mm:ss";});
-  NSDate *d=[NSDate dateWithTimeIntervalSince1970:[r[@"time"] doubleValue]];
-  NSString *extra=r[@"type"]?[NSString stringWithFormat:@"type=%@ ",r[@"type"]]:@"";
-  if(r[@"jsonBytes"])extra=[extra stringByAppendingFormat:@"json %@B",r[@"jsonBytes"]];
-  c.textLabel.text=[NSString stringWithFormat:@"· %@",r[@"event"]];
-  c.detailTextLabel.text=[NSString stringWithFormat:@"%@ %@",[fmt stringFromDate:d],extra];return c;}
- NSInteger op=p.row-(NSInteger)traceCount;if(op<0||op>8)op=0;
- c.textLabel.text=@[@"当前状态 · COMPONENTS 01",@"1 · 读取仪表盘基线",@"2 · 安装文字卡 7392",@"3 · 更新排版卡 8642",@"4 · 卸载本次测试卡",@"5 · 柱状图 6111",@"6 · 折线图 6222",@"7 · 单子项容器 6333",@"8 · 三行列表 6444"][op];
- if(op==0)c.detailTextLabel.text=[NSString stringWithFormat:@"%@\n官方发送上下文：%@",Note,Ready()?@"可用":@"等待官方首页通信"];if(op==2)c.detailTextLabel.text=@"单行文字，验证动态组件入口";if(op==3)c.detailTextLabel.text=@"仅在你看见7392后测试：标题、分隔线、图标、横竖排";if(op>=5)c.detailTextLabel.text=@"静态格式已核对，镜片未验。替换同一张测试卡；先读基线，一次只测一项。";c.accessibilityIdentifier=[NSString stringWithFormat:@"a2ui-probe-%ld",(long)op];return c;}
-- (void)tableView:(UITableView *)v didSelectRowAtIndexPath:(NSIndexPath *)p{[v deselectRowAtIndexPath:p animated:YES];NSInteger op=p.row-(NSInteger)Trace.count;if(op<0||op>8)return;if(op==0){[self refresh];return;}if(op==1){if(PendingSequence){Note=@"上一次请求仍在等待回执，最多20秒；不重复发送";[self refresh];return;}ReadRequested=YES;if(!Send(@{@"cmd":@"dashboard_config",@"payload":@{@"version":@1,@"value":@0}},@"query"))ReadRequested=NO;return;}
+- (UITableViewCell *)tableView:(UITableView *)v cellForRowAtIndexPath:(NSIndexPath *)p{UITableViewCell *c=[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];c.textLabel.text=@[@"当前状态 · COMPONENTS 01",@"1 · 读取仪表盘基线",@"2 · 安装文字卡 7392",@"3 · 更新排版卡 8642",@"4 · 卸载本次测试卡",@"5 · 柱状图 6111",@"6 · 折线图 6222",@"7 · 单子项容器 6333",@"8 · 三行列表 6444"][p.row];c.textLabel.numberOfLines=0;c.detailTextLabel.numberOfLines=0;if(p.row==0)c.detailTextLabel.text=[NSString stringWithFormat:@"%@\n官方发送上下文：%@",Note,Ready()?@"可用":@"等待官方首页通信"];if(p.row==2)c.detailTextLabel.text=@"单行文字，验证动态组件入口";if(p.row==3)c.detailTextLabel.text=@"仅在你看见7392后测试：标题、分隔线、图标、横竖排";if(p.row>=5)c.detailTextLabel.text=@"静态格式已核对，镜片未验。替换同一张测试卡；先读基线，一次只测一项。";c.accessibilityIdentifier=[NSString stringWithFormat:@"a2ui-probe-%ld",(long)p.row];return c;}
+- (void)tableView:(UITableView *)v didSelectRowAtIndexPath:(NSIndexPath *)p{[v deselectRowAtIndexPath:p animated:YES];if(p.row==0){[self refresh];return;}if(p.row==1){if(PendingSequence){Note=@"上一次请求仍在等待回执，最多20秒；不重复发送";[self refresh];return;}ReadRequested=YES;if(!Send(@{@"cmd":@"dashboard_config",@"payload":@{@"version":@1,@"value":@0}},@"query"))ReadRequested=NO;return;}
     LoadOwner();if(!Ready()||PendingSequence){Note=@"请回官方首页确认连接，再读取基线";[self refresh];return;}
     if(OwnedDevice&&![OwnedDevice isEqual:Device]){Note=@"测试卡属于另一副眼镜，拒绝跨设备操作";[self refresh];return;}
-    if(op!=4){if(!Baseline||NSDate.date.timeIntervalSince1970-BaselineAt>=120){Note=@"先读取最新仪表盘基线（两分钟内）";[self refresh];return;}if(op!=2&&!TextAccepted){Note=@"先完成文字卡安装和镜片确认";[self refresh];return;}
+    if(p.row!=4){if(!Baseline||NSDate.date.timeIntervalSince1970-BaselineAt>=120){Note=@"先读取最新仪表盘基线（两分钟内）";[self refresh];return;}if(p.row!=2&&!TextAccepted){Note=@"先完成文字卡安装和镜片确认";[self refresh];return;}
         if(!Owned){Owned=[@"turbo_ui_" stringByAppendingString:[NSUUID.UUID.UUIDString.lowercaseString stringByReplacingOccurrencesOfString:@"-" withString:@""]];OwnedDevice=Device;Save(@"owner.json",@{@"id":Owned,@"device":Device});}
     }else if(!Owned){Note=@"没有本工具创建的测试卡，不执行卸载";[self refresh];return;}
-    NSString *operation=@[@"",@"query",@"text",@"layout",@"uninstall",@"bar",@"line",@"card",@"list"][op];
-    UIAlertController *a=[UIAlertController alertControllerWithTitle:op==4?@"卸载测试卡？":op==2?@"新增一张自定义文字卡？":@"已看到文字基线，继续单项测试？" message:@"只操作本工具记录的测试 ID，不删除其他卡片。测试可能被当前固件拒绝；失败不自动重试，恢复文字卡可点第2项，清理点第4项。" preferredStyle:UIAlertControllerStyleAlert];[a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[a addAction:[UIAlertAction actionWithTitle:@"执行测试" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){Send([operation isEqual:@"uninstall"]?TIOA2UIUninstall(Owned):TIOA2UIFixtureInstall(Owned,operation),operation);}]];[self presentViewController:a animated:YES completion:nil];
+    NSString *operation=@[@"",@"query",@"text",@"layout",@"uninstall",@"bar",@"line",@"card",@"list"][p.row];
+    UIAlertController *a=[UIAlertController alertControllerWithTitle:p.row==4?@"卸载测试卡？":p.row==2?@"新增一张自定义文字卡？":@"已看到文字基线，继续单项测试？" message:@"只操作本工具记录的测试 ID，不删除其他卡片。测试可能被当前固件拒绝；失败不自动重试，恢复文字卡可点第2项，清理点第4项。" preferredStyle:UIAlertControllerStyleAlert];[a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[a addAction:[UIAlertAction actionWithTitle:@"执行测试" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){Send([operation isEqual:@"uninstall"]?TIOA2UIUninstall(Owned):TIOA2UIFixtureInstall(Owned,operation),operation);}]];[self presentViewController:a animated:YES completion:nil];
 }
 @end
 UIViewController *TIOA2UIController(void){return [[TIOA2UIPanel alloc]initWithStyle:UITableViewStyleInsetGrouped];}
