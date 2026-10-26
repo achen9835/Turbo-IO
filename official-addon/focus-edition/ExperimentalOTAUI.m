@@ -42,7 +42,7 @@ static NSUInteger CandMembers(void){NSArray *p=TIOOTACandidate()[@"payloadPins"]
         else if(path.row==6){NSDictionary *f6=TIOExperimentalOTAFeedStatus(),*g6=TIOOTAGuardStatus();id cur6=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];BOOL off6=[cur6 isKindOfClass:NSNumber.class]&&![cur6 boolValue];cell.textLabel.text=off6?@"版本改写：已关（回真实版本）":@"版本改写：开（99.99.99 · 默认）";cell.detailTextLabel.text=[NSString stringWithFormat:@"点击切换。本机源查询 %@ 次 · 固件类 %@ · App类 %@ · 未匹配 %@ · 下载 %@ · 拒收 %@ · 改写 %@ 次\n官方页不出卡片时先关本项再回官方页重查；关掉后启动也不再强制关官方自动更新。",f6[@"queryCount"]?:@0,f6[@"firmwareQueries"]?:@0,f6[@"appQueries"]?:@0,f6[@"unknownQueries"]?:@0,f6[@"downloadRequests"]?:@0,f6[@"rejectedCount"]?:@0,g6[@"silencedVersionReads"]?:@0];cell.accessibilityIdentifier=@"experimental-ota-silence-toggle";}
         else if(path.row==3){cell.textLabel.text=[NSString stringWithFormat:@"允许一次 %@ 实验试刷",TIOOTACandidate()[@"codeName"]?:@"固定候选"];cell.detailTextLabel.text=@"重新校验并冻结实际待传文件；限定本次设备、Mode 2、固定清单及每个分片。授权后再点官方“开始安装”。不保证启动或可救砖。";cell.accessibilityIdentifier=@"experimental-ota-authorize-tfp1";}
         else if(path.row==4){cell.textLabel.text=@"撤销尚未开始的试刷授权";cell.detailTextLabel.text=@"只有未开始时能撤销。开始后不要强停 App、断电或切换版本。";}
-        else if(path.row==0&&TIOOTAFlashBuild()){NSDictionary *s=TIOOTAFlashStatus();cell.textLabel.text=[NSString stringWithFormat:@"DISPLAY %@ · 默认锁定",Cand()];cell.detailTextLabel.text=[NSString stringWithFormat:@"授权：%@ · 已开始：%@\n清单匹配：%@ · 已核对分片 %@\n%@\n固件业务帧：共 %@ 次（类型：%@）· 版本回包已改写 %@ 次（显示为 99.99.99；默认开，试刷期间自动放行；TIOUpdateCheckSilence=NO 恢复官方）",s[@"authorized"],s[@"started"],s[@"manifestMatched"],s[@"validatedSlices"],s[@"failure"],guard[@"businessNineCalls"]?:@0,guard[@"businessNineTypes"]?:@"-",guard[@"silencedVersionReads"]?:@0];}
+        else if(path.row==0&&TIOOTAFlashBuild()){NSDictionary *s=TIOOTAFlashStatus();cell.textLabel.text=[NSString stringWithFormat:@"DISPLAY %@ · 默认锁定",Cand()];cell.detailTextLabel.text=[NSString stringWithFormat:@"授权：%@ · 已开始：%@\n清单匹配：%@ · 已核对分片 %@\n%@\n固件业务帧：共 %@ 次（类型：%@）· 版本回包已改写 %@ 次（显示为 99.99.99；默认开，试刷期间自动放行；TIOUpdateCheckSilence=NO 恢复官方）\n门禁快照：传输钩子%@ · 自动更新已关%@ · 两分钟内版本回读%@",s[@"authorized"],s[@"started"],s[@"manifestMatched"],s[@"validatedSlices"],s[@"failure"],guard[@"businessNineCalls"]?:@0,guard[@"businessNineTypes"]?:@"-",guard[@"silencedVersionReads"]?:@0,[guard[@"transportHookReady"] boolValue]?@"✓":@"✗",[s[@"automaticUpdateDisabled"] boolValue]?@"✓":@"✗",[s[@"recentTargetVersionRead"] boolValue]?@"✓":@"✗"];}
         else if(path.row==1){cell.textLabel.text=@"开启 15 分钟只下载验收";cell.detailTextLabel.text=TIOOTAFlashBuild()?[NSString stringWithFormat:@"只提供固定 %@ 下载，不授予试刷权限；需另外明确确认。",Cand()]:[NSString stringWithFormat:@"只向固件查询提供 %@；所有发送被隔离，仅允许读取 OS 版本。官方可能提示发送失败，这是准备阶段的预期。",Cand()];cell.accessibilityIdentifier=@"experimental-ota-prepare-only";}
         else if(path.row==2){cell.textLabel.text=@"撤销下载来源";cell.detailTextLabel.text=@"立即停止提供元数据和 ZIP。发送隔离保持到退出此进程，不自动恢复。";cell.accessibilityIdentifier=@"experimental-ota-cancel";}
         else if(TIOOTAPreparationBuild()){cell.textLabel.text=@"PREPARE 02 · 禁止刷写";cell.detailTextLabel.text=[NSString stringWithFormat:@"隔离钩子：%@；已阻止 %@ 次发送\n来源开放：%@ · 固件查询 %@ · App 查询 %@ · 下载 %@\n这是只下载构建，没有解除发送隔离的入口。",[guard[@"transportHookReady"] boolValue]?@"已安装":@"未安装",guard[@"blockedCalls"],[feed[@"armed"] boolValue]?@"是":@"否",feed[@"firmwareQueries"]?:@0,feed[@"appQueries"]?:@0,feed[@"downloadRequests"]?:@0];cell.accessibilityIdentifier=@"experimental-ota-preparation-status";}
@@ -57,7 +57,11 @@ static NSUInteger CandMembers(void){NSArray *p=TIOOTACandidate()[@"payloadPins"]
     [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
     [a addAction:[UIAlertAction actionWithTitle:@"确认风险并授权" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x){
         if(![a.textFields.firstObject.text isEqual:TIOOTACandidate()[@"confirmToken"]]){self.statusText=@"确认文字不符，未授权";[self refresh];return;}
-        NSError *e=nil;BOOL ok=TIOOTAFlashAuthorize(&e);self.statusText=ok?@"本次设备的文件已冻结，允许一次正常 Mode 2 会话。请返回官方页，手动点开始安装。":e.localizedDescription;[self refresh];
+        NSError *e=nil;BOOL ok=TIOOTAFlashAuthorize(&e);
+        self.statusText=ok?@"本次设备的文件已冻结，允许一次正常 Mode 2 会话。请返回官方页，手动点开始安装。":e.localizedDescription;[self refresh];
+        /* 真机排障（2026-10-27）：表格状态行曾被报告"看不见字"，授权失败原因
+         * 一律再弹窗一次，确保门禁卡点不被滚动/字号吞掉。成功路径不弹窗。 */
+        if(!ok){UIAlertController *fail=[UIAlertController alertControllerWithTitle:@"未授权 · 卡点如下" message:e.localizedDescription preferredStyle:UIAlertControllerStyleAlert];[fail addAction:[UIAlertAction actionWithTitle:@"知道了" style:UIAlertActionStyleDefault handler:nil]];[self presentViewController:fail animated:YES completion:nil];}
     }]];[self presentViewController:a animated:YES completion:nil];
 }
 - (void)checkDirectoryThenAuthorize{
@@ -67,7 +71,8 @@ static NSUInteger CandMembers(void){NSArray *p=TIOOTACandidate()[@"payloadPins"]
         NSError *error=nil;NSDictionary *result=TIOCheckExperimentalOTADirectory(directory,&error);
         dispatch_async(dispatch_get_main_queue(),^{
             self.busy=NO;
-            if(!result){self.statusText=[@"目录核对未通过，未授权：" stringByAppendingString:error.localizedDescription?:@"未知原因"];[self refresh];return;}
+            if(!result){self.statusText=[@"目录核对未通过，未授权：" stringByAppendingString:error.localizedDescription?:@"未知原因"];[self refresh];
+                UIAlertController *fail=[UIAlertController alertControllerWithTitle:@"目录核对未通过 · 未授权" message:error.localizedDescription?:@"未知原因" preferredStyle:UIAlertControllerStyleAlert];[fail addAction:[UIAlertAction actionWithTitle:@"知道了" style:UIAlertActionStyleDefault handler:nil]];[self presentViewController:fail animated:YES completion:nil];return;}
             self.directoryStatus=@"此刻目录中全部成员均与固定候选一致（一键预检快照）。";
             [self promptAuthorize];
         });
