@@ -4,29 +4,33 @@
   "displayName": "TAP2：TVP2 树 + 导航路况 HUD（速度/拥堵柱/混合朝向）· Strix 1.0.5.5 底座 · 2026-10",
   "confirmToken": "TAP2",
   "baseVersion": "Strix OS 1.0.5.5",
+  "upgradeFrom": [
+    "Strix OS 1.0.4.12",
+    "Strix OS 1.0.5.5"
+  ],
   "zip": {
-    "size": 8865166,
-    "sha256": "b1d8b5dd3b5fac8c9855f2ae915da8f257d6803e02e33284e69b11dfc55a136f"
+    "size": 8865163,
+    "sha256": "242e9680d86e2021d1a6e9a4f02e1168e37e1fd29b401e419aef9e1e0fb82f15"
   },
-  "otaSize": 8865166,
+  "otaSize": 8865163,
   "ap": {
     "name": "nuttx_ap.bin",
     "size": 7439880,
-    "sha256": "95986595845176ee4d90e0b13e8c38788e1c0b7cf8b0024c99b95076580802e4",
-    "md5": "be3de1f8a810c6cf261f336ffbbd4955"
+    "sha256": "95bc77d8a089751a475709a29db38e4f3586ab802776250f79ad403d3440251a",
+    "md5": "a3269bb0d25b2d211e39c9689c2081b3"
   },
   "apBudgetBytes": 9600000,
   "manifest": {
     "name": "OtaFileInfo.json",
     "size": 2700,
-    "sha256": "ab907aeccc776c3296b8c633dfcc5fe306c892269fc8a2c483eab7cf042c7fd1"
+    "sha256": "c7d3a986f53000a0c07f782505007057bbca97e1391b9897df2baddeba839350"
   },
   "stockAPSHA256": "b3d6d9d7a4ece97e1dbaa64fc080eb5db8a5f7c9fecf340888ebb97a9112cc6c",
   "payloadPins": [
     {
       "name": "OtaFileInfo.json",
       "size": 2700,
-      "sha256": "ab907aeccc776c3296b8c633dfcc5fe306c892269fc8a2c483eab7cf042c7fd1"
+      "sha256": "c7d3a986f53000a0c07f782505007057bbca97e1391b9897df2baddeba839350"
     },
     {
       "name": "bt_controller.bin",
@@ -56,8 +60,8 @@
     {
       "name": "nuttx_ap.bin",
       "size": 7439880,
-      "sha256": "95986595845176ee4d90e0b13e8c38788e1c0b7cf8b0024c99b95076580802e4",
-      "md5": "be3de1f8a810c6cf261f336ffbbd4955"
+      "sha256": "95bc77d8a089751a475709a29db38e4f3586ab802776250f79ad403d3440251a",
+      "md5": "a3269bb0d25b2d211e39c9689c2081b3"
     },
     {
       "name": "nuttx_apc1.bin",
@@ -104,9 +108,5 @@
       "size": 23510,
       "sha256": "2713dc3a302a65c101fa981500cd8b217766c526b6045bf02db5e9e6763d076d"
     }
-  ],
-  "upgradeFrom": [
-    "Strix OS 1.0.4.12",
-    "Strix OS 1.0.5.5"
   ]
 }
