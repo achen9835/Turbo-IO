@@ -18,6 +18,7 @@
 #import "NativeNavigationUI.h"
 #import "NativeNavigation.h"
 #import "RoadMap.h"
+#import "RoadPackUI.h"
 #import "ProtocolContext.h"
 #import "DisplayHUDRenderer.h"
 #endif
@@ -180,6 +181,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     self.roadButton=[self button:@"矢量小地图（周边路网）" action:@selector(roadToggle) identifier:@"navigation-road-toggle"];
     self.roadStatus=[UILabel new];self.roadStatus.numberOfLines=0;self.roadStatus.font=[UIFont systemFontOfSize:12];self.roadStatus.textColor=UIColor.secondaryLabelColor;[self.stack addArrangedSubview:self.roadStatus];
     [self button:@"授权本次联网取路网（OpenStreetMap · 限6次/会话）" action:@selector(roadNetworkConsent) identifier:@"navigation-road-network"];
+    [self button:@"省际路网包（按省下载 · 离线用）" action:@selector(roadPacksOpen) identifier:@"navigation-road-packs"];
     [self refreshRoadControls];
 }
 - (void)refreshRoadControls{
@@ -192,6 +194,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     [NSUserDefaults.standardUserDefaults setObject:@(self.roadMap.enabled) forKey:@"TIONavRoadMapEnabled"];
     [self refreshRoadControls];
 }
+- (void)roadPacksOpen{[self.navigationController pushViewController:[TIORoadPackListController new] animated:YES];}
 - (void)roadNetworkConsent{
     UIAlertController *a=[UIAlertController alertControllerWithTitle:@"限次联网路网试验" message:@"将当前位置附近约1.2公里范围的道路查询发送给公开 Overpass 图源（OpenStreetMap）；高德路线仍来自高德，底图为 OSM，可能有偏移或缺路。每次导航会话最多 6 次、间隔至少 60 秒，导航结束即撤销授权。未授权时只用内置公开区域样本，不发送实际位置。请勿驾驶中调试。" preferredStyle:UIAlertControllerStyleAlert];
     [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];

@@ -1,4 +1,5 @@
 #import "RoadMap.h"
+#import "RoadPack.h"
 #include "nav_map.h"
 #include <math.h>
 #include <float.h>
@@ -78,6 +79,65 @@ static unsigned RoadStyle(NSString *h){if([@[@"motorway",@"trunk",@"motorway_lin
  _features=all;_scene=nil;_scene2=nil;
 }
 - (BOOL)covers:(NSArray *)ll {return [self hasCoverage:ll margin:0];}
+/* 省际路网包优先：已下载的省直接离线取 3×3 格窗口，不联网。 */
+- (BOOL)loadPack:(NSArray *)ll {
+ if(![ll isKindOfClass:NSArray.class]||[ll count]!=2)return NO;
+ NSArray *bbox=nil;NSString *province=nil;
+ NSArray *features=[[TIORoadPackManager shared] featuresAtLat:[ll[0] doubleValue] lon:[ll[1] doubleValue] bbox:&bbox province:&province];
+ if(!features||features.count>5000||![bbox isKindOfClass:NSArray.class]||bbox.count!=4)return NO; /* 单窗 >5000 路段视为异常包，不装 */
+ [self installFeatures:features bbox:bbox];
+ _note=[NSString stringWithFormat:@"省际离线路网 · %@ · © OpenStreetMap",province.length?province:@"已下载省份"];
+ return YES;
+}
+/* Overpass 结果落盘（有界缓存）：通勤路线走过一次，之后离线也能渲染。 */
+- (NSString *)cacheDir {
+ static NSString *dir;static dispatch_once_t once;
+ dispatch_once(&once,^{
+  dir=[[[NSSearchPathForDirectoriesInDomains(NSApplicationSupportDirectory,NSUserDomainMask,YES).firstObject
+   stringByAppendingPathComponent:@"TurboIOResearch"] stringByAppendingPathComponent:@"RoadCache"] copy];
+  [[NSFileManager defaultManager] createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@0700} error:nil];
+ });
+ return dir;
+}
+- (void)persistRegion:(NSArray *)bbox features:(NSArray *)features {
+ if(![bbox isKindOfClass:NSArray.class]||bbox.count!=4||![features isKindOfClass:NSArray.class]||!features.count)return;
+ NSError *err=nil;
+ NSData *body=[NSJSONSerialization dataWithJSONObject:@{@"bbox":bbox,@"features":features} options:0 error:&err];
+ if(!body.length||body.length>2*1024*1024)return;
+ NSString *name=[NSString stringWithFormat:@"r%08lx.json",(unsigned long)[[bbox description] hash]&0xffffffffUL];
+ [[NSFileManager defaultManager] removeItemAtPath:[[self cacheDir] stringByAppendingPathComponent:name] error:nil];
+ if(![body writeToFile:[[self cacheDir] stringByAppendingPathComponent:name] options:NSDataWritingAtomic error:nil])return;
+ [[NSFileManager defaultManager] setAttributes:@{NSFilePosixPermissions:@0600} ofItemAtPath:[[self cacheDir] stringByAppendingPathComponent:name] error:nil];
+ /* LRU：最多 12 个区域 / 合计 24 MB */
+ NSArray *files=[[[NSFileManager defaultManager] contentsOfDirectoryAtPath:[self cacheDir] error:nil]
+  sortedArrayUsingComparator:^NSComparisonResult(NSString *a,NSString *b){
+   NSDate *da=[[[NSFileManager defaultManager] attributesOfItemAtPath:[[self cacheDir] stringByAppendingPathComponent:a] error:nil] fileModificationDate];
+   NSDate *db=[[[NSFileManager defaultManager] attributesOfItemAtPath:[[self cacheDir] stringByAppendingPathComponent:b] error:nil] fileModificationDate];
+   return [da compare:db];}];
+ unsigned long long total=0;NSMutableArray *sizes=[NSMutableArray new];
+ for(NSString *f in files){unsigned long long s=[[[NSFileManager defaultManager] attributesOfItemAtPath:[[self cacheDir] stringByAppendingPathComponent:f] error:nil] fileSize];[sizes addObject:@(s)];total+=s;}
+ for(NSUInteger i=0;i<files.count;i++){
+  if(files.count-i<=12&&total<=24*1024*1024)break;
+  [[NSFileManager defaultManager] removeItemAtPath:[[self cacheDir] stringByAppendingPathComponent:files[i]] error:nil];
+  total-=[sizes[i] unsignedLongLongValue];
+ }
+}
+- (BOOL)loadCache:(NSArray *)ll {
+ if(![ll isKindOfClass:NSArray.class]||[ll count]!=2)return NO;
+ NSArray *files=[[NSFileManager defaultManager] contentsOfDirectoryAtPath:[self cacheDir] error:nil];
+ for(NSString *f in [files sortedArrayUsingSelector:@selector(compare:)]) {
+  if([f hasSuffix:@".part"]||[f hasPrefix:@"."])continue;
+  NSString *p=[[self cacheDir] stringByAppendingPathComponent:f];
+  NSData *d=[NSData dataWithContentsOfFile:p];
+  if(!d.length||d.length>2*1024*1024)continue;
+  id j=[NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
+  if(![j isKindOfClass:[NSDictionary class]])continue;
+  NSArray *bbox=j[@"bbox"],*features=j[@"features"];
+  if(![bbox isKindOfClass:NSArray.class]||bbox.count!=4||![features isKindOfClass:NSArray.class]||!features.count||features.count>5000)continue;
+  if([self bbox:bbox contains:ll margin:0]){[self installFeatures:features bbox:bbox];_note=@"离线路网缓存 · © OpenStreetMap";return YES;}
+ }
+ return NO;
+}
 - (NSDictionary *)coverageStatus {
  return @{@"regions":@(_regions.count),@"features":@(_features.count),@"requests":@(_requests),@"networkAllowed":@(self.allowNetwork),@"requestInFlight":@(_task!=nil),@"requestLimit":@6};
 }
@@ -112,7 +172,7 @@ static unsigned RoadStyle(NSString *h){if([@[@"motorway",@"trunk",@"motorway_lin
  if(!ok){_note=@"图源不可用 · 不伪造道路，保留路线示意图";return;}
  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{NSDictionary *j=[NSJSONSerialization JSONObjectWithData:data options:0 error:nil];NSMutableArray *features=[NSMutableArray new];NSUInteger points=0;
   if([j isKindOfClass:NSDictionary.class]&&[j[@"elements"] isKindOfClass:NSArray.class]&&[j[@"elements"] count]<=5000&&!j[@"remark"])for(NSDictionary *way in j[@"elements"]){if(![way isKindOfClass:NSDictionary.class]||![way[@"type"] isEqual:@"way"]||![way[@"geometry"] isKindOfClass:NSArray.class])continue;NSMutableArray *coords=[NSMutableArray new];for(id point in way[@"geometry"]){if(![point isKindOfClass:NSDictionary.class]||!N(point[@"lat"],-85,85)||!N(point[@"lon"],-180,180)){[coords removeAllObjects];break;}[coords addObject:@[point[@"lon"],point[@"lat"]]];if(++points>40000)break;}if(points>40000){[features removeAllObjects];break;}if(coords.count>=2){NSMutableDictionary *p=[way[@"tags"] isKindOfClass:NSDictionary.class]?[way[@"tags"] mutableCopy]:[NSMutableDictionary new];p[@"kind"]=@"road";[features addObject:@{@"properties":p,@"geometry":@{@"coordinates":coords,@"type":@"LineString"}}];}}
-  NSArray *bbox=[NSJSONSerialization JSONObjectWithData:[[NSData alloc]initWithBase64EncodedString:b64 options:0] options:0 error:nil];dispatch_async(dispatch_get_main_queue(),^{if(epoch!=self->_epoch)return;if(features.count&&bbox.count==4){[self installFeatures:features bbox:bbox];self->_note=@"联网路网就绪 · © OpenStreetMap · 非高德底图";}else self->_note=@"图源格式或容量不合格 · 已拒绝";});
+  NSArray *bbox=[NSJSONSerialization JSONObjectWithData:[[NSData alloc]initWithBase64EncodedString:b64 options:0] options:0 error:nil];dispatch_async(dispatch_get_main_queue(),^{if(epoch!=self->_epoch)return;if(features.count&&bbox.count==4){[self installFeatures:features bbox:bbox];[self persistRegion:bbox features:features];self->_note=@"联网路网就绪 · 已缓存到本机 · © OpenStreetMap · 非高德底图";}else self->_note=@"图源格式或容量不合格 · 已拒绝";});
  });
 }
 - (NSData *)scene:(NSArray *)coords origin:(NSArray *)origin range:(unsigned)range{
@@ -151,10 +211,14 @@ static unsigned RoadStyle(NSString *h){if([@[@"motorway",@"trunk",@"motorway_lin
 - (NSDictionary *)decorate:(NSDictionary *)frame coordinates:(NSArray *)coords{
  if(!self.enabled||![frame[@"phase"] isEqual:@"navigating"]||coords.count<2||coords.count>512||!LL(frame[@"tnrLocation"])||!N(frame[@"tnrLocationAt"],0,DBL_MAX)||NSProcessInfo.processInfo.systemUptime-[frame[@"tnrLocationAt"] doubleValue]>4)return frame;
  NSArray *position=frame[@"tnrLocation"];NSArray *wgs=[self wgs:position];if(!LL(wgs)){_note=@"坐标转换未收敛 · 不显示错位路网";return frame;}
- BOOL covered=[self covers:wgs];if(!covered)covered=[self loadFixture:wgs];
+ BOOL covered=[self covers:wgs];
+ if(!covered)covered=[self loadPack:wgs];   /* 已下载省份：纯离线，优先级最高 */
+ if(!covered)covered=[self loadCache:wgs];  /* Overpass 结果的有界磁盘缓存 */
+ if(!covered)covered=[self loadFixture:wgs];
  // Prefetch before the rendered viewport reaches an edge. Do not clear the old
  // region while a new request is queued, rate-limited, fails, or is parsing.
- if(![self hasCoverage:wgs margin:300]) [self request:wgs];
+ // 已有省份包覆盖时不再向 Overpass 发请求（省流量也省图源限额）。
+ if(![self hasCoverage:wgs margin:300]&&![TIORoadPackManager shared] coversLat:[wgs[0] doubleValue] lon:[wgs[1] doubleValue]])[self request:wgs];
  if(covered)_note=_task?@"周边路网已显示 · 正在预取下一段":@"周边路网已就绪 · © OpenStreetMap";
  else _note=_task?@"正在加载周边道路 · 保留已知路网":self.allowNetwork?(_requests>=6?@"本次图源请求已达上限 · 仅显示已有道路":@"当前区域路网暂缺 · 保留已有道路"):@"未授权周边道路 · 仅显示已有道路";
  double now=NSProcessInfo.processInfo.systemUptime,heading=[frame[@"navHeading"] doubleValue],turn=fabs(fmod(heading-_labelHeading+540,360)-180);

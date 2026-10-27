@@ -1,0 +1,91 @@
+name: Road Map Packs
+
+# 按需生成省级离线路网包（TNR 矢量小地图数据源）：
+#   1. 下载 Geofabrik 中国省级 .osm.pbf（openstreetmap.fr 同名兜底）
+#   2. osmium 过滤道路 way 并导出 GeoJSONSeq
+#   3. tools/roadmap-pack-builder.py 切格、抽稀、压缩为 .pack 二进制
+#   4. 上传到 Release tag=roadmap-packs，并合并 manifest.json
+# App 端（TurboIO → 资料 → 导航 → 省际路网包）按 manifest 下载/删除，
+# 下载后无需联网即可在对应省份使用矢量小地图。
+#
+# 触发：手动 Run workflow，输入省份 slug（Geofabrik 中国子区名，
+# 如 guangdong / zhejiang / jiangsu；列表见
+# https://download.geofabrik.de/asia/china.html）。
+
+on:
+  workflow_dispatch:
+    inputs:
+      province:
+        description: '省份 slug（Geofabrik 中国子区名，如 guangdong）'
+        required: true
+      display:
+        description: '显示名（如 广东 · Guangdong，可留空）'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install osmium
+        run: brew install osmium-tool
+      - name: Download province extract
+        env:
+          PROV: ${{ inputs.province }}
+        run: |
+          set -e
+          curl -L --fail --retry 3 -o prov.osm.pbf \
+            "https://download.geofabrik.de/asia/china/${PROV}-latest.osm.pbf" \
+          || curl -L --fail --retry 3 -o prov.osm.pbf \
+            "https://download.openstreetmap.fr/extracts/asia/china/${PROV}-latest.osm.pbf"
+          ls -la prov.osm.pbf
+      - name: Filter and export roads
+        run: |
+          osmium tags-filter prov.osm.pbf w/highway -o roads.osm.pbf --overwrite
+          osmium export roads.osm.pbf -f geojsonseq -o roads.geojsonseq --overwrite
+          wc -l roads.geojsonseq
+      - name: Build pack
+        env:
+          PROV: ${{ inputs.province }}
+          DISPLAY: ${{ inputs.display }}
+        run: |
+          python3 tools/roadmap-pack-builder.py \
+            --input roads.geojsonseq \
+            --province "$PROV" \
+            --display "${DISPLAY:-$PROV}" \
+            --out "TurboRoadMap-$PROV.pack"
+          ls -la "TurboRoadMap-$PROV.pack"
+      - name: Publish to roadmap-packs release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROV: ${{ inputs.province }}
+        run: |
+          set -e
+          TAG=roadmap-packs
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+                 --title "省际矢量路网包（TNR 小地图数据源）" \
+                 --notes "按需生成的省级离线路网包；App 内「导航 → 省际路网包」直接下载。"
+          mkdir -p rel
+          if gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern manifest.json --dir rel; then
+            echo "existing manifest fetched"
+          else
+            echo '{"schema":1,"packs":[]}' > rel/manifest.json
+          fi
+          BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ) python3 - <<'PY'
+          import json, os
+          meta = json.load(open(f'TurboRoadMap-{os.environ["PROV"]}.pack.meta.json', encoding='utf-8'))
+          meta['builtAt'] = os.environ['BUILT_AT']
+          json.dump(meta, open(f'TurboRoadMap-{os.environ["PROV"]}.pack.meta.json', 'w', encoding='utf-8'), ensure_ascii=False)
+          PY
+          python3 tools/roadmap-manifest-update.py rel/manifest.json "TurboRoadMap-$PROV.pack.meta.json"
+          gh release upload "$TAG" "TurboRoadMap-$PROV.pack" rel/manifest.json --clobber --repo "$GITHUB_REPOSITORY"
+          echo "published: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+      - name: Clean large intermediates
+        if: always()
+        run: rm -f prov.osm.pbf roads.osm.pbf roads.geojsonseq
