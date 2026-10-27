@@ -66,7 +66,7 @@ void tnr_presented(TNRState *s,uint32_t now){if(s){s->dirty=false;s->last_draw=n
 /* Q14 sine table; no libm, heap allocation or FP ABI assumptions in renderer. */
 static const int16_t sin5[]={0,1428,2845,4240,5604,6924,8192,9397,10531,11585,12551,13421,14189,14849,15396,15826,16135,16322,16384};
 static int sine(unsigned a){a%=360;int sign=a>=180?-1:1;a%=180;if(a>90)a=180-a;unsigned i=a/5,r=a%5;return sign*(sin5[i]+(i<18?(sin5[i+1]-sin5[i])*(int)r/5:0));}
-static TNRPoint screen(TNRPoint p,const TNRPose *pose,unsigned range){int x=p.x-pose->p.x,y=p.y-pose->p.y,s=sine(pose->heading),c=sine(pose->heading+90);int dx=(x*c-y*s)/16384,dy=(x*s+y*c)/16384;return (TNRPoint){(int16_t)(96+dx*192/(int)(range*4)),(int16_t)(101-dy*192/(int)(range*4))};}
+static TNRPoint screen(TNRPoint p,const TNRPose *pose,unsigned range){int x=p.x-pose->p.x,y=p.y-pose->p.y,s=sine(pose->heading),c=sine(pose->heading+90);int dx=(x*c-y*s)/16384,dy=(x*s+y*c)/16384;return (TNRPoint){(int16_t)(148+dx*296/(int)(range*4)),(int16_t)(103-dy*296/(int)(range*4))};}
 /* Project "metres ahead along the pose heading" onto the canvas. TNV1 carries
  * marker distances, not bearings, so the overlay anchors them on this ray.
  * int32 math before the int16 store: 700 m*4 = 2800 quarter metres fits, the
@@ -76,18 +76,21 @@ TNRPoint tnr_ahead(const TNRState *s,const TNRPose *pose,unsigned metres){
  TNRPoint w={(int16_t)((q*(int32_t)sine(pose->heading))>>14),(int16_t)((q*(int32_t)sine(pose->heading+90))>>14)};
  return screen(w,pose,s->scenes[s->bank].range);
 }
+/* Scene-space point -> canvas pixel; the congestion tint in nav_view walks the
+ * highlighted route with this so its shading matches the drawn geometry. */
+TNRPoint tnr_project(const TNRState *s,const TNRPose *pose,TNRPoint p){return screen(p,pose,s->scenes[s->bank].range);}
 unsigned tnr_labels(const TNRState *s,uint32_t now,TNRLabelView out[TNR_MAX_LABELS]){
  memset(out,0,sizeof(TNRLabelView)*TNR_MAX_LABELS);TNRPose p;if(!tnr_position(s,now,&p)||tnr_stale(s,now))return 0;
  const TNRScene *d=&s->scenes[s->bank];unsigned count=0;
  for(unsigned i=0;i<d->label_count;i++){const TNRLabel *l=&d->labels[i];TNRPoint q=screen(l->p,&p,d->range);int w=l->width,x=q.x-w/2,y=q.y-10;
-  if(x<3||x+w>189||y<3||y+20>141||(x<111&&x+w>81&&y<114&&y+20>83)||(x<70&&x+w>2&&y<143&&y+20>116))continue;
+  if(x<3||x+w>293||y<3||y+20>145||(x<163&&x+w>133&&y<114&&y+20>83)||(x<72&&x+w>2&&y<145&&y+20>116))continue;
   bool overlap=false;for(unsigned j=0;j<count;j++)if(x<out[j].x+out[j].width+4&&x+w+4>out[j].x&&y<out[j].y+24&&y+24>out[j].y)overlap=true;
   if(overlap)continue;out[count].x=(int16_t)x;out[count].y=(int16_t)y;out[count].width=(uint16_t)w;memcpy(out[count++].text,l->text,TNR_LABEL_BYTES);
  }return count;
 }
-static unsigned code(int x,int y){return (x<0?1u:x>191?2u:0u)|(y<0?4u:y>143?8u:0u);}
+static unsigned code(int x,int y){return (x<0?1u:x>295?2u:0u)|(y<0?4u:y>147?8u:0u);}
 static bool clip(int *x,int *y,int *xx,int *yy){for(unsigned i=0;i<10;i++){unsigned a=code(*x,*y),b=code(*xx,*yy);if(!(a|b))return true;if(a&b)return false;unsigned c=a?a:b;int nx=0,ny=0;if(c&12){ny=c&4?0:143;if(*yy==*y)return false;nx=*x+(*xx-*x)*(ny-*y)/(*yy-*y);}else{nx=c&1?0:191;if(*xx==*x)return false;ny=*y+(*yy-*y)*(nx-*x)/(*xx-*x);}if(c==a){*x=nx;*y=ny;}else{*xx=nx;*yy=ny;}}return false;}
-static void dot(uint8_t *out,int x,int y,unsigned gray,unsigned alpha,bool erase){if(x<0||x>=192||y<0||y>=144)return;unsigned i=(unsigned)y*192+(unsigned)x,v=gray*alpha/255;if(erase)out[i]=0;else if(v>out[i])out[i]=(uint8_t)v;}
+static void dot(uint8_t *out,int x,int y,unsigned gray,unsigned alpha,bool erase){if(x<0||x>=296||y<0||y>=148)return;unsigned i=(unsigned)y*296+(unsigned)x,v=gray*alpha/255;if(erase)out[i]=0;else if(v>out[i])out[i]=(uint8_t)v;}
 static void line(uint8_t *out,TNRPoint a,TNRPoint b,unsigned gray,unsigned width,bool dash,bool erase,unsigned *budget){
  int x=a.x,y=a.y,xx=b.x,yy=b.y;if(!clip(&x,&y,&xx,&yy))return;int dx=xx-x,dy=yy-y,n=ab(dx)>ab(dy)?ab(dx):ab(dy);if(!n)n=1;
  if((unsigned)n+1>*budget)return;*budget-=(unsigned)n+1;
@@ -110,13 +113,13 @@ static void scale_draw(uint8_t *out,unsigned range,unsigned gray){
   {30,1,1,14,1,1,30},{2,6,10,18,31,2,2},{31,16,16,30,1,1,30},
   {14,16,16,30,17,17,14},{31,1,2,4,8,8,8},{14,17,17,14,17,17,14},
   {14,17,17,15,1,1,14},{0,0,26,21,21,21,21}};
- for(unsigned y=117;y<143;y++)memset(out+y*TNR_W+3,0,66);
+ for(unsigned y=120;y<146;y++)memset(out+y*TNR_W+3,0,66);
  unsigned digits[4],count=0;if(metres>=100)digits[count++]=metres/100;
  digits[count++]=(metres/10)%10;digits[count++]=metres%10;digits[count++]=10;
  for(unsigned i=0;i<count;i++)for(unsigned y=0;y<7;y++)for(unsigned x=0;x<5;x++)
-  if(glyph[digits[i]][y]&(1u<<(4-x)))for(unsigned yy=0;yy<2;yy++)for(unsigned xx=0;xx<2;xx++)out[(119+y*2+yy)*TNR_W+5+i*12+x*2+xx]=(uint8_t)gray;
- for(unsigned x=5;x<=5+pixels;x++){out[137*TNR_W+x]=(uint8_t)gray;out[138*TNR_W+x]=(uint8_t)gray;}
- for(unsigned y=134;y<=140;y++){out[y*TNR_W+5]=(uint8_t)gray;out[y*TNR_W+5+pixels]=(uint8_t)gray;}
+  if(glyph[digits[i]][y]&(1u<<(4-x)))for(unsigned yy=0;yy<2;yy++)for(unsigned xx=0;xx<2;xx++)out[(122+y*2+yy)*TNR_W+5+i*12+x*2+xx]=(uint8_t)gray;
+ for(unsigned x=5;x<=5+pixels;x++){out[140*TNR_W+x]=(uint8_t)gray;out[141*TNR_W+x]=(uint8_t)gray;}
+ for(unsigned y=137;y<=143;y++){out[y*TNR_W+5]=(uint8_t)gray;out[y*TNR_W+5+pixels]=(uint8_t)gray;}
 }
 void tnr_draw(const TNRState *s,uint32_t now,uint8_t out[TNR_W*TNR_H]){
  memset(out,0,TNR_W*TNR_H);TNRPose p;if(!tnr_position(s,now,&p))return;const TNRScene *d=&s->scenes[s->bank];bool stale=tnr_stale(s,now);static const uint8_t gray[]={140,128,112,94,76,56,255};
@@ -130,9 +133,9 @@ void tnr_draw(const TNRState *s,uint32_t now,uint8_t out[TNR_W*TNR_H]){
  }
  TNRLabelView labels[TNR_MAX_LABELS];unsigned names=tnr_labels(s,now,labels);
  for(unsigned i=0;i<names;i++)for(int y=labels[i].y-1;y<labels[i].y+21;y++)memset(out+y*TNR_W+labels[i].x-1,0,labels[i].width+2);
- unsigned marker_budget=512;TNRPoint tip={96,90},left={90,107},right={102,107};line(out,tip,left,stale?85:255,2,false,false,&marker_budget);line(out,left,right,stale?85:255,2,false,false,&marker_budget);line(out,right,tip,stale?85:255,2,false,false,&marker_budget);
+ unsigned marker_budget=512;TNRPoint tip={148,90},left={142,107},right={154,107};line(out,tip,left,stale?85:255,2,false,false,&marker_budget);line(out,left,right,stale?85:255,2,false,false,&marker_budget);line(out,right,tip,stale?85:255,2,false,false,&marker_budget);
  scale_draw(out,d->range,stale?85:230);
- if(stale)line(out,(TNRPoint){0,142},(TNRPoint){191,142},75,1,true,false,&marker_budget);
+ if(stale)line(out,(TNRPoint){0,146},(TNRPoint){295,146},75,1,true,false,&marker_budget);
 }
 size_t tnr_wrap(uint8_t *out,size_t cap,unsigned op,uint32_t sid,uint32_t seq,const uint8_t *body,size_t n){
  if(!out||!sid||!seq||cap<n+32||n+32>TNR_MAX_BYTES||!tnr_body_valid(op,body,n))return 0;memset(out,0,n+32);memcpy(out,"TNV1",4);out[4]=1;out[5]=(uint8_t)op;nm_p32(out+8,sid);nm_p32(out+12,seq);nm_p32(out+16,(uint32_t)n);if(n)memcpy(out+32,body,n);nm_p32(out+20,tn_crc(out,n+32));return n+32;
