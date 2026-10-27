@@ -65,6 +65,15 @@ void tnr_presented(TNRState *s,uint32_t now){if(s){s->dirty=false;s->last_draw=n
 static const int16_t sin5[]={0,1428,2845,4240,5604,6924,8192,9397,10531,11585,12551,13421,14189,14849,15396,15826,16135,16322,16384};
 static int sine(unsigned a){a%=360;int sign=a>=180?-1:1;a%=180;if(a>90)a=180-a;unsigned i=a/5,r=a%5;return sign*(sin5[i]+(i<18?(sin5[i+1]-sin5[i])*(int)r/5:0));}
 static TNRPoint screen(TNRPoint p,const TNRPose *pose,unsigned range){int x=p.x-pose->p.x,y=p.y-pose->p.y,s=sine(pose->heading),c=sine(pose->heading+90);int dx=(x*c-y*s)/16384,dy=(x*s+y*c)/16384;return (TNRPoint){(int16_t)(96+dx*192/(int)(range*4)),(int16_t)(101-dy*192/(int)(range*4))};}
+/* Project "metres ahead along the pose heading" onto the canvas. TNV1 carries
+ * marker distances, not bearings, so the overlay anchors them on this ray.
+ * int32 math before the int16 store: 700 m*4 = 2800 quarter metres fits, the
+ * intermediate sine product does not. */
+TNRPoint tnr_ahead(const TNRState *s,const TNRPose *pose,unsigned metres){
+ int32_t q=(int32_t)(metres>700u?700u:metres)*4;
+ TNRPoint w={(int16_t)((q*(int32_t)sine(pose->heading))>>14),(int16_t)((q*(int32_t)sine(pose->heading+90))>>14)};
+ return screen(w,pose,s->scenes[s->bank].range);
+}
 unsigned tnr_labels(const TNRState *s,uint32_t now,TNRLabelView out[TNR_MAX_LABELS]){
  memset(out,0,sizeof(TNRLabelView)*TNR_MAX_LABELS);TNRPose p;if(!tnr_position(s,now,&p)||tnr_stale(s,now))return 0;
  const TNRScene *d=&s->scenes[s->bank];unsigned count=0;

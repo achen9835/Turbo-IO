@@ -37,15 +37,17 @@ static int tcos(unsigned d){return tsin(d+90);}
 /* 3x5 dot matrix: digits plus the few letters/symbols the marker labels need. */
 static const uint8_t TN_GLYPH3X5[14][5]={{7,5,5,5,7},{2,6,2,2,7},{7,1,7,4,7},{7,1,7,1,7},{5,5,7,1,1},{7,4,7,1,7},{7,4,7,5,7},{7,1,1,2,2},{7,5,7,5,7},{7,5,7,1,7},
  {0,0,0,0,2},{5,6,4,6,5},{0,7,7,5,5},{0,5,2,5,0}}; /* 10='.' 11='k' 12='m' 13='×' */
-static void glyph3x5(TNViewFrame *f,int x,int y,char c,uint8_t gray){
+static void glyph3x5_at(uint8_t *p,int w,int h,int x,int y,char c,uint8_t gray){
  if(c==' ')return; /* blank advances the label without drawing */
  unsigned g=c>='0'&&c<='9'?(unsigned)(c-'0'):c=='.'?10u:c=='k'?11u:c=='m'?12u:(unsigned char)c==0xD7?13u:(unsigned char)c==0xB7?10u:12u; /* 0xD7=× 0xB7=·, bar labels are bytes not UTF-8 */
  for(int dy=0;dy<5;dy++)for(int dx=0;dx<3;dx++)
-  if((TN_GLYPH3X5[g][dy]>>(2-dx))&1)pixel(f->bar,TN_BAR_W,TN_BAR_H,x+dx,y+dy,0,gray);
+  if((TN_GLYPH3X5[g][dy]>>(2-dx))&1)pixel(p,w,h,x+dx,y+dy,0,gray);
 }
-static void text3x5(TNViewFrame *f,int x,int y,const char *s,unsigned n,uint8_t gray){
- for(unsigned i=0;i<n;i++)glyph3x5(f,x+(int)i*4,y,s[i],gray);
+static void glyph3x5(TNViewFrame *f,int x,int y,char c,uint8_t gray){glyph3x5_at(f->bar,TN_BAR_W,TN_BAR_H,x,y,c,gray);}
+static void text3x5_at(uint8_t *p,int w,int h,int x,int y,const char *s,unsigned n,uint8_t gray){
+ for(unsigned i=0;i<n;i++)glyph3x5_at(p,w,h,x+(int)i*4,y,s[i],gray);
 }
+static void text3x5(TNViewFrame *f,int x,int y,const char *s,unsigned n,uint8_t gray){text3x5_at(f->bar,TN_BAR_W,TN_BAR_H,x,y,s,n,gray);}
 /* "300m" under a kilometre, "1.2km" past it, "12km" past ten; out holds 6. */
 static unsigned dist3x5(char out[6],unsigned m){
  char *p=out;
@@ -55,6 +57,52 @@ static unsigned dist3x5(char out[6],unsigned m){
  else{char tmp[2];unsigned n=0;m/=1000;do{tmp[n++]=(char)('0'+m%10);m/=10;}while(m);
   while(n)*p++=tmp[--n];*p++='k';*p++='m';}
  *p=0;return (unsigned)(p-out);
+}
+/* Vector-map overlay (Turbo IO): the camera, the road event and the traffic
+ * lights ride the heading-up TNR map as compact glyphs on the straight-ahead
+ * ray, each carrying its 3x5 distance label. TNV1 carries distances, not
+ * bearings, so the heading ray is the honest placement. Labels keep clear of
+ * each other, the vehicle triangle and the bottom-left scale block; markers
+ * beyond the scene viewport drop off the top like real geography would. */
+static bool label_clash(int x0,int y0,int x1,int y1,const int taken[][4],unsigned n){
+ for(unsigned i=0;i<n;i++)if(x0<=taken[i][2]&&x1>=taken[i][0]&&y0<=taken[i][3]&&y1>=taken[i][1])return true;
+ return false;
+}
+static void map_markers(TNViewFrame *f,const TNRState *s,uint32_t now){
+ TNRPose p;if(!s||!tnr_position(s,now,&p))return;
+ bool stale=tnr_stale(s,now);uint8_t mg=stale?90:180;
+ struct MK{uint16_t m;int16_t limit;char kind;}mk[10];unsigned n=0;
+ if(f->visual.camera_kind&&f->visual.camera_m!=65535){mk[n].m=f->visual.camera_m;mk[n].limit=f->visual.camera_limit;mk[n].kind='c';n++;}
+ if(f->visual.event_kind&&f->visual.event_m!=65535){mk[n].m=f->visual.event_m;mk[n].limit=0;mk[n].kind='e';n++;}
+ if(!f->visual.light_count&&f->visual.lights!=255&&f->visual.lights_m!=65535){mk[n].m=f->visual.lights_m;mk[n].limit=0;mk[n].kind='l';n++;}
+ for(unsigned i=0;i<f->visual.light_count&&n<10;i++){mk[n].m=f->visual.light_m[i];mk[n].limit=0;mk[n].kind='l';n++;}
+ int taken[10][4];unsigned nt=0;
+ for(unsigned i=0;i<n;i++){
+  if(mk[i].m>700u)continue; /* beyond the scene viewport */
+  TNRPoint q=tnr_ahead(s,&p,mk[i].m);
+  if(mk[i].kind=='c'){ /* camera: ring + centre dot */
+   ring(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,3,mg);pixel(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,0,mg);
+  }else if(mk[i].kind=='e'){ /* event: triangle over its base */
+   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x,q.y-4},(TNXY){q.x-4,q.y+3},0,mg);
+   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x,q.y-4},(TNXY){q.x+4,q.y+3},0,mg);
+   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-4,q.y+3},(TNXY){q.x+4,q.y+3},0,mg);
+   pixel(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,0,mg);
+  }else{ /* light: 3-wide lamp housing, three lit tiers */
+   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-1,q.y-4},(TNXY){q.x+1,q.y-4},0,mg);
+   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-2,q.y-3},(TNXY){q.x-2,q.y+2},0,mg);
+   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+2,q.y-3},(TNXY){q.x+2,q.y+2},0,mg);
+   line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-1,q.y+3},(TNXY){q.x+1,q.y+3},0,mg);
+   pixel(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y-2,0,mg);pixel(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,0,(uint8_t)(mg*2/3));pixel(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y+2,0,(uint8_t)(mg/3));
+  }
+  char d[6];unsigned dn=dist3x5(d,mk[i].m);
+  int lx=q.x+5,ly=q.y-2;
+  if(q.x>=84&&q.x<=108&&q.y>=82&&q.y<=111)ly=q.y-11; /* clear of the vehicle triangle */
+  if(lx<0||(lx+(int)dn*4-1)>(int)TN_MAP_W-1||ly<2||(ly+4)>(int)TN_MAP_H-2)continue;
+  if(lx<71&&ly+4>116)continue; /* scale block owns the bottom-left corner */
+  if(label_clash(lx,ly,lx+(int)dn*4-1,ly+4,taken,nt))continue;
+  taken[nt][0]=lx;taken[nt][1]=ly;taken[nt][2]=lx+(int)dn*4-1;taken[nt][3]=ly+4;nt++;
+  text3x5_at(f->map,TN_MAP_W,TN_MAP_H,lx,ly,d,dn,stale?85:200);
+ }
 }
 #define TN_BAR_BASE ((int)TN_BAR_H-10) /* columns sit on this row; km ticks and scale digits drop below */
 static int anchor(unsigned m){return 8+(int)(m>5000?5000:m)*(int)(TN_BAR_W-16u)/5000;}
@@ -86,38 +134,25 @@ static void draw(TNViewFrame *f){
   TNXY a=v->icon[i-1],b=v->icon[i];a.x-=8;a.y-=12;b.x-=8;b.y-=12;
   line(f->icon,TN_ICON_W,TN_ICON_H,a,b,2,gray);
  }
- /* Orientation: hybrid (2026-10-21 真机拍板) — north-up only when truly
-  * standing (speed fed and <=2 km/h) or in the two complex glyphs; heading-up
-  * elsewhere. Threshold is 2 not 5: walking pace is 3-6 km/h and must stay
-  * heading-up (5 would pin walkers to north-up); a car at a light reads 0-1.
-  * The TNR3 vector map owns the canvas when one is active (callers overlay
-  * tnr_draw); this fallback keeps the semantic route readable meanwhile. */
- bool north_up=v->icon_kind==TN_UTURN||v->icon_kind==TN_ROUNDABOUT||(v->speed_kmh!=65535&&v->speed_kmh<=2);
- if(north_up){
-  for(unsigned i=1;i<v->route_count;i++){
-   TNXY a=v->route[i-1],b=v->route[i];a.x=(a.x-400)*192/128;a.y=(a.y-4)*144/128;b.x=(b.x-400)*192/128;b.y=(b.y-4)*144/128;
-   line(f->map,TN_MAP_W,TN_MAP_H,a,b,1,v->stale?60:160);
-  }
-  if(v->route_count)for(unsigned i=1;i<4;i++){
-   TNXY a=v->position[i-1],b=v->position[i];a.x=(a.x-400)*192/128;a.y=(a.y-4)*144/128;b.x=(b.x-400)*192/128;b.y=(b.y-4)*144/128;
-   line(f->map,TN_MAP_W,TN_MAP_H,a,b,1,gray);
-  }
- }else{
-  int cx=(v->nav_pos.x-400)*192/128,cy=(v->nav_pos.y-4)*144/128;
-  int c=tcos(v->heading),s=tsin(v->heading),rm=25;
-  TNXY tp[TN_POINTS_MAX];
-  for(unsigned i=0;i<v->route_count;i++){
-   int dx=(v->route[i].x-400)*192/128-cx,dy=(v->route[i].y-4)*144/128-cy;
-   int rx=(dx*c+dy*s)>>14,ry=(-dx*s+dy*c)>>14;tp[i]=(TNXY){rx,ry};
-   if(rx>rm)rm=rx;if(-rx>rm)rm=-rx;if(ry>rm)rm=ry;if(-ry>rm)rm=-ry;
-  }
-  for(unsigned i=0;i<v->route_count;i++)tp[i]=(TNXY){96+tp[i].x*64/rm,72+tp[i].y*64/rm};
-  for(unsigned i=1;i<v->route_count;i++)
-   line(f->map,TN_MAP_W,TN_MAP_H,tp[i-1],tp[i],2,v->stale?60:160);
-  line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){96,66},(TNXY){92,74},1,gray);
-  line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){96,66},(TNXY){100,74},1,gray);
-  line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){92,74},(TNXY){100,74},1,gray);
+ /* Orientation: fixed heading-up (2026-10-26 真机拍板). The hybrid north-up
+  * fallback read badly in practice; the route now always rotates about the
+  * car pivot. The TNR3 vector map owns the canvas when one is active
+  * (callers overlay tnr_draw + traffic markers); this fallback keeps the
+  * semantic route readable meanwhile. */
+ int cx=(v->nav_pos.x-400)*192/128,cy=(v->nav_pos.y-4)*144/128;
+ int c=tcos(v->heading),s=tsin(v->heading),rm=25;
+ TNXY tp[TN_POINTS_MAX];
+ for(unsigned i=0;i<v->route_count;i++){
+  int dx=(v->route[i].x-400)*192/128-cx,dy=(v->route[i].y-4)*144/128-cy;
+  int rx=(dx*c+dy*s)>>14,ry=(-dx*s+dy*c)>>14;tp[i]=(TNXY){rx,ry};
+  if(rx>rm)rm=rx;if(-rx>rm)rm=-rx;if(ry>rm)rm=ry;if(-ry>rm)rm=-ry;
  }
+ for(unsigned i=0;i<v->route_count;i++)tp[i]=(TNXY){96+tp[i].x*64/rm,72+tp[i].y*64/rm};
+ for(unsigned i=1;i<v->route_count;i++)
+  line(f->map,TN_MAP_W,TN_MAP_H,tp[i-1],tp[i],2,v->stale?60:160);
+ line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){96,66},(TNXY){92,74},1,gray);
+ line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){96,66},(TNXY){100,74},1,gray);
+ line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){92,74},(TNXY){100,74},1,gray);
  /* Traffic bar chart: per-segment columns encode congestion in both height
   * and brightness (severe adds a dark hatch), over a 1 px baseline with
   * whole-kilometre ticks and 3x5 scale digits, all inside a rounded panel.
@@ -224,7 +259,7 @@ bool tn_view_open(TNView *v,const TNWidgets *a,void *parent,const TNScene *s){
  a->place(a->ctx,v->icon,8,12,TN_ICON_W,TN_ICON_H);a->place(a->ctx,v->map,340,4,TN_MAP_W,TN_MAP_H);
  /* Left column tightened by 2-4px per row vs upstream so the 280x40 traffic
   * bar fits at y110..150 above the clock footer; fonts stay <= box heights. */
- a->place(a->ctx,v->text[0],112,4,220,40);a->place(a->ctx,v->text[5],256,4,76,40); /* distance left, speed right */
+ a->place(a->ctx,v->text[0],112,4,220,40);a->place(a->ctx,v->text[5],240,4,100,40); /* distance left, speed+km/h right */
  a->place(a->ctx,v->text[1],112,44,220,24);
  a->place(a->ctx,v->text[2],112,68,220,22);a->place(a->ctx,v->text[3],112,90,220,20);
  a->place(a->ctx,v->bar,112,110,TN_BAR_W,TN_BAR_H);
@@ -235,7 +270,7 @@ bool tn_view_open(TNView *v,const TNWidgets *a,void *parent,const TNScene *s){
 bool tn_view_update(TNView *v,const TNScene *s,bool stale){
  if(!v||!v->open||v->retiring||!v->api.idle(v->api.ctx))return false;
  unsigned next=v->active^1u;TNViewFrame *f=&v->frames[next];
- if(!tn_visual(s,stale,&f->visual))return false;draw(f);if(v->map_state.valid)tnr_draw(&v->map_state,v->map_now,f->map);publish(v,f);v->active=next;return true;
+ if(!tn_visual(s,stale,&f->visual))return false;draw(f);if(v->map_state.valid){tnr_draw(&v->map_state,v->map_now,f->map);map_markers(f,&v->map_state,v->map_now);}publish(v,f);v->active=next;return true;
 }
 bool tn_view_close(TNView *v){
  if(!v)return false;if(!v->root)return true;
@@ -266,5 +301,5 @@ bool tn_view_map_tick(TNView *v,uint32_t now){
  /* Map ticks do not need to copy/repaint the 16 KiB arrow or semantic text.
   * Retained text pointers stay valid until a full semantic publish. */
  f->visual=v->frames[v->active].visual;
- if(v->map_state.valid)tnr_draw(&v->map_state,now,f->map);else draw(f);v->api.buffer(v->api.ctx,v->map,f->map,TN_MAP_W,TN_MAP_H);publish_names(v,f);v->active=next;tnr_presented(&v->map_state,now);return true;
+ if(v->map_state.valid){tnr_draw(&v->map_state,now,f->map);map_markers(f,&v->map_state,now);}else draw(f);v->api.buffer(v->api.ctx,v->map,f->map,TN_MAP_W,TN_MAP_H);publish_names(v,f);v->active=next;tnr_presented(&v->map_state,now);return true;
 }

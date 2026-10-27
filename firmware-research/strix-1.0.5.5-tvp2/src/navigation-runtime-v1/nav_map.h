@@ -26,6 +26,7 @@ typedef struct {
 bool tnr_body_valid(unsigned op,const uint8_t *,size_t);
 bool tnr_receive(TNRState *,unsigned op,const uint8_t *,size_t,uint32_t now);
 bool tnr_position(const TNRState *,uint32_t now,TNRPose *);
+TNRPoint tnr_ahead(const TNRState *,const TNRPose *,unsigned metres); /* heading ray projection for the marker overlay */
 bool tnr_stale(const TNRState *,uint32_t now);
 bool tnr_needs_draw(const TNRState *,uint32_t now);
 void tnr_draw(const TNRState *,uint32_t now,uint8_t out[TNR_W*TNR_H]);
