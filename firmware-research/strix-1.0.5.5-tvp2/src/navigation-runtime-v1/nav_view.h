@@ -16,23 +16,23 @@ typedef struct {
  void (*visible)(void *,void *,bool);
  void (*destroy)(void *,void *);
 } TNWidgets;
-#define TN_ICON_W 128u
-#define TN_ICON_H 128u
-#define TN_MAP_W 192u
-#define TN_MAP_H 144u
-#define TN_BAR_W 280u /* traffic bar panel: congestion columns + markers + scale */
-#define TN_BAR_H 40u
+/* 2026-10-28 map-primary layout: turn glyph halved to 64x64, the vector map
+ * owns the right side at the full TNR canvas size, the traffic-bar panel is
+ * gone (congestion now tints the on-map route; see nav_view.c). */
+#define TN_ICON_W 64u
+#define TN_ICON_H 64u
+#define TN_MAP_W TNR_W
+#define TN_MAP_H TNR_H
 typedef struct {
  TNVisual visual;
  TNRLabelView names[TNR_MAX_LABELS];
  _Alignas(64) uint8_t icon[TN_ICON_W*TN_ICON_H];
  _Alignas(64) uint8_t map[TN_MAP_W*TN_MAP_H];
- _Alignas(64) uint8_t bar[TN_BAR_W*TN_BAR_H];
 } TNViewFrame;
 typedef struct {
  TNRState map_state;uint32_t map_now;
  TNWidgets api;
- void *root,*icon,*map,*bar,*text[6],*map_text[TNR_MAX_LABELS]; /* text[5]=speed */
+ void *root,*icon,*map,*text[6],*map_text[TNR_MAX_LABELS]; /* text[5]=speed */
  TNViewFrame frames[2];
  char clocks[2][64];
  unsigned clock_bank;

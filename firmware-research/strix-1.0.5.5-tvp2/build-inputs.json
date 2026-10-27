@@ -95,21 +95,21 @@
       "offset": "0x4d8d8c",
       "address": "0x10668d8c",
       "before": "f0b585b0",
-      "after": "22f2c0bf",
+      "after": "22f2d8bf",
       "role": "Entry trampoline vm_event"
     },
     {
       "offset": "0x4d984a",
       "address": "0x1066984a",
       "before": "0628a8bf",
-      "after": "2ef2bfbd",
+      "after": "2ef289b9",
       "role": "Menu replacement frame_start"
     },
     {
       "offset": "0x4d9860",
       "address": "0x10669860",
       "before": "1e22a0f10f03",
-      "after": "2ef2b8bd00bf",
+      "after": "2ef282b900bf",
       "role": "Menu replacement frame_index"
     },
     {
@@ -151,7 +151,7 @@
       "offset": "0x4d6cdc",
       "address": "0x10666cdc",
       "before": "fc204bf02dff",
-      "after": "31f22cfb00bf",
+      "after": "30f2f6fe00bf",
       "role": "284-byte menu allocation"
     },
     {
@@ -172,7 +172,7 @@
       "offset": "0x3da186",
       "address": "0x1056a186",
       "before": "00241f48204b84610360",
-      "after": "2ef313f900bf00bf00bf",
+      "after": "2df3ddfc00bf00bf00bf",
       "role": "File callback registration"
     },
     {
@@ -193,42 +193,42 @@
       "offset": "0x3dc59c",
       "address": "0x1056c59c",
       "before": "98b50b4b",
-      "after": "2bf370bf",
+      "after": "2bf33abb",
       "role": "ce_serial_destroy_entry"
     },
     {
       "offset": "0x3dd9bc",
       "address": "0x1056d9bc",
       "before": "2de9f043",
-      "after": "2af37cbd",
+      "after": "2af346b9",
       "role": "ce_head_notify_entry"
     },
     {
       "offset": "0x358d74",
       "address": "0x104e8d74",
       "before": "b0b5204a",
-      "after": "aff338bb",
+      "after": "aef302bf",
       "role": "ce_serial_start_entry"
     },
     {
       "offset": "0x358e18",
       "address": "0x104e8e18",
       "before": "b0b5204a",
-      "after": "aff3ecba",
+      "after": "aef3b6be",
       "role": "ce_serial_stop_entry"
     },
     {
       "offset": "0x3e8e42",
       "address": "0x10578e42",
       "before": "a069a661",
-      "after": "1ff3e9fa",
+      "after": "1ef3b3fe",
       "role": "ce_serial_publish_entry"
     },
     {
       "offset": "0x3e8904",
       "address": "0x10578904",
       "before": "a069a361",
-      "after": "1ff3a2fd",
+      "after": "1ff36cf9",
       "role": "ce_serial_retire_entry"
     },
     {
@@ -242,42 +242,42 @@
       "offset": "0x357e7c",
       "address": "0x104e7e7c",
       "before": "b0b590b0",
-      "after": "b0f330ba",
+      "after": "aff3fabd",
       "role": "ti_rpmsg_entry"
     },
     {
       "offset": "0x358edc",
       "address": "0x104e8edc",
       "before": "b0b51748",
-      "after": "a9f35cbe",
+      "after": "a9f326ba",
       "role": "ti_foreign_start"
     },
     {
       "offset": "0x358f48",
       "address": "0x104e8f48",
       "before": "b0b51748",
-      "after": "a9f374be",
+      "after": "a9f33eba",
       "role": "ti_foreign_stop"
     },
     {
       "offset": "0x3df70e",
       "address": "0x1056f70e",
       "before": "b0b50446",
-      "after": "24f359b9",
+      "after": "23f323bd",
       "role": "tdc_hook_source"
     },
     {
       "offset": "0x55f8c4",
       "address": "0x106ef8c4",
       "before": "2de9f041",
-      "after": "a4f16abb",
+      "after": "a3f134bf",
       "role": "tdc_hook_serialize"
     },
     {
       "offset": "0x3e0764",
       "address": "0x10570764",
       "before": "b0b50024",
-      "after": "23f3c9bc",
+      "after": "23f393b8",
       "role": "tdc_hook_message"
     }
   ],

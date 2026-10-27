@@ -50,7 +50,10 @@ bool tn_visual(const TNScene *s,bool stale,TNVisual *v){
  default:break;
  #undef GLYPH
  }
- v->icon_count=(unsigned)n;for(unsigned i=0;i<n;i++)v->icon[i]=(TNXY){8+(flip?96-icon[i].x:icon[i].x),12+icon[i].y};
+ /* Glyph templates are authored in a 96x84 box (legacy 128px canvas); the
+  * map-primary layout halves them into the 64x64 canvas. (x+1)>>1 keeps the
+  * mirrored variant centred: mirror 48-x2 spans 4..52 inside 64. */
+ v->icon_count=(unsigned)n;for(unsigned i=0;i<n;i++){unsigned x2=(unsigned)((icon[i].x+1)>>1),y2=(unsigned)((icon[i].y+1)>>1);v->icon[i]=(TNXY){8+(flip?(int)(48u-x2):(int)x2),6+(int)y2};}
  v->route_count=s->point_count;for(unsigned i=0;i<s->point_count;i++){if(s->points[i].x>1023||s->points[i].y>1023)return false;v->route[i]=map(s->points[i]);}
  TNXY pos=map(s->position);
  /* Eight-way position arrow; no libm or per-frame heap allocation. */
