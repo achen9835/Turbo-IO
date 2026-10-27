@@ -87,7 +87,7 @@ unsigned tnr_labels(const TNRState *s,uint32_t now,TNRLabelView out[TNR_MAX_LABE
  }return count;
 }
 static unsigned code(int x,int y){return (x<0?1u:x>295?2u:0u)|(y<0?4u:y>147?8u:0u);}
-static bool clip(int *x,int *y,int *xx,int *yy){for(unsigned i=0;i<10;i++){unsigned a=code(*x,*y),b=code(*xx,*yy);if(!(a|b))return true;if(a&b)return false;unsigned c=a?a:b;int nx=0,ny=0;if(c&12){ny=c&4?0:143;if(*yy==*y)return false;nx=*x+(*xx-*x)*(ny-*y)/(*yy-*y);}else{nx=c&1?0:191;if(*xx==*x)return false;ny=*y+(*yy-*y)*(nx-*x)/(*xx-*x);}if(c==a){*x=nx;*y=ny;}else{*xx=nx;*yy=ny;}}return false;}
+static bool clip(int *x,int *y,int *xx,int *yy){for(unsigned i=0;i<10;i++){unsigned a=code(*x,*y),b=code(*xx,*yy);if(!(a|b))return true;if(a&b)return false;unsigned c=a?a:b;int nx=0,ny=0;if(c&12){ny=c&4?0:147;if(*yy==*y)return false;nx=*x+(*xx-*x)*(ny-*y)/(*yy-*y);}else{nx=c&1?0:295;if(*xx==*x)return false;ny=*y+(*yy-*y)*(nx-*x)/(*xx-*x);}if(c==a){*x=nx;*y=ny;}else{*xx=nx;*yy=ny;}}return false;}
 static void dot(uint8_t *out,int x,int y,unsigned gray,unsigned alpha,bool erase){if(x<0||x>=296||y<0||y>=148)return;unsigned i=(unsigned)y*296+(unsigned)x,v=gray*alpha/255;if(erase)out[i]=0;else if(v>out[i])out[i]=(uint8_t)v;}
 static void line(uint8_t *out,TNRPoint a,TNRPoint b,unsigned gray,unsigned width,bool dash,bool erase,unsigned *budget){
  int x=a.x,y=a.y,xx=b.x,yy=b.y;if(!clip(&x,&y,&xx,&yy))return;int dx=xx-x,dy=yy-y,n=ab(dx)>ab(dy)?ab(dx):ab(dy);if(!n)n=1;
@@ -121,13 +121,20 @@ static void scale_draw(uint8_t *out,unsigned range,unsigned gray){
 }
 void tnr_draw(const TNRState *s,uint32_t now,uint8_t out[TNR_W*TNR_H]){
  memset(out,0,TNR_W*TNR_H);TNRPose p;if(!tnr_position(s,now,&p))return;const TNRScene *d=&s->scenes[s->bank];bool stale=tnr_stale(s,now);static const uint8_t gray[]={185,172,158,144,130,116,255}; /* 2026-10-28 真机亮度反馈：原 56-140 底层在低亮度档先消失，整体提亮并压平档差 */
- /* Phone sorts bridges/layers; highlighted route is always the final layer. */
- /* Hard raster work caps even for a syntactically valid pathological scene.
-  * Keep a separate route allowance so background roads cannot starve it. */
- for(unsigned pass=0;pass<2;pass++){unsigned budget=pass?4000:8000;
-  for(unsigned i=0;i<d->path_count;i++){const TNRPath *r=&d->paths[i];if((r->style==6)!=!!pass)continue;unsigned g=stale?gray[r->style]/3:gray[r->style],w=r->style==6?3:r->style<2?2:1;
-   for(unsigned j=1;j<r->count;j++){TNRPoint a=screen(d->points[r->first+j-1],&p,d->range),b=screen(d->points[r->first+j],&p,d->range);if(r->flags&1||r->style==6)line(out,a,b,0,w+2,false,true,&budget);line(out,a,b,g,w,!!(r->flags&2),false,&budget);}
-  }
+ /* Phone sorts bridges/layers; highlighted route is always the final layer.
+  * Pass order matters (2026-10-28 真机反馈路口断线): the route's wide erase
+  * halo goes down FIRST, then background roads redraw over it -- crossings
+  * stay joined instead of showing halo bites -- and the bright route line
+  * lands last on top. Hard raster caps per pass; route keeps its own budget
+  * so background roads cannot starve it. */
+ for(unsigned i=0;i<d->path_count;i++){const TNRPath *r=&d->paths[i];if(r->style!=6)continue;unsigned halo=4000;
+  for(unsigned j=1;j<r->count;j++){TNRPoint a=screen(d->points[r->first+j-1],&p,d->range),b=screen(d->points[r->first+j],&p,d->range);line(out,a,b,0,5,false,true,&halo);}
+ }
+ for(unsigned i=0;i<d->path_count;i++){const TNRPath *r=&d->paths[i];if(r->style==6)continue;unsigned g=stale?gray[r->style]/3:gray[r->style],w=r->style<2?2:1,budget=8000;
+  for(unsigned j=1;j<r->count;j++){TNRPoint a=screen(d->points[r->first+j-1],&p,d->range),b=screen(d->points[r->first+j],&p,d->range);if(r->flags&1)line(out,a,b,0,w+2,false,true,&budget);line(out,a,b,g,w,!!(r->flags&2),false,&budget);}
+ }
+ for(unsigned i=0;i<d->path_count;i++){const TNRPath *r=&d->paths[i];if(r->style!=6)continue;unsigned g=stale?255/3:255,budget=4000;
+  for(unsigned j=1;j<r->count;j++){TNRPoint a=screen(d->points[r->first+j-1],&p,d->range),b=screen(d->points[r->first+j],&p,d->range);line(out,a,b,g,3,!!(r->flags&2),false,&budget);}
  }
  TNRLabelView labels[TNR_MAX_LABELS];unsigned names=tnr_labels(s,now,labels);
  for(unsigned i=0;i<names;i++)for(int y=labels[i].y-1;y<labels[i].y+21;y++)memset(out+y*TNR_W+labels[i].x-1,0,labels[i].width+2);

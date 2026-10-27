@@ -98,12 +98,12 @@ static void map_markers(TNViewFrame *f,const TNRState *s,uint32_t now){
  * the pattern survives brightness compression the gray steps cannot. */
 static void dash_line(TNViewFrame *f,TNXY a,TNXY b,unsigned on,unsigned off,uint8_t gray){
  int dx=b.x-a.x,dy=b.y-a.y,total=mag(dx)>mag(dy)?mag(dx):mag(dy);
- if(total<=0){line(f->map,TN_MAP_W,TN_MAP_H,a,b,3,gray);return;}
+ if(total<=0){line(f->map,TN_MAP_W,TN_MAP_H,a,b,1,gray);return;}
  unsigned period=on+off;
  for(unsigned start=0;start<(unsigned)total;start+=period){
   unsigned end=start+on;if(end>(unsigned)total)end=(unsigned)total;
   if(end<=start)break;
-  line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){a.x+dx*(int)start/total,a.y+dy*(int)start/total},(TNXY){a.x+dx*(int)end/total,a.y+dy*(int)end/total},3,gray);
+  line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){a.x+dx*(int)start/total,a.y+dy*(int)start/total},(TNXY){a.x+dx*(int)end/total,a.y+dy*(int)end/total},1,gray);
  }
 }
 static void map_congestion(TNViewFrame *f,const TNRState *s,uint32_t now){
@@ -115,14 +115,24 @@ static void map_congestion(TNViewFrame *f,const TNRState *s,uint32_t now){
   const TNRPath *r=&d->paths[i];if(r->style!=6)continue;
   for(unsigned j=1;j<r->count;j++){
    TNRPoint a=d->points[r->first+j-1],b=d->points[r->first+j];
-   unsigned metres=(unsigned)((mag((a.x+b.x)/2-p.p.x)+mag((a.y+b.y)/2-p.p.y))>>3);
-   unsigned bucket=metres/(5000u/TN_BAR_MAX);if(bucket>=TN_BAR_MAX)bucket=TN_BAR_MAX-1;
-   unsigned lv=bucket<f->visual.bar_count?f->visual.bar[bucket]:0;
-   if(lv>4)lv=0;
-   if(!tint[lv])continue; /* unknown / smooth keep the bright route */
-   TNXY pa=xy(tnr_project(s,&p,a)),pb=xy(tnr_project(s,&p,b));
-   if(lv==2)line(f->map,TN_MAP_W,TN_MAP_H,pa,pb,3,tint[lv]);
-   else dash_line(f,pa,pb,lv==3?10:5,4,tint[lv]); /* slow: long dash, jam: short dash */
+   /* 长路段按 ~40 m 细分取档：一整条简化后的长直道只取一个中点档会把
+    * 数百米抹成同一颜色，细分后档位沿路线渐变。 */
+   int span_qm=mag(b.x-a.x)+mag(b.y-a.y);
+   unsigned steps=(unsigned)((span_qm+159u)/160u);if(steps<1u)steps=1u;if(steps>64u)steps=64u;
+   for(unsigned k=0;k<steps;k++){
+    TNRPoint p1={(int16_t)(a.x+(b.x-a.x)*(int)k/(int)steps),(int16_t)(a.y+(b.y-a.y)*(int)k/(int)steps)};
+    TNRPoint p2={(int16_t)(a.x+(b.x-a.x)*(int)(k+1)/(int)steps),(int16_t)(a.y+(b.y-a.y)*(int)(k+1)/(int)steps)};
+    int mx=mag((p1.x+p2.x)/2-p.p.x),my=mag((p1.y+p2.y)/2-p.p.y);
+    int dist_qm=(mx>my?mx:my)+((mx>my?my:mx)>>1); /* 八向距离近似：横平竖直段比曼哈顿准 */
+    unsigned metres=(unsigned)(dist_qm>>2);
+    unsigned bucket=metres/(5000u/TN_BAR_MAX);if(bucket>=TN_BAR_MAX)bucket=TN_BAR_MAX-1;
+    unsigned lv=bucket<f->visual.bar_count?f->visual.bar[bucket]:0;
+    if(lv>4)lv=0;
+    if(!tint[lv])continue; /* unknown / smooth keep the bright route */
+    TNXY pa=xy(tnr_project(s,&p,p1)),pb=xy(tnr_project(s,&p,p2));
+    if(lv==2)line(f->map,TN_MAP_W,TN_MAP_H,pa,pb,1,tint[lv]);
+    else dash_line(f,pa,pb,lv==3?10:5,4,tint[lv]); /* slow: long dash, jam: short dash; radius 1 = 3px, matches the route width */
+   }
   }
  }
 }
