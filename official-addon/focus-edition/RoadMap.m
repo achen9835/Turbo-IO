@@ -37,6 +37,7 @@ static NSData *NameData(id value){
 static unsigned RoadStyle(NSString *h){if([@[@"motorway",@"trunk",@"motorway_link",@"trunk_link"] containsObject:h])return 0;if([h hasPrefix:@"primary"])return 1;if([h hasPrefix:@"secondary"])return 2;if([h hasPrefix:@"tertiary"])return 3;if([@[@"residential",@"unclassified",@"living_street"] containsObject:h])return 4;return 5;}
 @implementation TIORoadMap{
  NSArray *(^_convert)(double,double);NSArray *_features,*_bbox,*_origin,*_regions;double _labelHeading,_sceneAt;NSData *_scene,*_scene2;uint32_t _generation;id _segment;NSString *_note;
+ unsigned _sceneRange,_labelRange;
  NSURLSession *_session;NSURLSessionDataTask *_task;NSMutableData *_received;NSTimeInterval _lastRequest;NSUInteger _requests,_epoch;BOOL _httpOK;
 }
 - (instancetype)initWithWGS84ToMap:(NSArray *(^)(double,double))convert{if((self=[super init])){_convert=[convert copy];_note=@"路网关闭 · 保留原路线示意图";}return self;}
@@ -114,7 +115,7 @@ static unsigned RoadStyle(NSString *h){if([@[@"motorway",@"trunk",@"motorway_lin
   NSArray *bbox=[NSJSONSerialization JSONObjectWithData:[[NSData alloc]initWithBase64EncodedString:b64 options:0] options:0 error:nil];dispatch_async(dispatch_get_main_queue(),^{if(epoch!=self->_epoch)return;if(features.count&&bbox.count==4){[self installFeatures:features bbox:bbox];self->_note=@"联网路网就绪 · © OpenStreetMap · 非高德底图";}else self->_note=@"图源格式或容量不合格 · 已拒绝";});
  });
 }
-- (NSData *)scene:(NSArray *)coords origin:(NSArray *)origin{
+- (NSData *)scene:(NSArray *)coords origin:(NSArray *)origin range:(unsigned)range{
  NSMutableArray *items=[NSMutableArray new];NSUInteger visited=0;
  for(NSDictionary *f in _features){if(++visited>10000)break;NSDictionary *p=f[@"properties"],*g=f[@"geometry"];if(![p[@"kind"] isEqual:@"road"]||![g[@"type"] isEqual:@"LineString"]||![g[@"coordinates"] isKindOfClass:NSArray.class])continue;
   if([Text(p[@"area"]) isEqual:@"yes"])continue;
@@ -124,11 +125,12 @@ static unsigned RoadStyle(NSString *h){if([@[@"motorway",@"trunk",@"motorway_lin
  NSMutableArray *route=[NSMutableArray new];for(NSArray *part in Pieces(coords,origin,nil,NO))if(part.count>=2)[route addObject:@{@"points":part,@"style":@6,@"flags":@0,@"layer":@8,@"rank":@0}];
  NSMutableArray *selected=[NSMutableArray new];NSUInteger points=0;for(NSDictionary *item in [route arrayByAddingObjectsFromArray:items]){NSArray *part=Simplify(item[@"points"]);if(selected.count>=TNR_MAX_PATHS||points+part.count>TNR_MAX_POINTS||16+8*(selected.count+1)+4*(points+part.count)+40*TNR_MAX_LABELS+12>TNR_MAX_BYTES-32)continue;points+=part.count;NSMutableDictionary *simple=[item mutableCopy];simple[@"points"]=part;[selected addObject:simple];}
  [selected sortUsingComparator:^NSComparisonResult(id a,id b){if([a[@"style"] intValue]==6||[b[@"style"] intValue]==6)return [a[@"style"] intValue]==[b[@"style"] intValue]?NSOrderedSame:[a[@"style"] intValue]==6?NSOrderedDescending:NSOrderedAscending;return [a[@"layer"] compare:b[@"layer"]];}];
- if(!selected.count||!points||_generation==UINT32_MAX)return nil;NSMutableData *out=[NSMutableData dataWithLength:16+8*selected.count+4*points];uint8_t *b=out.mutableBytes;W32(b,++_generation);W16(b+4,480);W16(b+6,(unsigned)selected.count);W16(b+8,(unsigned)points);NSUInteger at=16+8*selected.count;
+ if(!selected.count||!points||_generation==UINT32_MAX)return nil;NSMutableData *out=[NSMutableData dataWithLength:16+8*selected.count+4*points];uint8_t *b=out.mutableBytes;W32(b,++_generation);W16(b+4,range);W16(b+6,(unsigned)selected.count);W16(b+8,(unsigned)points);NSUInteger at=16+8*selected.count;
  for(NSUInteger i=0;i<selected.count;i++){NSDictionary *r=selected[i];NSArray *part=r[@"points"];W16(b+16+8*i,(unsigned)part.count);b[18+8*i]=[r[@"style"] intValue];b[19+8*i]=[r[@"flags"] intValue];b[20+8*i]=(uint8_t)[r[@"layer"] intValue];for(NSArray *p in part){W16(b+at,[p[0] intValue]);W16(b+at+2,[p[1] intValue]);at+=4;}}
  /* Labels derive only from actual road tags. Keep at most four unique names,
   * with geographic anchors; firmware clips/culls collisions on every pose. */
  NSMutableData *labels=[NSMutableData new];NSMutableSet *seen=[NSMutableSet new];NSMutableArray *occupied=[NSMutableArray new];
+ _labelRange=range;
  double radians=_labelHeading*M_PI/180,ss=sin(radians),cc=cos(radians);
  for(NSDictionary *item in [selected sortedArrayUsingComparator:^NSComparisonResult(id a,id b){return [a[@"rank"] compare:b[@"rank"]];}]){
   NSData *name=NameData(item[@"name"]);if(!name.length||[seen containsObject:name])continue;
@@ -136,7 +138,7 @@ static unsigned RoadStyle(NSString *h){if([@[@"motorway",@"trunk",@"motorway_lin
   NSArray *part=item[@"points"],*anchor=nil,*screenRect=nil;double best=DBL_MAX;
   for(NSUInteger j=1;j<part.count;j++)for(unsigned step=0;step<=16;step++){
    double t=step/16.,x=[part[j-1][0] doubleValue]*(1-t)+[part[j][0] doubleValue]*t,y=[part[j-1][1] doubleValue]*(1-t)+[part[j][1] doubleValue]*t;
-   double px=148+(x*cc-y*ss)*296/1920.,py=103-(x*ss+y*cc)*296/1920.;double left=px-width/2.,top=py-10; /* mirror of the firmware 296x148 canvas @ range 480 */
+   double px=148+(x*cc-y*ss)*296/((double)range*4),py=103-(x*ss+y*cc)*296/((double)range*4);double left=px-width/2.,top=py-10; /* mirror of the firmware 296x148 canvas at this scene's range */
    if(left<7||left+width>289||top<7||top+20>141||(left<167&&left+width>129&&top<118&&top+20>79)||(left<76&&left+width>0&&top<147&&top+20>112))continue;
    BOOL collision=NO;for(NSArray *r in occupied){double rx=[r[0] doubleValue],ry=[r[1] doubleValue],rw=[r[2] doubleValue];if(left<rx+rw+8&&left+width+8>rx&&top<ry+28&&top+28>ry){collision=YES;break;}}if(collision)continue;
    double score=(px-96)*(px-96)+(py-48)*(py-48);if(score<best){best=score;anchor=@[@((int)lround(x)),@((int)lround(y))];screenRect=@[@(left),@(top),@(width)];}
@@ -156,9 +158,19 @@ static unsigned RoadStyle(NSString *h){if([@[@"motorway",@"trunk",@"motorway_lin
  if(covered)_note=_task?@"周边路网已显示 · 正在预取下一段":@"周边路网已就绪 · © OpenStreetMap";
  else _note=_task?@"正在加载周边道路 · 保留已知路网":self.allowNetwork?(_requests>=6?@"本次图源请求已达上限 · 仅显示已有道路":@"当前区域路网暂缺 · 保留已有道路"):@"未授权周边道路 · 仅显示已有道路";
  double now=NSProcessInfo.processInfo.systemUptime,heading=[frame[@"navHeading"] doubleValue],turn=fabs(fmod(heading-_labelHeading+540,360)-180);
+ /* Adaptive zoom (2026-10-28 真机反馈): near an upcoming turn the map zooms
+  * in for junction detail; on long straights it zooms out for context. Base
+  * window follows the travel mode (walk small / ride medium / drive large).
+  * ±60 m hysteresis stops flapping at a boundary. */
+ NSString *travel=frame[@"travel"];
+ unsigned range=[travel isEqual:@"walk"]?260:[travel isEqual:@"ride"]?400:520;
+ double turnM=[frame[@"meters"] doubleValue];
+ if(turnM>0){if(turnM<=120)range=range*6/10;else if(turnM<=250)range=range*8/10;else if(turnM>=600)range=range*13/10;}
+ if(range<180)range=180;if(range>700)range=700;
+ BOOL zoom=_sceneRange&&(range>_sceneRange+60||_sceneRange>range+60);
  BOOL refreshNames=_features.count&&now-_sceneAt>=3&&(turn>=30||Distance(position,_origin?:position)>50||![self hasVisibleLabelsAt:position heading:(unsigned)heading]);
- if(!_scene||!_origin||Distance(position,_origin)>100||![_segment isEqual:frame[@"segment"]]||refreshNames){
-  _origin=position;_segment=frame[@"segment"];_labelHeading=heading;_sceneAt=now;_scene=[self scene:coords origin:_origin];
+ if(!_scene||!_origin||Distance(position,_origin)>100||![_segment isEqual:frame[@"segment"]]||zoom||refreshNames){
+  _origin=position;_segment=frame[@"segment"];_labelHeading=heading;_sceneAt=now;_sceneRange=range;_scene=[self scene:coords origin:_origin range:range];
  }
  if(!_scene)return frame;NSArray *xy=XY(position,_origin);double x=[xy[0] doubleValue]*4,y=[xy[1] doubleValue]*4;if(fabs(x)>2000||fabs(y)>2000)return frame;
  uint8_t pose[12]={0};W32(pose,_generation);W16(pose+4,(int)lround(x));W16(pose+6,(int)lround(y));W16(pose+8,[frame[@"navHeading"] unsignedIntValue]%360);

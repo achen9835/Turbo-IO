@@ -230,6 +230,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
         NSMutableDictionary *decorated=[frame mutableCopy];
         for(NSString *k in @[@"tnrScene",@"tnrScene2",@"tnrPose",@"tnrPoseAt"])[decorated removeObjectForKey:k];
         decorated[@"tnrSource"]=self.simulated?@"amap-simulation":@"amap-realtime";
+        decorated[@"travel"]=self.sessionTransport==TIONavigationWalk?@"walk":self.sessionTransport==TIONavigationRide?@"ride":@"drive"; /* 自适应缩放基准：步行/骑行/驾驶 */
         if(self.roadLocation){decorated[@"tnrLocation"]=self.roadLocation;decorated[@"tnrLocationAt"]=@(self.roadLocationAt);if(self.navHeadingDeg>=0)decorated[@"navHeading"]=@(self.navHeadingDeg);}
         frame=[self.roadMap decorate:decorated coordinates:self.roadCoordinates];
     }

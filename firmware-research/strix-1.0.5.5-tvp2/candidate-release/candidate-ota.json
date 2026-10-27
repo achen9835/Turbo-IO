@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "codeName": "TAP2-2026-10",
-  "displayName": "TAP2：矢量地图为主布局（296×148大图/路况条移除改路线着色/箭头64px/车头向上/km/h）· Strix 1.0.5.5 底座 · 2026-10",
+  "displayName": "TAP2：地图为主 v5（自适应缩放/出行模式/路网提亮/拥堵虚线冗余）· Strix 1.0.5.5 底座 · 2026-10",
   "confirmToken": "TAP2",
   "baseVersion": "Strix OS 1.0.5.5",
   "upgradeFrom": [
@@ -9,28 +9,28 @@
     "Strix OS 1.0.5.5"
   ],
   "zip": {
-    "size": 8864521,
-    "sha256": "6972726ba7bf33bd4f9d912f5b7c313b539a7e07a7506689cc1881982cd1d601"
+    "size": 8864707,
+    "sha256": "a8ec3f1bc64c19ab0d225ccc8fe4f20030c600886d90de33519fee8b4d8e9603"
   },
-  "otaSize": 8864521,
+  "otaSize": 8864707,
   "ap": {
     "name": "nuttx_ap.bin",
-    "size": 7438984,
-    "sha256": "890e103bd238d08dec56aed52e3120d826b555d9eac5638e3d3adc8ee7228102",
-    "md5": "ce9ebd4f556c3945173ce98ac4a7a170"
+    "size": 7439176,
+    "sha256": "0cc4139a577280e6f505dde4e8d204112f70d3a5f615b8bfb948388b9032109d",
+    "md5": "ddf0db1d074f0a7e8a41ab94af1efc16"
   },
   "apBudgetBytes": 9600000,
   "manifest": {
     "name": "OtaFileInfo.json",
     "size": 2700,
-    "sha256": "3120215ce8c7b4c9a1c126fb78f958d71fd60127ee81fe1e11ff1fbc75ffda24"
+    "sha256": "04977dbf980081b435623b22e68873cee529c4b725fed1c1b151808e74c82b09"
   },
   "stockAPSHA256": "b3d6d9d7a4ece97e1dbaa64fc080eb5db8a5f7c9fecf340888ebb97a9112cc6c",
   "payloadPins": [
     {
       "name": "OtaFileInfo.json",
       "size": 2700,
-      "sha256": "3120215ce8c7b4c9a1c126fb78f958d71fd60127ee81fe1e11ff1fbc75ffda24"
+      "sha256": "04977dbf980081b435623b22e68873cee529c4b725fed1c1b151808e74c82b09"
     },
     {
       "name": "bt_controller.bin",
@@ -59,8 +59,8 @@
     },
     {
       "name": "nuttx_ap.bin",
-      "size": 7438984,
-      "sha256": "890e103bd238d08dec56aed52e3120d826b555d9eac5638e3d3adc8ee7228102"
+      "size": 7439176,
+      "sha256": "0cc4139a577280e6f505dde4e8d204112f70d3a5f615b8bfb948388b9032109d"
     },
     {
       "name": "nuttx_apc1.bin",

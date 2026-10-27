@@ -92,12 +92,25 @@ static void map_markers(TNViewFrame *f,const TNRState *s,uint32_t now){
 /* Congestion tint (2026-10-28 map-primary layout): the removed traffic-bar
  * panel's 24 5-km buckets now shade the on-map route itself. Straight-line
  * distance from the vehicle picks the bucket -- along-route distance differs
- * only on curves, and a glanceable tint needs no turn-accurate accounting. */
+ * only on curves, and a glanceable tint needs no turn-accurate accounting.
+ * 2026-10-28 亮度反馈: gray alone compresses on dim panel settings, so jams
+ * additionally carry a dash pattern (long dash = slow, short dash = jam) --
+ * the pattern survives brightness compression the gray steps cannot. */
+static void dash_line(TNViewFrame *f,TNXY a,TNXY b,unsigned on,unsigned off,uint8_t gray){
+ int dx=b.x-a.x,dy=b.y-a.y,total=mag(dx)>mag(dy)?mag(dx):mag(dy);
+ if(total<=0){line(f->map,TN_MAP_W,TN_MAP_H,a,b,3,gray);return;}
+ unsigned period=on+off;
+ for(unsigned start=0;start<(unsigned)total;start+=period){
+  unsigned end=start+on;if(end>(unsigned)total)end=(unsigned)total;
+  if(end<=start)break;
+  line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){a.x+dx*(int)start/total,a.y+dy*(int)start/total},(TNXY){a.x+dx*(int)end/total,a.y+dy*(int)end/total},3,gray);
+ }
+}
 static void map_congestion(TNViewFrame *f,const TNRState *s,uint32_t now){
  if(!f->visual.bar_count)return;
  TNRPose p;if(!tnr_position(s,now,&p))return;
  const TNRScene *d=&s->scenes[s->bank];
- static const uint8_t tint[5]={0,0,180,120,80};
+ static const uint8_t tint[5]={0,0,190,150,150};
  for(unsigned i=0;i<d->path_count;i++){
   const TNRPath *r=&d->paths[i];if(r->style!=6)continue;
   for(unsigned j=1;j<r->count;j++){
@@ -107,7 +120,9 @@ static void map_congestion(TNViewFrame *f,const TNRState *s,uint32_t now){
    unsigned lv=bucket<f->visual.bar_count?f->visual.bar[bucket]:0;
    if(lv>4)lv=0;
    if(!tint[lv])continue; /* unknown / smooth keep the bright route */
-   line(f->map,TN_MAP_W,TN_MAP_H,xy(tnr_project(s,&p,a)),xy(tnr_project(s,&p,b)),3,tint[lv]);
+   TNXY pa=xy(tnr_project(s,&p,a)),pb=xy(tnr_project(s,&p,b));
+   if(lv==2)line(f->map,TN_MAP_W,TN_MAP_H,pa,pb,3,tint[lv]);
+   else dash_line(f,pa,pb,lv==3?10:5,4,tint[lv]); /* slow: long dash, jam: short dash */
   }
  }
 }

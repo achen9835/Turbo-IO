@@ -120,7 +120,7 @@ static void scale_draw(uint8_t *out,unsigned range,unsigned gray){
  for(unsigned y=137;y<=143;y++){out[y*TNR_W+5]=(uint8_t)gray;out[y*TNR_W+5+pixels]=(uint8_t)gray;}
 }
 void tnr_draw(const TNRState *s,uint32_t now,uint8_t out[TNR_W*TNR_H]){
- memset(out,0,TNR_W*TNR_H);TNRPose p;if(!tnr_position(s,now,&p))return;const TNRScene *d=&s->scenes[s->bank];bool stale=tnr_stale(s,now);static const uint8_t gray[]={140,128,112,94,76,56,255};
+ memset(out,0,TNR_W*TNR_H);TNRPose p;if(!tnr_position(s,now,&p))return;const TNRScene *d=&s->scenes[s->bank];bool stale=tnr_stale(s,now);static const uint8_t gray[]={185,172,158,144,130,116,255}; /* 2026-10-28 真机亮度反馈：原 56-140 底层在低亮度档先消失，整体提亮并压平档差 */
  /* Phone sorts bridges/layers; highlighted route is always the final layer. */
  /* Hard raster work caps even for a syntactically valid pathological scene.
   * Keep a separate route allowance so background roads cannot starve it. */
