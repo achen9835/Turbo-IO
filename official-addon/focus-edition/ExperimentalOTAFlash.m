@@ -66,8 +66,9 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
         NSUInteger expected=[pins isKindOfClass:NSArray.class]&&pins.count>1?pins.count-1:0;
         id manifest=[NSJSONSerialization JSONObjectWithData:files[@"OtaFileInfo.json"] options:0 error:error];
         if(![manifest isKindOfClass:NSArray.class]||!expected||[manifest count]!=expected){
-            NSString *actual=manifest isKindOfClass:NSArray.class]?[NSString stringWithFormat:@"%lu 项",(unsigned long)[manifest count]]:@"非清单结构";
-            Error(error,[NSString stringWithFormat:@"官方解压目录清单负载数不符：候选要求 %u 项，实际 %@。未授权。",expected,actual]);return NO;}
+            NSString *actual=@"非清单结构";
+            if([manifest isKindOfClass:NSArray.class])actual=[NSString stringWithFormat:@"%lu 项",(unsigned long)[manifest count]];
+            Error(error,[NSString stringWithFormat:@"官方解压目录清单负载数不符：候选要求 %lu 项，实际 %@。未授权。",(unsigned long)expected,actual]);return NO;}
         _files=files;_manifest=manifest;_device=[device copy];_deadline=now+900;_stage=1;_failure=nil;return YES;
     }
 }
