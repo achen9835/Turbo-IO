@@ -86,6 +86,17 @@ print(json.dumps({'entitlements':p['Entitlements'],'expires':p['ExpirationDate']
   run(process.execPath,[path.join(here,'macho-embed.mjs'),source,app,o.addon,o.bundle]);
   if(focusEdition){
     fs.cpSync(path.join(here,'focus-edition/TurboIOArt'),path.join(app,'TurboIOArt'),{recursive:true,errorOnExist:true,force:false});
+    // TNR3 矢量小地图离线路网（公开 OpenStreetMap 样本）。逐字节钉值：任何
+    // 漂移都拒绝打包，防止地图数据被静默替换。
+    const roadMaps={shenzhen:'ec70589ff3a868be20fb4762f07c4e668b7a68f4c8c074092ae16f29189ea4ac',hongkong:'4b6abbf5784ee36f0f4923777087647d5b4a93bbe864d22d5599507832227fe2'};
+    fs.mkdirSync(path.join(app,'TurboHUDMaps'),{mode:0o700});
+    for(const [name,want] of Object.entries(roadMaps)){
+      const body=fs.readFileSync(path.join(here,'focus-edition/TurboHUDMaps',name+'.json'));
+      if(body.length>2*1024*1024)throw Error(`roadmap_${name}_oversized`);
+      const got=createHash('sha256').update(body).digest('hex');
+      if(got!==want)throw Error(`roadmap_${name}_sha256_mismatch`);
+      fs.writeFileSync(path.join(app,'TurboHUDMaps',name+'.json'),body,{mode:0o600});
+    }
   }
   if(o['app-gallery']){
     if(!symbols.includes('_TAPAppsController'))throw Error('app_gallery_requires_app_sdk_addon');

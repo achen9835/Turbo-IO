@@ -17,6 +17,7 @@
 #import "DisplayPhoneUI.h"
 #import "NativeNavigationUI.h"
 #import "NativeNavigation.h"
+#import "RoadMap.h"
 #import "ProtocolContext.h"
 #import "DisplayHUDRenderer.h"
 #endif
@@ -123,6 +124,16 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property double navLat,navLon;
 @property NSInteger navSpeedKmh,navHeadingDeg; /* -1=尚未从 AMapNaviLocation 读到 */
 #endif
+/* 矢量小地图（TNR3）：内置/已缓存路网默认可用，联网取路网需每次会话单独授权。
+ * 只依赖 TIO_DISPLAY_PHONE 构建线（RoadMap.m 在该线编译），不依赖高德链接。 */
+#if TIO_DISPLAY_PHONE
+@property TIORoadMap *roadMap;
+@property UIButton *roadButton;
+@property UILabel *roadStatus;
+@property NSArray *roadCoordinates;
+@property NSArray *roadLocation;
+@property double roadLocationAt,roadHeading;
+#endif
 @end
 @implementation TIONavigationPanel
 - (UIButton *)button:(NSString *)title action:(SEL)action identifier:(NSString *)identifier{UIButton *b=[UIButton buttonWithType:UIButtonTypeSystem];b.configuration=[UIButtonConfiguration tintedButtonConfiguration];[b setTitle:title forState:UIControlStateNormal];b.accessibilityIdentifier=identifier;[b addTarget:self action:action forControlEvents:UIControlEventTouchUpInside];[self.stack addArrangedSubview:b];return b;}
@@ -136,6 +147,19 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     [NSLayoutConstraint activateConstraints:@[[self.scroll.leadingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.leadingAnchor],[self.scroll.trailingAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.trailingAnchor],[self.scroll.topAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.topAnchor],[self.scroll.bottomAnchor constraintEqualToAnchor:self.view.safeAreaLayoutGuide.bottomAnchor],[self.stack.leadingAnchor constraintEqualToAnchor:self.scroll.contentLayoutGuide.leadingAnchor constant:16],[self.stack.trailingAnchor constraintEqualToAnchor:self.scroll.contentLayoutGuide.trailingAnchor constant:-16],[self.stack.topAnchor constraintEqualToAnchor:self.scroll.contentLayoutGuide.topAnchor constant:16],[self.stack.bottomAnchor constraintEqualToAnchor:self.scroll.contentLayoutGuide.bottomAnchor constant:-24],[self.stack.widthAnchor constraintEqualToAnchor:self.scroll.frameLayoutGuide.widthAnchor constant:-32]]];
     self.statusLabel=[UILabel new]; // Diagnostic text only; not part of the primary layout.
     [self buildWorkspace];
+#if TIO_DISPLAY_PHONE
+    [self buildRoadControls];
+    self.roadMap=[[TIORoadMap alloc]initWithWGS84ToMap:^NSArray *(double lat,double lon){
+#if TIO_AMAP_ENABLED
+        CLLocationCoordinate2D c=AMapCoordinateConvert(CLLocationCoordinate2DMake(lat,lon),AMapCoordinateTypeGPS);return @[@(c.latitude),@(c.longitude)];
+#else
+        return @[@(lat),@(lon)]; /* WGS84/无转换兜底：只影响 OSM 路网对齐精度 */
+#endif
+    }];
+    id roadPref=[NSUserDefaults.standardUserDefaults objectForKey:@"TIONavRoadMapEnabled"];
+    self.roadMap.enabled=roadPref?[roadPref boolValue]:YES; /* 默认开：只用内置/已缓存路网；联网另需会话授权 */
+    [self refreshRoadControls];
+#endif
     // Voice flow presents this panel as a bare modal (no research-shell back
     // stack); without an explicit exit the user gets trapped. Always offer one
     // when there is nothing to pop back to.
@@ -149,6 +173,32 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(navigationForeground) name:UIApplicationDidBecomeActiveNotification object:nil];
     self.display=TIONavDisplay(@"stopped",0,@"",-1,-1,-1,NO);[self refresh];
 }
+/* 矢量小地图控制：开关只影响本机是否构建/发送 TNR 路网包，会话中切换同样
+ * 安全——关掉后下一个导航帧不再携带 tnr 键，会话层按协议发 TNR_CLEAR 清屏。 */
+#if TIO_DISPLAY_PHONE
+- (void)buildRoadControls{
+    self.roadButton=[self button:@"矢量小地图（周边路网）" action:@selector(roadToggle) identifier:@"navigation-road-toggle"];
+    self.roadStatus=[UILabel new];self.roadStatus.numberOfLines=0;self.roadStatus.font=[UIFont systemFontOfSize:12];self.roadStatus.textColor=UIColor.secondaryLabelColor;[self.stack addArrangedSubview:self.roadStatus];
+    [self button:@"授权本次联网取路网（OpenStreetMap · 限6次/会话）" action:@selector(roadNetworkConsent) identifier:@"navigation-road-network"];
+    [self refreshRoadControls];
+}
+- (void)refreshRoadControls{
+    if(!self.roadButton||!self.roadMap)return;
+    [self.roadButton setTitle:[NSString stringWithFormat:@"矢量小地图：%@（内置深圳/香港 · 其余需联网）",self.roadMap.enabled?@"开":@"关"] forState:UIControlStateNormal];
+    self.roadStatus.text=self.roadMap.note;
+}
+- (void)roadToggle{
+    self.roadMap.enabled=!self.roadMap.enabled;
+    [NSUserDefaults.standardUserDefaults setObject:@(self.roadMap.enabled) forKey:@"TIONavRoadMapEnabled"];
+    [self refreshRoadControls];
+}
+- (void)roadNetworkConsent{
+    UIAlertController *a=[UIAlertController alertControllerWithTitle:@"限次联网路网试验" message:@"将当前位置附近约1.2公里范围的道路查询发送给公开 Overpass 图源（OpenStreetMap）；高德路线仍来自高德，底图为 OSM，可能有偏移或缺路。每次导航会话最多 6 次、间隔至少 60 秒，导航结束即撤销授权。未授权时只用内置公开区域样本，不发送实际位置。请勿驾驶中调试。" preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    [a addAction:[UIAlertAction actionWithTitle:@"允许本次导航会话" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){self.roadMap.allowNetwork=YES;[self refreshRoadControls];}]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+#endif
 - (void)viewWillAppear:(BOOL)animated{[super viewWillAppear:animated];if(!self.timer){__weak typeof(self) weak=self;self.timer=[NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *t){[weak tick];}];} [self refresh];}
 - (void)viewDidDisappear:(BOOL)animated{
     [super viewDidDisappear:animated];self.pendingMapAction=nil;
@@ -175,12 +225,24 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 #if TIO_DISPLAY_PHONE
     if(![frame[@"phase"] isEqual:@"navigating"]||![frame[@"segment"] isEqual:self.display[@"segment"]])self.crossPixels=nil;
 #endif
+#if TIO_DISPLAY_PHONE
+    if(self.roadMap){ /* 矢量小地图：setFrame 是唯一帧漏斗，decorate 内部自带 navigating/新鲜度门禁 */
+        NSMutableDictionary *decorated=[frame mutableCopy];
+        for(NSString *k in @[@"tnrScene",@"tnrScene2",@"tnrPose",@"tnrPoseAt"])[decorated removeObjectForKey:k];
+        decorated[@"tnrSource"]=self.simulated?@"amap-simulation":@"amap-realtime";
+        if(self.roadLocation){decorated[@"tnrLocation"]=self.roadLocation;decorated[@"tnrLocationAt"]=@(self.roadLocationAt);if(self.navHeadingDeg>=0)decorated[@"navHeading"]=@(self.navHeadingDeg);}
+        frame=[self.roadMap decorate:decorated coordinates:self.roadCoordinates];
+    }
+#endif
     self.display=frame;TIONavOfferDisplay(frame);[self.teleHUD offer:frame at:NSProcessInfo.processInfo.systemUptime];[self.subtitleHUD offer:frame at:NSProcessInfo.processInfo.systemUptime];
 #if TIO_DISPLAY_PHONE
     TDPPhoneNavigationOffer([self displayHUDFrame]);[self autoStartNativeHUDIfNeeded];[self refreshDisplayHUD];
 #endif
     [self refresh];}
 - (void)tick{
+#if TIO_DISPLAY_PHONE
+    [self refreshRoadControls]; /* 1Hz 同步路网状态行（请求中/已就绪/失败原因） */
+#endif
     // Candidate dialog timeout: never leave the user stranded -- default to the
     // nearest candidate and keep navigating.
     if(self.voiceCandidates.count&&NSProcessInfo.processInfo.systemUptime>self.voiceCandidatesExpire){TIOVoiceNavTrace(@"候选30秒未选择：默认最近的，继续导航");[self voicePickCandidate:self.voiceCandidates[0] announced:@"（超时默认最近）"];}
@@ -576,7 +638,13 @@ static NSMutableArray *TIONavAheadCoords(NSArray<AMapNaviSegment *> *segments,NS
  });
 }
 - (void)navigationReroute:(id<TIONavigationManager>)manager{dispatch_async(dispatch_get_main_queue(),^{if(manager==self.manager&&self.active){self.rerouting=YES;self.note=@"偏航，等待高德重新规划";[self clearSceneExtensionState];[self setFrame:TIONavDisplay(@"rerouting",0,@"",-1,-1,-1,self.simulated)];}});}
-- (void)drawRoute:(AMapNaviRoute *)route{NSArray<AMapNaviPoint *> *points=route.routeCoordinates;if(points.count<2||points.count>100000)return;CLLocationCoordinate2D *coords=calloc(points.count,sizeof(CLLocationCoordinate2D));if(!coords)return;for(NSUInteger i=0;i<points.count;i++)coords[i]=CLLocationCoordinate2DMake(points[i].latitude,points[i].longitude);if(self.routeLine)[self.map removeOverlay:self.routeLine];self.routeLine=[MAPolyline polylineWithCoordinates:coords count:points.count];free(coords);[self.map addOverlay:self.routeLine];[self.map setVisibleMapRect:self.routeLine.boundingMapRect edgePadding:UIEdgeInsetsMake(30,25,30,25) animated:YES];}
+- (void)drawRoute:(AMapNaviRoute *)route{NSArray<AMapNaviPoint *> *points=route.routeCoordinates;if(points.count<2||points.count>100000)return;
+ NSMutableArray *roadLL=[NSMutableArray new];NSUInteger roadStride=1+(points.count-1)/4096; /* RoadMap 自带 500m 裁剪，这里只限制 ObjC 数组规模 */
+ for(NSUInteger i=0;i<points.count;i+=roadStride)[roadLL addObject:@[@(points[i].latitude),@(points[i].longitude)]];
+#if TIO_DISPLAY_PHONE
+ self.roadCoordinates=roadLL;
+#endif
+ CLLocationCoordinate2D *coords=calloc(points.count,sizeof(CLLocationCoordinate2D));if(!coords)return;for(NSUInteger i=0;i<points.count;i++)coords[i]=CLLocationCoordinate2DMake(points[i].latitude,points[i].longitude);if(self.routeLine)[self.map removeOverlay:self.routeLine];self.routeLine=[MAPolyline polylineWithCoordinates:coords count:points.count];free(coords);[self.map addOverlay:self.routeLine];[self.map setVisibleMapRect:self.routeLine.boundingMapRect edgePadding:UIEdgeInsetsMake(30,25,30,25) animated:YES];}
 - (MAOverlayRenderer *)mapView:(MAMapView *)map rendererForOverlay:(id<MAOverlay>)overlay{if([overlay isKindOfClass:MAPolyline.class]){MAPolylineRenderer *r=[[MAPolylineRenderer alloc]initWithPolyline:overlay];r.lineWidth=6;r.strokeColor=UIColor.systemIndigoColor;return r;}return nil;}
 - (void)navigationManager:(id<TIONavigationManager>)manager updateGPSSignalStrength:(AMapNaviGPSSignalStrength)strength{dispatch_async(dispatch_get_main_queue(),^{if(manager!=self.manager||!self.active||self.simulated)return;self.gpsWeak=strength!=AMapNaviGPSSignalStrengthStrong&&strength!=AMapNaviGPSSignalStrengthSmartPos; // AMap's guidance stream is the authority; only surface a weak-state frame when AMap itself has gone quiet, so live guidance never flickers.
  if(self.gpsWeak&&NSProcessInfo.processInfo.systemUptime-self.lastInfo>15)[self setFrame:TIONavDisplay(@"weak",0,@"",-1,-1,-1,NO)];});}
@@ -623,7 +691,11 @@ static NSMutableArray *TIONavAheadCoords(NSArray<AMapNaviSegment *> *segments,NS
  if(self.cameraKind){NSMutableDictionary *camera=[@{@"kind":@(self.cameraKind),@"limit":@(self.cameraLimit)} mutableCopy];if(self.cameraMeters<65535)camera[@"m"]=@(self.cameraMeters);frame[@"camera"]=camera;}
  if(self.eventKind){NSMutableDictionary *event=[@{@"kind":@(self.eventKind)} mutableCopy];if(self.eventMeters<65535)event[@"m"]=@(self.eventMeters);frame[@"event"]=event;}}
 - (void)offerSceneRefresh{if(![self.display[@"phase"] isEqual:@"navigating"])return;NSMutableDictionary *f=[self.display mutableCopy];[self applySceneExtensions:f];[self setFrame:f];}
-- (void)driveManager:(AMapNaviDriveManager *)m updateNaviLocation:(AMapNaviLocation *)loc{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active||!loc)return;self.navLat=loc.coordinate.latitude;self.navLon=loc.coordinate.longitude;if(loc.speed>=0&&loc.speed<=511)self.navSpeedKmh=(NSInteger)loc.speed;if(loc.heading>=0&&loc.heading<360)self.navHeadingDeg=(NSInteger)loc.heading;});}
+- (void)driveManager:(AMapNaviDriveManager *)m updateNaviLocation:(AMapNaviLocation *)loc{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active||!loc)return;self.navLat=loc.coordinate.latitude;self.navLon=loc.coordinate.longitude;if(loc.speed>=0&&loc.speed<=511)self.navSpeedKmh=(NSInteger)loc.speed;if(loc.heading>=0&&loc.heading<360)self.navHeadingDeg=(NSInteger)loc.heading;
+#if TIO_DISPLAY_PHONE
+self.roadLocation=@[@(loc.coordinate.latitude),@(loc.coordinate.longitude)];if(loc.heading>=0&&loc.heading<360)self.roadHeading=fmod(loc.heading+720,360);self.roadLocationAt=NSProcessInfo.processInfo.systemUptime;
+#endif
+});}
 - (void)walkManager:(AMapNaviWalkManager *)m updateNaviLocation:(AMapNaviLocation *)loc{[self driveManager:(AMapNaviDriveManager *)m updateNaviLocation:loc];} /* 步行导航同样喂速度/航向（id 桥接仅取公共属性） */
 - (void)rideManager:(AMapNaviRideManager *)m updateNaviLocation:(AMapNaviLocation *)loc{[self driveManager:(AMapNaviDriveManager *)m updateNaviLocation:loc];}
 - (void)driveManager:(AMapNaviDriveManager *)m updateTrafficStatus:(NSArray<AMapNaviTrafficStatus *> *)status{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active)return;self.trafficBarLevels=[self levelsFromTrafficStatus:status];[self offerSceneRefresh];});}

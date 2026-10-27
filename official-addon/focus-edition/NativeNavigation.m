@@ -1,8 +1,12 @@
 #import "NativeNavigation.h"
+#include "nav_map.h"
 #include <math.h>
 static uint32_t U32(const uint8_t *p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
+static unsigned U16(const uint8_t *p){return (unsigned)p[0]|((unsigned)p[1]<<8);}
 static BOOL Var(const uint8_t *p,NSUInteger n,NSUInteger *at,uint32_t *v){*v=0;for(unsigned i=0;i<5;i++){if(*at>=n)return NO;uint8_t b=p[(*at)++];if(i==4&&(b&240))return NO;*v|=(uint32_t)(b&127)<<(i*7);if(!(b&128))return YES;}return NO;}
-BOOL TNVDecodeReply(NSDictionary *event,TNReply *out){
+// capabilities bit0 = the firmware speaks TNR vector-map packets (TN_QUERY
+// reply carries it at b+24; older firmware zeroes the field).
+static BOOL DecodeReply(NSDictionary *event,TNReply *out,uint32_t *capabilities){
  if(![event isKindOfClass:NSDictionary.class]||![event[@"eventType"] isEqual:@"messageReceived"])return NO;
  NSDictionary *m=event[@"message"];if(![m isKindOfClass:NSDictionary.class]||![m[@"businessId"] isEqual:@15]||![m[@"payload"] isKindOfClass:NSData.class])return NO;
  NSData *d=m[@"payload"];if(d.length>512)return NO;const uint8_t *p=d.bytes;NSUInteger at=0;uint32_t version=0,type=0;NSData *json=nil;unsigned seen=0;
@@ -13,9 +17,11 @@ BOOL TNVDecodeReply(NSDictionary *event,TNReply *out){
  if(version!=1||type!=6||!json)return NO;id j=[NSJSONSerialization JSONObjectWithData:json options:0 error:nil];if(![j isKindOfClass:NSDictionary.class]||![j[@"cmd"] isEqual:@"turbo_nav_v1"]||![j[@"payload"] isKindOfClass:NSDictionary.class])return NO;
  NSString *hex=j[@"payload"][@"data"];if(![hex isKindOfClass:NSString.class]||hex.length!=64)return NO;uint8_t b[32];
  for(unsigned i=0;i<32;i++){unsigned v=0;for(unsigned k=0;k<2;k++){unichar c=[hex characterAtIndex:2*i+k];unsigned x=c>='0'&&c<='9'?c-'0':c>='a'&&c<='f'?c-'a'+10:16;if(x>15)return NO;v=v*16+x;}b[i]=v;}
- if(memcmp(b,"TNA1",4)||b[4]!=1||b[5]>TN_NO_SESSION||(b[6]&~7)||b[7]>1||U32(b+16)!=60000||U32(b+20)!=32||U32(b+24)||tn_crc(b,28)!=U32(b+28))return NO;
+ if(memcmp(b,"TNA1",4)||b[4]!=1||b[5]>TN_NO_SESSION||(b[6]&~7)||b[7]>1||U32(b+16)!=60000||U32(b+20)!=32||(U32(b+24)&~1u)||tn_crc(b,28)!=U32(b+28))return NO;
+ if(capabilities)*capabilities=U32(b+24);
  if(out)*out=(TNReply){.result=b[5],.sid=U32(b+8),.sequence=U32(b+12),.active=!!(b[6]&1),.awake=!!(b[6]&2),.stale=!!(b[6]&4),.mode=b[7]};return YES;
 }
+BOOL TNVDecodeReply(NSDictionary *event,TNReply *out){return DecodeReply(event,out,NULL);}
 static void Clip(char *out,NSUInteger cap,id value){
  if(![value isKindOfClass:NSString.class])return;NSMutableString *s=[NSMutableString new];
  [value enumerateSubstringsInRange:NSMakeRange(0,[value length]) options:NSStringEnumerationByComposedCharacterSequences usingBlock:^(NSString *c,NSRange r,NSRange all,BOOL *stop){
@@ -79,25 +85,43 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
 @implementation TNVSession{
  NSString *_device,*_task,*_nativeTask,*_note;uint32_t _sid,_seq;NSTimeInterval(^_clock)(void);void(^_sender)(NSData *,NSString *,TNVSubmitted);void(^_cleanup)(NSString *);
  NSData *_packet,*_latest,*_committed,*_sending;NSMutableArray *_early;BOOL _active,_fileBusy,_ack,_submitted,_failed,_stopping,_always;
+ NSData *_mapLatest,*_map2Latest,*_mapCommitted,*_mapSending,*_poseLatest,*_poseCommitted;NSTimeInterval _poseAt,_lastPose;NSUInteger _maps,_poses;BOOL _extended,_probed,_mapV2;
+ NSString *_source;NSUInteger _wireBytes;
  NSTimeInterval _deadline,_lastOffer,_lastCommit,_lastWire,_next;NSUInteger _count;unsigned _op;
 }
 - (instancetype)initWithDevice:(NSString *)device session:(uint32_t)sid clock:(NSTimeInterval(^)(void))clock sender:(void(^)(NSData *,NSString *,TNVSubmitted))sender cleanup:(void(^)(NSString *))cleanup{if(!device.length||!sid||!clock||!sender)return nil;if((self=[super init])){_device=[device copy];_sid=sid;_clock=[clock copy];_sender=[sender copy];_cleanup=[cleanup copy];_note=@"尚未开始";}return self;}
 - (BOOL)active{return _active;}- (BOOL)busy{return _packet||_fileBusy;}
-- (NSDictionary *)status{return @{@"active":@(_active),@"busy":@(self.busy),@"note":_note?:@"",@"snapshots":@(_count),@"session":@(_sid),@"sequence":@(_seq),@"always":@(_always),@"failed":@(_failed)};}
+- (NSDictionary *)status{return @{@"active":@(_active),@"busy":@(self.busy),@"note":_note?:@"",@"snapshots":@(_count),@"session":@(_sid),@"sequence":@(_seq),@"always":@(_always),@"failed":@(_failed),@"maps":@(_maps),@"poses":@(_poses),@"mapBytes":@(_mapV2?_map2Latest.length:_mapLatest.length),@"mapPaths":@(_mapLatest.length>=16?U16((const uint8_t *)_mapLatest.bytes+6):0),@"mapLabels":@(_map2Latest.length>=16?U16((const uint8_t *)_map2Latest.bytes+10):0),@"mapMode":@(_extended),@"roadLabels":@(_mapV2),@"source":_source?:@"unknown",@"wireBytes":@(_wireBytes)};}
 - (void)fail:(NSString *)note{_active=NO;_failed=YES;_packet=nil;_fileBusy=NO;_note=note;/* file ownership at the transport stays with the abandoned transport; unlatching busy lets a fresh TNVStart session retry */}
-- (void)finish{if(!_packet||!_ack||_fileBusy||!_submitted)return;unsigned op=_op;_packet=nil;_nativeTask=nil;_early=nil;if(_cleanup)_cleanup(_task);_task=nil;_next=_clock()+1;
- if(op==TN_START||op==TN_UPDATE){_committed=_sending;_lastCommit=_clock();_count++;}_sending=nil;
+- (void)finish{if(!_packet||!_ack||_fileBusy||!_submitted)return;unsigned op=_op;_packet=nil;_nativeTask=nil;_early=nil;if(_cleanup)_cleanup(_task);_task=nil;_next=_clock()+(_extended?0:1);
+ if(op==TN_START||op==TN_UPDATE){_committed=_sending;_lastCommit=_clock();_count++;}
+ if(op==TNR_SCENE){_mapCommitted=_sending;_poseCommitted=nil;_maps++;}
+ if(op==TNR_SCENE2){_mapCommitted=_mapSending;_mapSending=nil;_poseCommitted=[_sending subdataWithRange:NSMakeRange(_sending.length-12,12)];_lastPose=_clock();_maps++;_poses++;}
+ if(op==TN_QUERY)_probed=YES;
+ if(op==TNR_POSE){_poseCommitted=_sending;_lastPose=_clock();_poses++;}
+ if(op==TNR_CLEAR){_mapCommitted=nil;_poseCommitted=nil;}
+ _sending=nil;
  if(op==TN_STOP){_active=NO;_stopping=NO;_note=@"眼镜已确认退出导航";}else _note=@"原生导航已提交 · 镜片效果待确认";
 }
 - (BOOL)send:(enum TNOp)op scene:(NSData *)scene{
- if(self.busy||_failed||_seq==UINT32_MAX)return NO;uint8_t b[512];size_t n=tn_encode(b,sizeof b,op,_sid,++_seq,scene?(const TNScene *)scene.bytes:NULL);if(!n)return NO;
- _packet=[NSData dataWithBytes:b length:n];_task=NSUUID.UUID.UUIDString;_nativeTask=nil;_early=[NSMutableArray new];_ack=_submitted=NO;_fileBusy=YES;_op=op;_sending=scene;_lastWire=_clock();_deadline=_lastWire+8;NSString *task=_task;
+ if(self.busy||_failed||_seq==UINT32_MAX)return NO;uint8_t b[TNR_MAX_BYTES];size_t n=op>=TNR_SCENE?tnr_wrap(b,sizeof b,op,_sid,++_seq,scene.bytes,scene.length):tn_encode(b,sizeof b,op,_sid,++_seq,scene?(const TNScene *)scene.bytes:NULL);if(!n)return NO;
+ _packet=[NSData dataWithBytes:b length:n];_wireBytes+=n;_task=NSUUID.UUID.UUIDString;_nativeTask=nil;_early=[NSMutableArray new];_ack=_submitted=NO;_fileBusy=YES;_op=op;_sending=scene;_lastWire=_clock();_deadline=_lastWire+(op==TNR_POSE?3:8);NSString *task=_task;
  __weak typeof(self) weak=self;_sender(_packet,task,^(BOOL ok,NSString *native){TNVSession *s=weak;if(!s||![task isEqual:s->_task])return;
   if(!ok||![native isKindOfClass:NSString.class]||!native.length||native.length>256){s->_fileBusy=NO;[s fail:@"文件提交失败；停止导航发送"];return;}
   s->_submitted=YES;s->_nativeTask=[native copy];NSArray *early=[s->_early copy];s->_early=nil;for(NSDictionary *e in early)[s consume:e];[s finish];});return YES;
 }
-- (BOOL)start:(NSDictionary *)frame always:(BOOL)always{if(_seq||_active||self.busy||_failed)return NO;TNScene s;if(!TNVScene(frame,always,&s))return NO;_always=always;_latest=[NSData dataWithBytes:&s length:sizeof s];_lastOffer=_clock();_active=YES;_note=@"正在请求自动打开原生导航";if(![self send:TN_START scene:_latest]){_active=NO;return NO;}return YES;}
-- (void)offer:(NSDictionary *)frame{if(!_active||_stopping)return;TNScene s;if(!TNVScene(frame,_always,&s)){/* Only terminal phases stop the session; transient non-navigating frames (planning/reroute transitions) must not kill a live render. */if([frame[@"phase"] isEqual:@"arrived"]||[frame[@"phase"] isEqual:@"stopped"])[self stop];return;}_latest=[NSData dataWithBytes:&s length:sizeof s];_lastOffer=_clock();}
+- (void)mapOffer:(NSDictionary *)frame{
+ // Transient frames (planning/reroute) carry no tnr keys by design; keep the
+ // last committed map instead of tearing it down on every reroute blip.
+ if(![frame isKindOfClass:NSDictionary.class]||![frame[@"phase"] isEqual:@"navigating"])return;
+ NSData *map=frame[@"tnrScene"],*pose=frame[@"tnrPose"];id at=frame[@"tnrPoseAt"];
+ BOOL valid=[map isKindOfClass:NSData.class]&&[pose isKindOfClass:NSData.class]&&[at isKindOfClass:NSNumber.class]&&isfinite([at doubleValue])&&[at doubleValue]<=_clock()&&_clock()-[at doubleValue]<=4&&tnr_body_valid(TNR_SCENE,map.bytes,map.length)&&tnr_body_valid(TNR_POSE,pose.bytes,pose.length)&&U32(map.bytes)==U32(pose.bytes);
+ if(!valid){_mapLatest=nil;_map2Latest=nil;_poseLatest=nil;return;}
+ NSData *v2=frame[@"tnrScene2"];_map2Latest=[v2 isKindOfClass:NSData.class]&&tnr_body_valid(TNR_SCENE2,v2.bytes,v2.length)&&U32(v2.bytes)==U32(map.bytes)?[v2 copy]:nil;
+ _extended=YES;_mapLatest=[map copy];_poseLatest=[pose copy];_poseAt=[at doubleValue];
+}
+- (BOOL)start:(NSDictionary *)frame always:(BOOL)always{if(_seq||_active||self.busy||_failed)return NO;TNScene s;if(!TNVScene(frame,always,&s))return NO;[self mapOffer:frame];_source=[frame[@"tnrSource"] isKindOfClass:NSString.class]?frame[@"tnrSource"]:@"unknown";_always=always;_latest=[NSData dataWithBytes:&s length:sizeof s];_lastOffer=_clock();_active=YES;_note=@"正在请求自动打开原生导航";if(![self send:TN_START scene:_latest]){_active=NO;return NO;}return YES;}
+- (void)offer:(NSDictionary *)frame{if(!_active||_stopping)return;[self mapOffer:frame];TNScene s;if(!TNVScene(frame,_always,&s)){/* Only terminal phases stop the session; transient non-navigating frames (planning/reroute transitions) must not kill a live render. */if([frame[@"phase"] isEqual:@"arrived"]||[frame[@"phase"] isEqual:@"stopped"])[self stop];return;}_latest=[NSData dataWithBytes:&s length:sizeof s];_lastOffer=_clock();}
 - (void)setAlways:(BOOL)always{_always=always;if(_latest){NSMutableData *d=[_latest mutableCopy];((TNScene *)d.mutableBytes)->mode=always?TN_ALWAYS:TN_SMART;_latest=d;}}
 - (void)stop{if(!_active)return;_stopping=YES;_note=@"等待在途包结束后退出导航";[self pump];}
 - (void)disconnect{[self fail:@"连接中断；已停止。眼镜按60秒策略退出常亮，请查看手机。"];}
@@ -105,7 +129,26 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
  if(_packet&&_clock()>=_deadline){[self fail:@"导航协议超时；停止发送，请确认已刷TNV1固件并用实体键退出旧画面。"];return;}
  if(!_active||self.busy||_clock()<_next)return;
  if(_stopping){[self send:TN_STOP scene:nil];return;}
- if(_clock()-_lastOffer<=15&&(![_latest isEqual:_committed]||_clock()-_lastCommit>=10)){[self send:TN_UPDATE scene:_latest];return;}
+ if(_extended&&!_probed){[self send:TN_QUERY scene:nil];return;}
+ // One in-flight file, one latest geometry and one latest pose. Never replay old locations.
+ NSTimeInterval now=_clock();
+ if(_extended&&_mapV2&&_mapCommitted&&!_mapLatest){[self send:(enum TNOp)TNR_CLEAR scene:nil];return;}
+ BOOL fresh=now-_lastOffer<=15;
+ BOOL changed=![_latest isEqual:_committed],urgent=NO;
+ if(_latest&&_committed){const TNScene *a=_latest.bytes,*b=_committed.bytes;urgent=a->icon!=b->icon||a->mode!=b->mode||strcmp(a->road,b->road)||strcmp(a->turn,b->turn);}
+ if(fresh&&(urgent||now-_lastCommit>=10||(changed&&now-_lastCommit>=1))){[self send:TN_UPDATE scene:_latest];return;}
+ if(_extended&&_mapV2&&fresh&&_poseLatest&&now-_poseAt<=4&&now>=_poseAt){
+  NSData *map=_mapV2&&_map2Latest?_map2Latest:_mapLatest;
+  if(map&&![map isEqual:_mapCommitted]){
+   if(_mapV2&&_map2Latest){NSMutableData *combined=[map mutableCopy];uint8_t *p=(uint8_t *)combined.mutableBytes+combined.length-12;memcpy(p,_poseLatest.bytes,12);unsigned age=(unsigned)((now-_poseAt)*1000);p[10]=age;p[11]=age>>8;_mapSending=map;[self send:(enum TNOp)TNR_SCENE2 scene:combined];}
+   else [self send:(enum TNOp)TNR_SCENE scene:map];return;
+  }
+  if(_mapCommitted&&now-_lastPose>=0.2){
+   NSMutableData *pose=[_poseLatest mutableCopy];uint8_t *p=pose.mutableBytes;unsigned age=(unsigned)((now-_poseAt)*1000);p[10]=age;p[11]=age>>8;
+   if(!_poseCommitted||memcmp(_poseLatest.bytes,_poseCommitted.bytes,10)||now-_lastPose>=1){[self send:(enum TNOp)TNR_POSE scene:pose];return;}
+  }
+ }
+ if(!_extended&&fresh&&changed){[self send:TN_UPDATE scene:_latest];return;}
  if(_clock()-_lastWire>=10)[self send:TN_HEARTBEAT scene:nil];
 }
 - (BOOL)consume:(NSDictionary *)e{
@@ -118,10 +161,11 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
   if(![tid isEqual:_nativeTask])return NO;_fileBusy=NO;
   if([type isEqual:@"fileShareFailed"])[self fail:@"导航文件传输失败，未继续发送"];else [self finish];return YES;
  }
- TNReply q;if(!TNVDecodeReply(e,&q))return NO;if(![e[@"message"][@"deviceId"] isEqual:_device])return NO;
+ TNReply q;uint32_t caps=0;if(!DecodeReply(e,&q,&caps))return NO;if(![e[@"message"][@"deviceId"] isEqual:_device])return NO;
  if(!_packet||q.sid!=_sid||q.sequence!=_seq)return YES;
  if(_clock()>=_deadline){[self fail:@"收到迟到回执，未恢复发送"];return YES;}
  if(q.result!=TN_OK||(_op!=TN_STOP&&!q.active)){[self fail:[NSString stringWithFormat:@"眼镜拒绝导航（%u）；先退出其他任务后重新开启",q.result]];return YES;}
+ if(_op==TN_QUERY)_mapV2=!!(caps&1);
  _ack=YES;[self finish];return YES;
 }
 @end
