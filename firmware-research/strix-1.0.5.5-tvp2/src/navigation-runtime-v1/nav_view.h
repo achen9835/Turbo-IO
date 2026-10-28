@@ -16,9 +16,8 @@ typedef struct {
  void (*visible)(void *,void *,bool);
  void (*destroy)(void *,void *);
 } TNWidgets;
-/* 2026-10-28 map-primary layout: turn glyph halved to 64x64, the vector map
- * owns the right side at the full TNR canvas size, the traffic-bar panel is
- * gone (congestion now tints the on-map route; see nav_view.c). */
+/* Map-primary layout: a 64x64 turn glyph and three text levels share the left
+ * rail; the full TNR canvas stays on the right and congestion rides the route. */
 #define TN_ICON_W 64u
 #define TN_ICON_H 64u
 #define TN_MAP_W TNR_W

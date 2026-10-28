@@ -73,14 +73,15 @@ static void fuzz(void){
  }
 }
 static void metrics_tests(void){
- TNScene s=scene();TNVisual v;assert(tn_visual(&s,false,&v));assert(!strcmp(v.summary,"剩余 1.2 km / 8min"));
- s.remaining_s=3661;s.remaining_m=10000000;assert(tn_visual(&s,false,&v));assert(!strcmp(v.summary,"剩余 10000.0 km / 1h 2min"));
+ TNScene s=scene();TNVisual v;assert(tn_visual(&s,false,&v));assert(!strcmp(v.summary,"剩余 1.2 km · 8min"));
+ s.remaining_s=3661;s.remaining_m=10000000;assert(tn_visual(&s,false,&v));assert(!strcmp(v.summary,"剩余 10000.0 km · 1h 2min"));
  s.remaining_s=604800;assert(tn_visual(&s,false,&v));assert(strlen(v.summary)<sizeof v.summary);
+ strcpy(s.road,"进入 深南大道与非常长名称测试道路");assert(tn_visual(&s,false,&v));assert(strstr(v.road,"...")&&strlen(v.road)<sizeof s.road);
  struct {char text[64];char canary;} guarded={.canary='X'};int64_t midnight=946684800;
  tn_clock_text(guarded.text,midnight+23*3600+59*60,midnight+86460,false);assert(strstr(guarded.text,"23:59")&&strstr(guarded.text,"明日 预计 00:01"));
  tn_clock_text(guarded.text,midnight,midnight+604800,false);assert(strstr(guarded.text,"7天后"));
  tn_clock_text(guarded.text,0,0,false);assert(strstr(guarded.text,"--:--"));
- tn_clock_text(guarded.text,midnight,midnight-1,false);assert(strstr(guarded.text,"当前 00:00")&&strstr(guarded.text,"待更新"));
+ tn_clock_text(guarded.text,midnight,midnight-1,false);assert(strstr(guarded.text,"00:00")&&strstr(guarded.text,"待更新")&&!strstr(guarded.text,"当前"));
  tn_clock_text(guarded.text,midnight,midnight+604801,false);assert(strstr(guarded.text,"待更新"));
  tn_clock_text(guarded.text,INT64_MAX,INT64_MAX,false);assert(strstr(guarded.text,"--:--"));
  tn_clock_text(guarded.text,midnight,midnight+120,true);assert(strstr(guarded.text,"过期"));assert(guarded.canary=='X');

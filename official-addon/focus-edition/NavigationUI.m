@@ -682,10 +682,19 @@ static NSMutableArray *TIONavAheadCoords(NSArray<AMapNaviSegment *> *segments,NS
 // first route event. All sources are standard AMap representable callbacks and
 // every refresh goes through setFrame, so stale values survive only until the
 // next push and a reroute clears them outright.
-- (NSArray<NSNumber *> *)levelsFromTrafficStatus:(NSArray<AMapNaviTrafficStatus *> *)status{NSMutableArray *levels=[NSMutableArray new];
- for(AMapNaviTrafficStatus *t in status){if(levels.count>=24)break; /* TN_BAR_MAX：多出的段截断，不得拒帧 */NSInteger v=0;
-  switch(t.status){case AMapNaviRouteStatusSmooth:case AMapNaviRouteStatusFineOpen:v=1;break;case AMapNaviRouteStatusSlow:v=2;break;case AMapNaviRouteStatusJam:v=3;break;case AMapNaviRouteStatusSeriousJam:v=4;break;default:break;}
-  [levels addObject:@(v)];}return levels;}
+- (NSArray<NSNumber *> *)levelsFromTrafficStatus:(NSArray<AMapNaviTrafficStatus *> *)status{
+ double coverage[24]={0},at=0;NSInteger best[24]={0};BOOL any=NO;
+ for(AMapNaviTrafficStatus *t in status){
+  NSInteger length=t.length;if(length<=0)continue;any=YES;NSInteger level=0;
+  switch(t.status){case AMapNaviRouteStatusSmooth:case AMapNaviRouteStatusFineOpen:level=1;break;case AMapNaviRouteStatusSlow:level=2;break;case AMapNaviRouteStatusJam:level=3;break;case AMapNaviRouteStatusSeriousJam:level=4;break;default:break;}
+  double end=MIN(900,at+length);
+  while(at<end){unsigned bucket=(unsigned)(at*24/900);double edge=(bucket+1)*900.0/24,next=MIN(end,edge),span=next-at;
+   if(level>0&&(span>coverage[bucket]||(span==coverage[bucket]&&level>best[bucket]))){coverage[bucket]=span;best[bucket]=level;}at=next;
+  }
+  if(at>=900)break;
+ }
+ if(!any)return @[];NSMutableArray *levels=[NSMutableArray arrayWithCapacity:24];for(unsigned i=0;i<24;i++)[levels addObject:@(best[i])];return levels;
+}
 - (void)clearSceneExtensionState{self.trafficBarLevels=nil;self.cameraKind=0;self.cameraLimit=-1;self.cameraMeters=65535;self.eventKind=0;self.eventMeters=65535;self.lightMeters=65535;}
 // TNV is a full-scene replace: extension keys must ride EVERY navigating frame,
 // otherwise the 1 Hz naviInfo frame wipes the bar/alert lines between callbacks.

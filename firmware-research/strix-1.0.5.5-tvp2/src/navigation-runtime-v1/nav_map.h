@@ -28,7 +28,9 @@ typedef struct {
 bool tnr_body_valid(unsigned op,const uint8_t *,size_t);
 bool tnr_receive(TNRState *,unsigned op,const uint8_t *,size_t,uint32_t now);
 bool tnr_position(const TNRState *,uint32_t now,TNRPose *);
-TNRPoint tnr_ahead(const TNRState *,const TNRPose *,unsigned metres); /* heading ray projection for the marker overlay */
+TNRPoint tnr_ahead(const TNRState *,const TNRPose *,unsigned metres); /* heading-ray fallback */
+TNRPoint tnr_route_ahead(const TNRState *,const TNRPose *,unsigned metres); /* route-arc marker projection */
+int32_t tnr_route_base_qm(const TNRState *,const TNRPose *,const TNRPath *); /* signed arc offset to path start */
 TNRPoint tnr_project(const TNRState *,const TNRPose *,TNRPoint); /* scene-space -> canvas, for the congestion route tint */
 bool tnr_stale(const TNRState *,uint32_t now);
 bool tnr_needs_draw(const TNRState *,uint32_t now);

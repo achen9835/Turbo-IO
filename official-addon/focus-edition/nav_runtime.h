@@ -37,7 +37,8 @@ typedef struct {
   * u8 event_kind, i16 camera_limit, u16 camera_m, u16 event_m, u8 bar[24],
   * u16 lights_m (nearest-light distance; formerly 2 reserved zero bytes).
   * Absent tail means: lights=255, camera_limit=-1, camera_m/event_m/lights_m
-  * =65535, no bar/camera/event. Bar levels 0 none..4 severe. */
+  * =65535, no bar/camera/event. Bar levels 0 none..4 severe, weighted over
+  * the next 900m in 24 buckets to match route-ahead geometry. */
  uint8_t bar_count;uint8_t bar[TN_BAR_MAX];
  uint8_t lights,camera_kind,event_kind;
  int16_t camera_limit;uint16_t camera_m,event_m,lights_m;

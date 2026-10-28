@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "codeName": "TAP2-2026-10",
-  "displayName": "TAP2：地图为主 v6（画布裁剪修复=路网满幅/路口三趟绘制/3px虚线/拥堵细分取档）· Strix 1.0.5.5 · 2026-10",
+  "displayName": "TAP2 v7：路线弧线标记/测速环带限速/900m 拥堵桶/标签避让路线/距离32px（用户改版+分支重编码）· Strix 1.0.5.5 · 2026-10",
   "confirmToken": "TAP2",
   "baseVersion": "Strix OS 1.0.5.5",
   "upgradeFrom": [
@@ -9,28 +9,28 @@
     "Strix OS 1.0.5.5"
   ],
   "zip": {
-    "size": 8865072,
-    "sha256": "8abfc91fc51ea10c7d9779e2753db9439c8e302e6acaad4e7a0c759838151b89"
+    "size": 8866877,
+    "sha256": "398851756eecf218986c425370d0619ace5e97c5779689dfaf4715838582c709"
   },
-  "otaSize": 8865072,
+  "otaSize": 8866877,
   "ap": {
     "name": "nuttx_ap.bin",
-    "size": 7439688,
-    "sha256": "27488508283c01e5723fb2a605e896272c44af8cd5471356e665dc4e83d9bb6d",
-    "md5": "4e82f74ba9e5c637fcbdee5c4a5bd7b6"
+    "size": 7441928,
+    "sha256": "dc9381fe29b46ae0f06e6de514b6947c0448aff7d1bb44012dc2f25cddbd3b9d",
+    "md5": "274bcb2fb0478c8944c814be5580f33a"
   },
   "apBudgetBytes": 9600000,
   "manifest": {
     "name": "OtaFileInfo.json",
     "size": 2700,
-    "sha256": "f57bd458775801b4efd09ff65d0513ab134c14239673c1e912e390a9ecc285e5"
+    "sha256": "636d4089b4ac4658c15927ecef7f5448cd99159360b22408a54d07e483a76c59"
   },
   "stockAPSHA256": "b3d6d9d7a4ece97e1dbaa64fc080eb5db8a5f7c9fecf340888ebb97a9112cc6c",
   "payloadPins": [
     {
       "name": "OtaFileInfo.json",
       "size": 2700,
-      "sha256": "f57bd458775801b4efd09ff65d0513ab134c14239673c1e912e390a9ecc285e5"
+      "sha256": "636d4089b4ac4658c15927ecef7f5448cd99159360b22408a54d07e483a76c59"
     },
     {
       "name": "bt_controller.bin",
@@ -59,8 +59,8 @@
     },
     {
       "name": "nuttx_ap.bin",
-      "size": 7439688,
-      "sha256": "27488508283c01e5723fb2a605e896272c44af8cd5471356e665dc4e83d9bb6d"
+      "size": 7441928,
+      "sha256": "dc9381fe29b46ae0f06e6de514b6947c0448aff7d1bb44012dc2f25cddbd3b9d"
     },
     {
       "name": "nuttx_apc1.bin",

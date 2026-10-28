@@ -24,7 +24,8 @@ typedef struct { uint16_t x,y; } TNPoint; /* normalized 0..1023, not GPS coordin
 /* HUD extension tail (Turbo IO, carried over from the TNV1 1.0.4.12 line):
  * appended after the route points only when the phone has HUD data; an absent
  * tail decodes as a plain legacy scene, so stock NAVS3/TNR3 phones are
- * unaffected. Bar levels 0 none..4 severe. */
+ * unaffected. Bar levels 0 none..4 severe, distance-weighted over the next
+ * 900m in 24 buckets to match the phone's route-ahead geometry. */
 #define TN_BAR_MAX 24u
 #define TN_SCENE_EXT 36u
 #define TN_SCENE_EXT2 53u /* + u8 light_count, u16 light_m[8]: per-light distances */

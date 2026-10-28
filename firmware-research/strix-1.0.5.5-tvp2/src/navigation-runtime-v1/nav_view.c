@@ -43,15 +43,14 @@ static unsigned dist3x5(char out[6],unsigned m){
   while(n)*p++=tmp[--n];*p++='k';*p++='m';}
  *p=0;return (unsigned)(p-out);
 }
-/* Vector-map overlay (Turbo IO): the camera, the road event and the traffic
- * lights ride the heading-up TNR map as compact glyphs on the straight-ahead
- * ray, each carrying its 3x5 distance label. TNV1 carries distances, not
- * bearings, so the heading ray is the honest placement. Labels keep clear of
- * each other, the vehicle triangle and the bottom-left scale block; markers
- * beyond the scene viewport drop off the top like real geography would. */
+/* Camera, event and light distances follow the highlighted route. Labels yield
+ * to existing road names, earlier alerts, the vehicle and the scale block. */
 static bool label_clash(int x0,int y0,int x1,int y1,const int taken[][4],unsigned n){
  for(unsigned i=0;i<n;i++)if(x0<=taken[i][2]&&x1>=taken[i][0]&&y0<=taken[i][3]&&y1>=taken[i][1])return true;
  return false;
+}
+static unsigned small_uint(char out[4],unsigned v){
+ char tmp[3];unsigned n=0,i=0;do{tmp[n++]=(char)('0'+v%10);v/=10;}while(v&&n<3);while(n)out[i++]=tmp[--n];return i;
 }
 static void map_markers(TNViewFrame *f,const TNRState *s,uint32_t now){
  TNRPose p;if(!s||!tnr_position(s,now,&p))return;
@@ -61,41 +60,41 @@ static void map_markers(TNViewFrame *f,const TNRState *s,uint32_t now){
  if(f->visual.event_kind&&f->visual.event_m!=65535){mk[n].m=f->visual.event_m;mk[n].limit=0;mk[n].kind='e';n++;}
  if(!f->visual.light_count&&f->visual.lights!=255&&f->visual.lights_m!=65535){mk[n].m=f->visual.lights_m;mk[n].limit=0;mk[n].kind='l';n++;}
  for(unsigned i=0;i<f->visual.light_count&&n<10;i++){mk[n].m=f->visual.light_m[i];mk[n].limit=0;mk[n].kind='l';n++;}
- int taken[10][4];unsigned nt=0;
+ int taken[24][4];unsigned nt=0;TNRLabelView names[TNR_MAX_LABELS];unsigned names_n=tnr_labels(s,now,names);
+ for(unsigned i=0;i<names_n;i++){taken[nt][0]=names[i].x;taken[nt][1]=names[i].y;taken[nt][2]=names[i].x+names[i].width;taken[nt][3]=names[i].y+20;nt++;}
  for(unsigned i=0;i<n;i++){
-  if(mk[i].m>700u)continue; /* beyond the scene viewport */
-  TNRPoint q=tnr_ahead(s,&p,mk[i].m);
-  if(mk[i].kind=='c'){ /* camera: ring + centre dot */
-   ring(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,3,mg);pixel(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,0,mg);
-  }else if(mk[i].kind=='e'){ /* event: triangle over its base */
+  if(mk[i].m>700u)continue;
+  TNRPoint q=tnr_route_ahead(s,&p,mk[i].m);int radius=3;
+  if(mk[i].kind=='c'){
+   if(mk[i].limit>0){char number[4];unsigned digits=small_uint(number,(unsigned)mk[i].limit);radius=mk[i].limit>=100?8:7;
+    for(int yy=-radius+1;yy<radius;yy++)for(int xx=-radius+1;xx<radius;xx++)if(xx*xx+yy*yy<(radius-1)*(radius-1))pixel(f->map,TN_MAP_W,TN_MAP_H,q.x+xx,q.y+yy,0,0);
+    ring(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,radius,mg);text3x5_at(f->map,TN_MAP_W,TN_MAP_H,q.x-(int)(digits*4-1)/2,q.y-2,number,digits,mg);}
+   else{ring(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,3,mg);pixel(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,0,mg);}
+  }else if(mk[i].kind=='e'){
    line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x,q.y-4},(TNXY){q.x-4,q.y+3},0,mg);
    line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x,q.y-4},(TNXY){q.x+4,q.y+3},0,mg);
    line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-4,q.y+3},(TNXY){q.x+4,q.y+3},0,mg);
    pixel(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,0,mg);
-  }else{ /* light: 3-wide lamp housing, three lit tiers */
+  }else{
    line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-1,q.y-4},(TNXY){q.x+1,q.y-4},0,mg);
    line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-2,q.y-3},(TNXY){q.x-2,q.y+2},0,mg);
    line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+2,q.y-3},(TNXY){q.x+2,q.y+2},0,mg);
    line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-1,q.y+3},(TNXY){q.x+1,q.y+3},0,mg);
    pixel(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y-2,0,mg);pixel(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,0,(uint8_t)(mg*2/3));pixel(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y+2,0,(uint8_t)(mg/3));
   }
-  char d[6];unsigned dn=dist3x5(d,mk[i].m);
-  int lx=q.x+5,ly=q.y-2;
-  if(q.x>=136&&q.x<=160&&q.y>=82&&q.y<=111)ly=q.y-11; /* clear of the vehicle triangle */
-  if(lx<0||(lx+(int)dn*4-1)>(int)TN_MAP_W-1||ly<2||(ly+4)>(int)TN_MAP_H-2)continue;
-  if(lx<73&&ly+4>116)continue; /* scale block owns the bottom-left corner */
-  if(label_clash(lx,ly,lx+(int)dn*4-1,ly+4,taken,nt))continue;
-  taken[nt][0]=lx;taken[nt][1]=ly;taken[nt][2]=lx+(int)dn*4-1;taken[nt][3]=ly+4;nt++;
-  text3x5_at(f->map,TN_MAP_W,TN_MAP_H,lx,ly,d,dn,stale?85:200);
+  char d[6];unsigned dn=dist3x5(d,mk[i].m);int gap=radius>3?radius+2:5,lx=q.x+gap,ly=q.y-2;
+  if(q.x>=136&&q.x<=160&&q.y>=82&&q.y<=111)ly=q.y-13;
+  if(lx+(int)dn*4-1>(int)TN_MAP_W-1)lx=q.x-gap-(int)dn*4+1;
+  bool valid=lx>=0&&lx+(int)dn*4-1<(int)TN_MAP_W&&ly>=2&&ly+4<(int)TN_MAP_H-1&&!(lx<73&&ly+4>116);
+  if(valid&&!label_clash(lx,ly,lx+(int)dn*4-1,ly+4,taken,nt)){
+   taken[nt][0]=lx;taken[nt][1]=ly;taken[nt][2]=lx+(int)dn*4-1;taken[nt][3]=ly+4;nt++;text3x5_at(f->map,TN_MAP_W,TN_MAP_H,lx,ly,d,dn,stale?85:200);
+  }
+  taken[nt][0]=q.x-radius-1;taken[nt][1]=q.y-radius-1;taken[nt][2]=q.x+radius+1;taken[nt][3]=q.y+radius+1;nt++;
  }
 }
-/* Congestion tint (2026-10-28 map-primary layout): the removed traffic-bar
- * panel's 24 5-km buckets now shade the on-map route itself. Straight-line
- * distance from the vehicle picks the bucket -- along-route distance differs
- * only on curves, and a glanceable tint needs no turn-accurate accounting.
- * 2026-10-28 亮度反馈: gray alone compresses on dim panel settings, so jams
- * additionally carry a dash pattern (long dash = slow, short dash = jam) --
- * the pattern survives brightness compression the gray steps cannot. */
+/* Traffic levels use cumulative distance along the highlighted route, not
+ * straight-line distance from the vehicle. A dim continuous guide preserves
+ * route geometry between severity-specific dash patterns. */
 static void dash_line(TNViewFrame *f,TNXY a,TNXY b,unsigned on,unsigned off,uint8_t gray){
  int dx=b.x-a.x,dy=b.y-a.y,total=mag(dx)>mag(dy)?mag(dx):mag(dy);
  if(total<=0){line(f->map,TN_MAP_W,TN_MAP_H,a,b,1,gray);return;}
@@ -109,30 +108,23 @@ static void dash_line(TNViewFrame *f,TNXY a,TNXY b,unsigned on,unsigned off,uint
 static void map_congestion(TNViewFrame *f,const TNRState *s,uint32_t now){
  if(!f->visual.bar_count)return;
  TNRPose p;if(!tnr_position(s,now,&p))return;
- const TNRScene *d=&s->scenes[s->bank];
- static const uint8_t tint[5]={0,0,190,150,150};
+ const TNRScene *d=&s->scenes[s->bank];bool stale=tnr_stale(s,now);
+ static const uint8_t tint[5]={0,0,205,175,150};
  for(unsigned i=0;i<d->path_count;i++){
-  const TNRPath *r=&d->paths[i];if(r->style!=6)continue;
+  const TNRPath *r=&d->paths[i];if(r->style!=6)continue;int32_t base=tnr_route_base_qm(s,&p,r);unsigned walked=0;
   for(unsigned j=1;j<r->count;j++){
-   TNRPoint a=d->points[r->first+j-1],b=d->points[r->first+j];
-   /* 长路段按 ~40 m 细分取档：一整条简化后的长直道只取一个中点档会把
-    * 数百米抹成同一颜色，细分后档位沿路线渐变。 */
-   int span_qm=mag(b.x-a.x)+mag(b.y-a.y);
-   unsigned steps=(unsigned)((span_qm+159u)/160u);if(steps<1u)steps=1u;if(steps>64u)steps=64u;
+   TNRPoint a=d->points[r->first+j-1],b=d->points[r->first+j];int dx=b.x-a.x,dy=b.y-a.y,mx=mag(dx),my=mag(dy);unsigned len=(unsigned)((mx>my?mx:my)+((mx>my?my:mx)>>1));
+   unsigned steps=(len+79u)/80u;if(steps<1u)steps=1u;if(steps>64u)steps=64u;
    for(unsigned k=0;k<steps;k++){
-    TNRPoint p1={(int16_t)(a.x+(b.x-a.x)*(int)k/(int)steps),(int16_t)(a.y+(b.y-a.y)*(int)k/(int)steps)};
-    TNRPoint p2={(int16_t)(a.x+(b.x-a.x)*(int)(k+1)/(int)steps),(int16_t)(a.y+(b.y-a.y)*(int)(k+1)/(int)steps)};
-    int mx=mag((p1.x+p2.x)/2-p.p.x),my=mag((p1.y+p2.y)/2-p.p.y);
-    int dist_qm=(mx>my?mx:my)+((mx>my?my:mx)>>1); /* 八向距离近似：横平竖直段比曼哈顿准 */
-    unsigned metres=(unsigned)(dist_qm>>2);
-    unsigned bucket=metres/(5000u/TN_BAR_MAX);if(bucket>=TN_BAR_MAX)bucket=TN_BAR_MAX-1;
-    unsigned lv=bucket<f->visual.bar_count?f->visual.bar[bucket]:0;
-    if(lv>4)lv=0;
-    if(!tint[lv])continue; /* unknown / smooth keep the bright route */
-    TNXY pa=xy(tnr_project(s,&p,p1)),pb=xy(tnr_project(s,&p,p2));
-    if(lv==2)line(f->map,TN_MAP_W,TN_MAP_H,pa,pb,1,tint[lv]);
-    else dash_line(f,pa,pb,lv==3?10:5,4,tint[lv]); /* slow: long dash, jam: short dash; radius 1 = 3px, matches the route width */
+    TNRPoint p1={(int16_t)(a.x+dx*(int)k/(int)steps),(int16_t)(a.y+dy*(int)k/(int)steps)};
+    TNRPoint p2={(int16_t)(a.x+dx*(int)(k+1)/(int)steps),(int16_t)(a.y+dy*(int)(k+1)/(int)steps)};
+    int32_t along=base+(int32_t)walked+(int32_t)(len*(2*k+1)/(2*steps));if(along<0)continue;unsigned metres=(unsigned)along>>2;if(metres>=900)continue;
+    unsigned bucket=metres*TN_BAR_MAX/900u,lv=bucket<f->visual.bar_count?f->visual.bar[bucket]:0;if(lv>4)lv=0;if(!tint[lv])continue;
+    TNXY pa=xy(tnr_project(s,&p,p1)),pb=xy(tnr_project(s,&p,p2));uint8_t gray=stale?tint[lv]/3:tint[lv],guide=stale?30:90;
+    line(f->map,TN_MAP_W,TN_MAP_H,pa,pb,1,guide);
+    if(lv==2)dash_line(f,pa,pb,16,6,gray);else if(lv==3)dash_line(f,pa,pb,8,5,gray);else dash_line(f,pa,pb,4,4,gray);
    }
+   walked+=len;
   }
  }
 }
@@ -191,18 +183,17 @@ bool tn_view_open(TNView *v,const TNWidgets *a,void *parent,const TNScene *s){
  if(!tn_visual(s,false,&v->frames[0].visual))return false;v->api=*a;v->active=0;v->clock_shown=false;
  v->root=a->root(a->ctx,parent);if(!v->root)return false;a->visible(a->ctx,v->root,false);a->place(a->ctx,v->root,0,0,540,180);
  v->icon=a->canvas(a->ctx,v->root);v->map=a->canvas(a->ctx,v->root);
- static const unsigned sizes[]={20,18,16,16,16,16}; /* distance, turn, road, summary, clock, speed */
+ static const unsigned sizes[]={32,20,16,16,16,16}; /* distance, turn, road, summary, clock, speed; 32/20/18/16 are the only sizes proven in the firmware font table */
  for(unsigned i=0;i<6;i++)v->text[i]=a->label(a->ctx,v->root,sizes[i]);
  for(unsigned i=0;i<TNR_MAX_LABELS;i++){v->map_text[i]=a->label(a->ctx,v->root,16);if(!v->map_text[i])goto fail;a->visible(a->ctx,v->map_text[i],false);}
  if(!v->icon||!v->map)goto fail;for(unsigned i=0;i<6;i++)if(!v->text[i])goto fail;
- /* 2026-10-28 map-primary layout: the vector map owns x>=238 at the full TNR
-  * canvas size; the left column is guidance-only (halved 64px glyph, distance
-  * + speed beside it, instruction/road/summary stacked below). */
- a->place(a->ctx,v->icon,12,10,TN_ICON_W,TN_ICON_H);a->place(a->ctx,v->map,238,4,TN_MAP_W,TN_MAP_H);
- a->place(a->ctx,v->text[0],84,12,120,26);a->place(a->ctx,v->text[5],84,40,120,22);
- a->place(a->ctx,v->text[1],12,74,210,24);
- a->place(a->ctx,v->text[2],12,102,210,22);a->place(a->ctx,v->text[3],12,126,210,22);
- a->place(a->ctx,v->text[4],8,154,524,24);
+ /* The 296x148 map keeps its canvas. A 12px left rail and three distinct type
+  * levels put the next manoeuvre first without shrinking the route canvas. */
+ a->place(a->ctx,v->icon,12,12,TN_ICON_W,TN_ICON_H);a->place(a->ctx,v->map,238,4,TN_MAP_W,TN_MAP_H);
+ a->place(a->ctx,v->text[0],84,10,138,34);a->place(a->ctx,v->text[5],86,48,120,20);
+ a->place(a->ctx,v->text[1],12,82,210,24);
+ a->place(a->ctx,v->text[2],12,110,210,20);a->place(a->ctx,v->text[3],12,134,210,18);
+ a->place(a->ctx,v->text[4],12,158,516,18);
  draw(&v->frames[0]);publish(v,&v->frames[0]);v->open=true;a->visible(a->ctx,v->root,true);return true;
  fail:a->destroy(a->ctx,v->root);v->root=v->icon=v->map=NULL;memset(v->text,0,sizeof v->text);return false;
 }

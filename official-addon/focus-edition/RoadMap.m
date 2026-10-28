@@ -36,6 +36,22 @@ static NSData *NameData(id value){
  }];return [s dataUsingEncoding:NSUTF8StringEncoding];
 }
 static unsigned RoadStyle(NSString *h){if([@[@"motorway",@"trunk",@"motorway_link",@"trunk_link"] containsObject:h])return 0;if([h hasPrefix:@"primary"])return 1;if([h hasPrefix:@"secondary"])return 2;if([h hasPrefix:@"tertiary"])return 3;if([@[@"residential",@"unclassified",@"living_street"] containsObject:h])return 4;return 5;}
+static double ROrient(double ax,double ay,double bx,double by,double cx,double cy){return (bx-ax)*(cy-ay)-(by-ay)*(cx-ax);}
+static BOOL RCross(double ax,double ay,double bx,double by,double cx,double cy,double dx,double dy){
+ double p=ROrient(ax,ay,bx,by,cx,cy),q=ROrient(ax,ay,bx,by,dx,dy),r=ROrient(cx,cy,dx,dy,ax,ay),s=ROrient(cx,cy,dx,dy,bx,by);return ((p>0&&q<0)||(p<0&&q>0))&&((r>0&&s<0)||(r<0&&s>0));
+}
+static BOOL RSegmentRect(double ax,double ay,double bx,double by,double left,double top,double right,double bottom){
+ if((ax<left&&bx<left)||(ax>right&&bx>right)||(ay<top&&by<top)||(ay>bottom&&by>bottom))return NO;
+ if((ax>=left&&ax<=right&&ay>=top&&ay<=bottom)||(bx>=left&&bx<=right&&by>=top&&by<=bottom))return YES;
+ return RCross(ax,ay,bx,by,left,top,right,top)||RCross(ax,ay,bx,by,right,top,right,bottom)||RCross(ax,ay,bx,by,right,bottom,left,bottom)||RCross(ax,ay,bx,by,left,bottom,left,top);
+}
+static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,double bottom,double ss,double cc,unsigned range){
+ for(NSArray *part in parts)for(NSUInteger i=1;i<part.count;i++){
+  double ax=[part[i-1][0] doubleValue],ay=[part[i-1][1] doubleValue],bx=[part[i][0] doubleValue],by=[part[i][1] doubleValue];
+  double x0=148+(ax*cc-ay*ss)*296/((double)range*4),y0=103-(ax*ss+ay*cc)*296/((double)range*4),x1=148+(bx*cc-by*ss)*296/((double)range*4),y1=103-(bx*ss+by*cc)*296/((double)range*4);
+  if(RSegmentRect(x0,y0,x1,y1,left,top,right,bottom))return YES;
+ }return NO;
+}
 @implementation TIORoadMap{
  NSArray *(^_convert)(double,double);NSArray *_features,*_bbox,*_origin,*_regions;double _labelHeading,_sceneAt;NSData *_scene,*_scene2;uint32_t _generation;id _segment;NSString *_note;
  unsigned _sceneRange,_labelRange;
@@ -191,7 +207,8 @@ static unsigned RoadStyle(NSString *h){if([@[@"motorway",@"trunk",@"motorway_lin
   * with geographic anchors; firmware clips/culls collisions on every pose. */
  NSMutableData *labels=[NSMutableData new];NSMutableSet *seen=[NSMutableSet new];NSMutableArray *occupied=[NSMutableArray new];
  _labelRange=range;
- double radians=_labelHeading*M_PI/180,ss=sin(radians),cc=cos(radians);
+ double radians=_labelHeading*M_PI/180,ss=sin(radians),cc=cos(radians);NSMutableArray *routeParts=[NSMutableArray new];
+ for(NSDictionary *item in selected)if([item[@"style"] intValue]==6)[routeParts addObject:item[@"points"]];
  for(NSDictionary *item in [selected sortedArrayUsingComparator:^NSComparisonResult(id a,id b){return [a[@"rank"] compare:b[@"rank"]];}]){
   NSData *name=NameData(item[@"name"]);if(!name.length||[seen containsObject:name])continue;
   unsigned width=0;NSString *text=[[NSString alloc]initWithData:name encoding:NSUTF8StringEncoding];for(NSUInteger j=0;j<text.length;j++)width+=[text characterAtIndex:j]<128?9:16;
@@ -200,6 +217,7 @@ static unsigned RoadStyle(NSString *h){if([@[@"motorway",@"trunk",@"motorway_lin
    double t=step/16.,x=[part[j-1][0] doubleValue]*(1-t)+[part[j][0] doubleValue]*t,y=[part[j-1][1] doubleValue]*(1-t)+[part[j][1] doubleValue]*t;
    double px=148+(x*cc-y*ss)*296/((double)range*4),py=103-(x*ss+y*cc)*296/((double)range*4);double left=px-width/2.,top=py-10; /* mirror of the firmware 296x148 canvas at this scene's range */
    if(left<7||left+width>289||top<7||top+20>141||(left<167&&left+width>129&&top<118&&top+20>79)||(left<76&&left+width>0&&top<147&&top+20>112))continue;
+   if(RLabelRoute(routeParts,left-3,top-2,left+width+3,top+21,ss,cc,range))continue;
    BOOL collision=NO;for(NSArray *r in occupied){double rx=[r[0] doubleValue],ry=[r[1] doubleValue],rw=[r[2] doubleValue];if(left<rx+rw+8&&left+width+8>rx&&top<ry+28&&top+28>ry){collision=YES;break;}}if(collision)continue;
    double score=(px-96)*(px-96)+(py-48)*(py-48);if(score<best){best=score;anchor=@[@((int)lround(x)),@((int)lround(y))];screenRect=@[@(left),@(top),@(width)];}
   }

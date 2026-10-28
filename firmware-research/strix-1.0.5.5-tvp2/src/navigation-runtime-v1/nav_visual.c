@@ -15,8 +15,8 @@ static char *clock_hm(char *p,int64_t epoch){unsigned min=((uint32_t)epoch%86400
 void tn_clock_text(char out[64],int64_t now,int64_t eta,bool stale){
  memset(out,0,64);
  if(stale){append(out,"导航数据已过期 · 请查看手机");return;}
- if(now<946684800||now>4102444800LL){append(out,"当前 --:-- · 到达时间待更新");return;}
- char *p=append(out,"当前 ");p=clock_hm(p,now);p=append(p," · ");
+ if(now<946684800||now>4102444800LL){append(out,"--:-- · 到达时间待更新");return;}
+ char *p=clock_hm(out,now);p=append(p," · ");
  if(eta<now||eta-now>604800){append(p,"到达时间待更新");return;}
  unsigned days=(uint32_t)eta/86400-(uint32_t)now/86400;
  if(days==1)p=append(p,"明日 ");else if(days){p=decimal(p,days);p=append(p,"天后 ");}
@@ -31,6 +31,17 @@ static const TNXY roundabout[]={{48,84},{48,65},{24,48},{24,30},{44,15},{64,30},
 static const TNXY arrive[]={{22,84},{22,12},{76,12},{76,50},{22,50}};
 static const TNXY unknown[]={{28,25},{38,15},{58,15},{70,26},{70,38},{48,54},{48,66},{48,75},{48,82}};
 static TNXY map(TNPoint p){return (TNXY){406+(int32_t)p.x*112/1023,10+(int32_t)p.y*112/1023};}
+static unsigned road_glyph(const char *p,unsigned *bytes){
+ unsigned c=(unsigned char)*p;*bytes=c<0x80?1:c<0xe0?2:3;return c<0x80?9:16;
+}
+static void clip_road(char *text){
+ unsigned width=0;char *p=text;
+ while(*p){unsigned bytes;width+=road_glyph(p,&bytes);p+=bytes;}
+ if(width<=210)return;
+ width=0;unsigned used=0;p=text;
+ while(*p){unsigned bytes,g=road_glyph(p,&bytes);if(width+g>183)break;width+=g;used+=bytes;p+=bytes;}
+ memcpy(text+used,"...",4);
+}
 bool tn_visual(const TNScene *s,bool stale,TNVisual *v){
  if(!s||!v||s->icon>=TN_ICON_COUNT||s->point_count>TN_POINTS_MAX||s->heading>=360||s->position.x>1023||s->position.y>1023)return false;
  memset(v,0,sizeof *v);v->stale=stale;const TNXY *icon=unknown;size_t n=sizeof unknown/sizeof *unknown;bool flip=false;
@@ -63,8 +74,8 @@ bool tn_visual(const TNScene *s,bool stale,TNVisual *v){
  v->position[2]=(TNXY){pos.x-dx*4+dy*4,pos.y-dy*4-dx*4};v->position[3]=v->position[0];
  char *p=v->distance;if(s->distance_m<1000){p=decimal(p,s->distance_m);append(p," m");}
  else {p=decimal(p,s->distance_m/1000);*p++='.';*p++=(char)('0'+s->distance_m%1000/100);append(p," km");}
- memcpy(v->turn,s->turn,sizeof v->turn);memcpy(v->road,s->road,sizeof v->road);v->turn[TN_TURN_MAX]=0;v->road[TN_ROAD_MAX]=0;
- p=append(v->summary,"剩余 ");p=distance(p,s->remaining_m);p=append(p," / ");
+ memcpy(v->turn,s->turn,sizeof v->turn);memcpy(v->road,s->road,sizeof v->road);v->turn[TN_TURN_MAX]=0;v->road[TN_ROAD_MAX]=0;clip_road(v->road);
+ p=append(v->summary,"剩余 ");p=distance(p,s->remaining_m);p=append(p," · ");
  unsigned minutes=s->remaining_s/60+(s->remaining_s%60!=0);
  if(minutes>=60){p=decimal(p,minutes/60);p=append(p,"h ");minutes%=60;}
  p=decimal(p,minutes);append(p,"min");
