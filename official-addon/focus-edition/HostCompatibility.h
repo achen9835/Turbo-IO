@@ -13,6 +13,8 @@ static inline NSString *TIOHostExpectedUUID(NSDictionary *info) {
     // 语音 hook 面（AiResultListenerBridge 各回调/VoiceAssistantHelper.stopWorkflow/
     // FlutterEngine sendOnChannel:）已逐选择器核对于新版二进制。
     if([version isEqual:@"1.0.7"]&&[build isEqual:@"230"])return @"410DEFDB-F937-39EA-ACF2-F616ABFF9D0B";
+    // 1.0.10/258：第三方砸壳（净化版，按官方加密包逐文件审计）LC_UUID 本机解出。
+    if([version isEqual:@"1.0.10"]&&[build isEqual:@"258"])return @"F5EFECCA-88D9-3BB6-A53D-DF6ACDFCC928";
     return nil;
 }
 static inline BOOL TIOHostImageMatches(const struct mach_header *h,NSDictionary *info) {

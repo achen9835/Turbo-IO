@@ -39,10 +39,10 @@ BOOL TIOOTAPreparationBlocks(NSString *method,NSDictionary *args,BOOL preparatio
 }
 BOOL TIOOTAPreparationBuild(void){
 #if TARGET_OS_IPHONE && TIO_OTA_PREPARATION_ENABLED
-    // 与 Flash 门禁同款：接受 ios105-/ios107- 两代打包标记（后缀不同：本函数
+    // 与 Flash 门禁同款：接受 ios105-/ios107-/ios1010- 三代打包标记（后缀不同：本函数
     // 是 prepare-only 构建）。上一版只认 ios105-，导致 1.0.7 包点「只下载」
     // 直接返回"没有启用发送保护"（真机反馈 2026-10-27）。
-    return [@[@"ios105-tfp1-loopback-prepare-only",@"ios107-tfp1-loopback-prepare-only"] containsObject:[NSBundle.mainBundle objectForInfoDictionaryKey:@"TIOExperimentalOTAQueryRouting"]];
+    return [@[@"ios105-tfp1-loopback-prepare-only",@"ios107-tfp1-loopback-prepare-only",@"ios1010-tfp1-loopback-prepare-only"] containsObject:[NSBundle.mainBundle objectForInfoDictionaryKey:@"TIOExperimentalOTAQueryRouting"]];
 #else
     return NO;
 #endif

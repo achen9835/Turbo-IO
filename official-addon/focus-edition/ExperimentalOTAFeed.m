@@ -203,11 +203,13 @@ void TIOStartExperimentalOTAFeedIfMarked(void){
         // 补丁字节在场（下方校验），未武装时对一切检查只回「无更新」；「官方包名」
         // 红线移入 armArchive——武装（提供固件）仅限官方宿主，红线保留未删。
         // 2026-10-26：新增 1.0.7/230 宿主（同口径：版本门禁+App 快照回环字节校验）。
+        // 2026-10-29：新增 1.0.10/258 宿主（净化第三方砸壳，偏移 39880448/30866352）。
         NSString *version=[bundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"];
         NSString *build=[bundle objectForInfoDictionaryKey:@"CFBundleVersion"];
         BOOL is105=[version isEqual:@"1.0.5"]&&[build isEqual:@"201"];
         BOOL is107=[version isEqual:@"1.0.7"]&&[build isEqual:@"230"];
-        if(!is105&&!is107){BootstrapFailure=@"实验升级来源的宿主版本不匹配";return;}
+        BOOL is1010=[version isEqual:@"1.0.10"]&&[build isEqual:@"258"];
+        if(!is105&&!is107&&!is1010){BootstrapFailure=@"实验升级来源的宿主版本不匹配";return;}
         // Read two fixed Dart string records (cached-hash + length + bytes, the
         // same record layout the packer wrote). Code signing is handled by
         // packaging; this check prevents starting a feed with an unpatched or
@@ -218,7 +220,8 @@ void TIOStartExperimentalOTAFeedIfMarked(void){
         NSFileHandle *handle=[NSFileHandle fileHandleForReadingAtPath:file];BOOL ok=handle!=nil;
         // 每项：偏移 / 回环替换串 / Dart 缓存哈希（u32，记录头 offset-12）
         NSArray *records=is105?@[@[@39310656,@352684455u,@"http://127.0.0.1:18794/g/xxxxxxxA78p2M"],@[@30324336,@555237387u,@"http://127.0.0.1:18794/g/xxxxxxxxxxCCXhB"]]
-                               :@[@[@41206352,@352684455u,@"http://127.0.0.1:18794/g/xxxxxxxA78p2M"],@[@32115728,@555237387u,@"http://127.0.0.1:18794/g/xxxxxxxxxxCCXhB"]];
+                               :is107?@[@[@41206352,@352684455u,@"http://127.0.0.1:18794/g/xxxxxxxA78p2M"],@[@32115728,@555237387u,@"http://127.0.0.1:18794/g/xxxxxxxxxxCCXhB"]]
+                               :@[@[@39880448,@352684455u,@"http://127.0.0.1:18794/g/xxxxxxxA78p2M"],@[@30866352,@555237387u,@"http://127.0.0.1:18794/g/xxxxxxxxxxCCXhB"]];
         @try{for(NSArray *r in records){
                 if(!ok)break;
                 NSData *expected=[r[2] dataUsingEncoding:NSASCIIStringEncoding];

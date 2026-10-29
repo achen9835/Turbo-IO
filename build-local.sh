@@ -16,8 +16,11 @@ cd "$(dirname "$0")"
 
 BUNDLE_ID="${1:-app.aurora7070.potato6444}"
 PRODUCT="${2:-iPhone18,2}"
-UPSTREAM_IPA_URL="https://github.com/Turbo1123/Turbo-IO/releases/download/rayneo-ios-1.0.7-230/RayNeo_AI_1.0.7_230_decrypted_unsigned_original.ipa"
-EXPECTED_IPA_SHA256="50df3954845e3bc2e34f9ba6def8c3837e9d1a6c232f36f3a975dd08152a3ff7"
+# 2026-10-29 迁移 1.0.10(258)：净化第三方砸壳（审计报告见 daily 提交），
+# 上传至本 fork Release rayneo-ios-1.0.10-258；1.0.7 输入仍在
+# Turbo1123/rayneo-ios-1.0.7-230（SHA 50df3954…）。
+UPSTREAM_IPA_URL="https://github.com/achen9835/Turbo-IO/releases/download/rayneo-ios-1.0.10-258/RayNeo_AI_1.0.10_258_decrypted_unsigned_original.ipa"
+EXPECTED_IPA_SHA256="e6cc1f1be686e9d0acf98748ef6674a5c1fdd8e4d786de2c16b768398bfec949"
 FIRMWARE_URL="https://github.com/Turbo1123/Turbo-IO/releases/download/firmware-strix-1.0.4.12-tfp1-focus04/StrixOS-1.0.4.12-TurboFocus-TFP1-FOCUS04-EXPERIMENTAL.zip"
 FIRMWARE_SHA256="ad5054e3d7bda90e94d293bea882bd8dd5a125bcc8f42c13a59b2e149313c9e3"
 

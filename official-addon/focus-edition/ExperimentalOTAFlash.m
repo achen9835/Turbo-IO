@@ -110,9 +110,9 @@ BOOL TIOOTAFlashBuild(void){
     // Authorization/feed still require the exact marker below.
     return YES;
 #else
-    // 打包脚本按宿主底座写 ios105-/ios107- 前缀（补丁脚本 report.edition），
-    // 门禁接受两代标记，后缀不变；其他值仍一律拒绝。
-    return [@[@"ios105-tfp1-loopback-flash-gated",@"ios107-tfp1-loopback-flash-gated"] containsObject:[NSBundle.mainBundle objectForInfoDictionaryKey:@"TIOExperimentalOTAQueryRouting"]];
+    // 打包脚本按宿主底座写 ios105-/ios107-/ios1010- 前缀（补丁脚本 report.edition），
+    // 门禁接受三代标记，后缀不变；其他值仍一律拒绝。
+    return [@[@"ios105-tfp1-loopback-flash-gated",@"ios107-tfp1-loopback-flash-gated",@"ios1010-tfp1-loopback-flash-gated"] containsObject:[NSBundle.mainBundle objectForInfoDictionaryKey:@"TIOExperimentalOTAQueryRouting"]];
 #endif
 #else
     return NO;
@@ -131,7 +131,7 @@ BOOL TIOOTAAutoUpdateDisabled(NSDictionary *preferences){
 static TIOOTAFlashGate *Current(void){@synchronized(NSProcessInfo.processInfo){if(!Gate)Gate=[TIOOTAFlashGate new];return Gate;}}
 BOOL TIOOTAFlashProtected(void){
 #if TARGET_OS_IPHONE && TIO_DISPLAY_FLASH
-    if(![@[@"ios105-tfp1-loopback-flash-gated",@"ios107-tfp1-loopback-flash-gated"] containsObject:[NSBundle.mainBundle objectForInfoDictionaryKey:@"TIOExperimentalOTAQueryRouting"]])return NO;
+    if(![@[@"ios105-tfp1-loopback-flash-gated",@"ios107-tfp1-loopback-flash-gated",@"ios1010-tfp1-loopback-flash-gated"] containsObject:[NSBundle.mainBundle objectForInfoDictionaryKey:@"TIOExperimentalOTAQueryRouting"]])return NO;
 #endif
     return TIOOTAFlashBuild()&&[TIOOTAGuardStatus()[@"transportHookReady"] boolValue];
 }

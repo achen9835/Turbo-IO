@@ -11,6 +11,9 @@ import {pathToFileURL} from 'node:url';
 export const originalSHAs={
   'f5691eb07c1eaa4270de24ad1a0b09829cb35c2d22a5fab16b818aa519c8c23a':'1.0.5/201',
   '041dc97ad3a864ac322e92a49d3b1ebbd466d371dc427591b0b82c8c56b5090d':'1.0.7/230',
+  // 1.0.10/258 净化砸壳快照：两条 gray/upgrade 串同文同缓存哈希（makeRoute 同替换串），
+  // 偏移 39880448/30866352 已本机核对（记录头 hash+len 与 patch() 断言逐字节通过）。
+  '34e78ee05e607490402b581841b2e01ab3a4abe6679afc131ac7581127aca41c':'1.0.10/258',
 };
 export const originalSHA=Object.keys(originalSHAs)[0];
 export const originals=['/xrlauncherapi/v1/signApi/gray/upgrade','/xrlauncherhwapi/v1/signApi/gray/upgrade'];
@@ -49,7 +52,7 @@ export function makeRoute(original){
 }
 export function patch(input){
   const edition=originalSHAs[sha(input)];
-  assert(edition,'Wrong input: only original App.framework 1.0.5/201 or 1.0.7/230');
+  assert(edition,'Wrong input: only original App.framework 1.0.5/201, 1.0.7/230 or 1.0.10/258');
   const output=Buffer.from(input),changes=[];
   for(const original of originals){
     const offset=input.indexOf(original);assert(offset>=16&&input.indexOf(original,offset+1)===-1,'Path not unique');
