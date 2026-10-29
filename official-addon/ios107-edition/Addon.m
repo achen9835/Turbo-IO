@@ -30,6 +30,7 @@ extern BOOL TDPPhoneAutomaticIdle(void);
 #import "ReaderUI.h"
 #import "TDPhoneBridge.h"
 #import "PrivateBootstrap.h"
+#import "NavigationVoiceBridge.h"
 #import "ResearchCatalog.h"
 #import "ExperimentalOTAUI.h"
 #import "ExperimentalOTAFeed.h"
@@ -199,8 +200,9 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
     return YES;
 }
 - (void)acceptAsr:(NSString *)text finished:(BOOL)final session:(NSString *)sid listener:(id)listener {
-    if(![Prefs integerForKey:@"mode"]||!text.length)return;
-    if(!final){if(_ownsTurn&&_started){[self cancel];}_asr=text;return;}
+    // 每个模式都记回合：导航回复接管需要 mode 0 下也有 _listener/_asr（fork 验证过的修法）。
+    if(!text.length)return;
+    if(!final){if([Prefs integerForKey:@"mode"]&&_ownsTurn&&_started){[self cancel];}_asr=text;return;}
     NSString *identity=[NSString stringWithFormat:@"%@|%@",sid,text];if([_seenFinals containsObject:identity])return;
     if(_seenFinals.count>=256)[_seenFinals removeAllObjects];[_seenFinals addObject:identity];
     [self cancel];[_taskGate beginTurn];_listener=listener;_asr=text;_sid=sid;
@@ -237,6 +239,7 @@ static id CopyResponse(id source,NSString *answer,BOOL final) {
         [self cancel];Diagnostic=@"官方待办接管本轮；自有回复已取消，完成回调交回官方";
     }
     if(_taskGate.official)return NO;
+    if(TIOVoiceNavReceiveNlp(self,response,listener))return YES;
     BOOL eligible=TIOIsEligibleChat(domain,intent,sub,offline,Get(response,@"command")!=nil);
     if(eligible)
         [Prefs setObject:@"chat" forKey:@"verifiedChatDomain"];
@@ -299,11 +302,11 @@ static void AudioStartHook(id self,SEL cmd) {
 }
 static void NlpHook(id self,SEL cmd,id value) {
     // Route decisions on the main queue to serialize ASR, cancellation and stream completion.
-    void (^work)(void)=^{if(Controller.voiceExited)return;if(TIOTodoIsToolDispatching()){OriginalNlp(self,cmd,value);return;}TIOTodoObserveNlp(self,value);if(![Controller receiveNlp:value listener:self])OriginalNlp(self,cmd,[Controller observeOfficialVoice:value]);};
+    void (^work)(void)=^{if(Controller.voiceExited)return;if(TIOTodoIsToolDispatching()){OriginalNlp(self,cmd,value);return;}TIOTodoObserveNlp(self,value);if(TIOVoiceNavNlpIntercept(self,cmd,value,^(id v){OriginalNlp(self,cmd,v);},^{OriginalComplete(self,cmd);}))return;if(![Controller receiveNlp:value listener:self])OriginalNlp(self,cmd,[Controller observeOfficialVoice:value]);TIOVoiceNavNlpAfter(value);};
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 static void CompleteHook(id self,SEL cmd) {
-    void (^work)(void)=^{CompletionEvents++;if(Controller.voiceExited)return;[Controller completeOfficialVoice];if(![Prefs integerForKey:@"mode"]||!(Controller.listener==self&&Controller.ownsTurn))OriginalComplete(self,cmd);};
+    void (^work)(void)=^{CompletionEvents++;if(Controller.voiceExited)return;if(TIOVoiceNavCompleteGate(self))return;[Controller completeOfficialVoice];if(![Prefs integerForKey:@"mode"]||!(Controller.listener==self&&Controller.ownsTurn))OriginalComplete(self,cmd);};
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }
 static void AlwaysOnHook(id self,SEL cmd,id value) {
