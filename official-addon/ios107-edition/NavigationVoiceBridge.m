@@ -177,12 +177,16 @@ BOOL TIOVoiceNavReceiveNlp(id controller,id response,id listener){
     BOOL offline=[Get(response,@"offline") boolValue];
     NSString *domain=String(Get(response,@"domain")),*intent=String(Get(response,@"intent")),*sub=String(Get(response,@"sub"));
     NSString *nlpQuery=String(Get(response,@"query"));
-    if([c listener]==listener&&!offline&&TIOIsEligibleChat(domain,intent,sub,NO,Get(response,@"command")!=nil)){
+    NSString *navDest=TIOVoiceNavMatchDestination(nlpQuery.length?nlpQuery:[c asr]);
+    BOOL chatShape=TIOIsEligibleChat(domain,intent,sub,NO,Get(response,@"command")!=nil);
+    // 触发词命中即接管，放宽域白名单：1.0.10 的 NLP 分类若与 chat/chat/workflow
+    // 有出入，严格白名单会把接管整个掐掉（候选交互消失、静默自动选择）。技能
+    // 指令（带 command）与离线回包仍绝不接管。
+    if([c listener]==listener&&!offline&&!Get(response,@"command")&&(chatShape||navDest.length)){
         NSString *respSid=String(Get(response,@"sessionId"));
         if(!([c sid].length&&respSid.length&&![[c sid] isEqual:respSid])){
             // 先按 NLP query 匹配（总是有），ASR 末轮兜底——ASR 终稿可能晚于首个
             // 回复增量到达，只盯 ASR 会漏接管而触发词照常命中。
-            NSString *navDest=TIOVoiceNavMatchDestination(nlpQuery.length?nlpQuery:[c asr]);
             if(navDest.length){
                 [c setResponseTemplate:response];[c setOwnsTurn:YES];[c setStarted:YES];[c setEmitted:@""];
                 NSUInteger gen=[c generation];

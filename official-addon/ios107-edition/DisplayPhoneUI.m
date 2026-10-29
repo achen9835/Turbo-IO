@@ -128,7 +128,9 @@ static void SaveNavStatus(void){
  [[NSJSONSerialization dataWithJSONObject:d options:NSJSONWritingSortedKeys error:nil] writeToFile:path options:NSDataWritingAtomic error:nil];[NSFileManager.defaultManager setAttributes:@{NSFilePosixPermissions:@0600} ofItemAtPath:path error:nil];
 }
 BOOL TDPPhoneNavigationStart(NSDictionary *frame){
- if(NavFeed.active||Session.busy||UIApplication.sharedApplication.applicationState!=UIApplicationStateActive)return NO;
+ // 9978ea9 复刻：拆掉 applicationState!=Active 前台门——免手语音场景必然是
+ // 后台/锁屏，前台门会静默杀死语音导航（真机表现：要打开手机才进得去导航）。
+ if(NavFeed.active||Session.busy)return NO;
  [Session setForegroundActive:NO];return TNVStart(frame);
 }
 void TDPPhoneNavigationOffer(NSDictionary *frame){TNVOffer(frame);}

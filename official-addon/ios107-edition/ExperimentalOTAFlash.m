@@ -24,12 +24,12 @@
 #endif
 BOOL TIOOTAFileCallBlocked(NSString *method,BOOL scopedImage,NSUInteger stage){
  if(![method isKindOfClass:NSString.class])return YES;
- // 2026-10-29 v2：只有传输窗口（stage==2）拦非本方文件流。授权未传输（stage==1）、
- // 已收尾/中止（stage==3）与未武装（stage==0）一律放行——授权期/收尾期把官方翻译
- // 的 rayneonet_sendFile 一并拦掉，正是离线翻译「云端服务异常」的手机侧根因。
- // 固件本体走 business 9 帧校验分片（memcmp 逐片核对），并发文件流不会静默损坏，
- // 传输窗口的拦截只是保通道安静，不需要延伸到整个授权期。
- if(stage!=2)return NO;
+ // 2026-10-29 v3：只有传输窗口（stage==2）拦**非本方**文件流，本方通道
+ //（TNV 导航 / 图传 / 镜像 / 音乐，由 scopedImage 识别）任何阶段都放行——
+ // v2 在 stage==2 连自家 TNV 传输一起拦，刷完固件后 stage 粘 2（会话无完成
+ // 回落），导航的 turbo-navigation.tnv 提交即死：画面冻结、停止也发不出退出。
+ // 固件本体走 business 9 帧逐片 memcmp 核对，并发流不会静默损坏。
+ if(stage!=2||scopedImage)return NO;
  NSString *lower=method.lowercaseString;
  return [lower containsString:@"sendfile"]||[lower containsString:@"ota"]||[lower containsString:@"upgrade"];
 }
