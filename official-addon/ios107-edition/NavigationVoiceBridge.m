@@ -9,9 +9,10 @@
 #import <Foundation/Foundation.h>
 #import <objc/message.h>
 
-// TIOController 最小面视图（类定义在 Addon.m）：仅列导航桥用到的访问器与方法，
-// 编译期当接口用，运行期走 Addon.m 已合成的实现。属性一律用消息发送。
-@interface TIOController (NavBridgeView)
+// TIOController 跨文件最小接口视图（类实现在 Addon.m）：类别声明要求主接口
+// 可见，这里补一个仅含导航桥所用访问器的主接口声明；运行期走 Addon.m 已合成
+// 的实现。属性一律用消息发送。
+@interface TIOController : NSObject
 - (id)listener;
 - (NSString *)asr;
 - (NSString *)sid;
