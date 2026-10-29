@@ -132,7 +132,12 @@ def main():
                 bbox[2] = max(bbox[2], lat)
                 bbox[3] = max(bbox[3], lon)
             style = STYLES[highway]
-            layer = max(-8, min(8, int(props.get('layer') or 0)))
+            # layer 标签可以是小数（"0.5"）或乱值，float 解析后取整、越界钳位
+            try:
+                layer = int(float(props.get('layer') or 0))
+            except ValueError:
+                layer = 0
+            layer = max(-8, min(8, layer))
             flags = 0
             if str(props.get('bridge') or 'no') != 'no':
                 flags |= 1
