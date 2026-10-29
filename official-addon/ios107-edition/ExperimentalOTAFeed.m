@@ -22,7 +22,9 @@ static NSString *QueryKind(NSString *target){
     NSURLComponents *u=[NSURLComponents componentsWithString:[@"http://127.0.0.1" stringByAppendingString:[target stringByReplacingOccurrencesOfString:@"+" withString:@"%20"]]];
     NSMutableDictionary *params=[NSMutableDictionary new];
     for(NSURLQueryItem *item in u.queryItems){if(params[item.name])return @"invalid";params[item.name]=item.value?:@"";}
-    if([params[@"packageType"] isEqual:@"firmware"]&&[params[@"packageName"] isEqual:@"strix OS"]&&[params[@"glassesType"] isEqual:@"S3"]&&[params[@"deviceType"] isEqual:@"iOS"]&&[params[@"versionCode"] isEqual:@"01.00.04.0012"])return @"firmware";
+    // 版本码不钉死：查询携带的是眼镜当前版本（TAP1=01.00.04.0012 / TAP2=01.00.05.x），
+    // 钉死旧码会让 1.0.5.5 系眼镜的更新查询落 unknown → 官方页回「已是最新」。
+    if([params[@"packageType"] isEqual:@"firmware"]&&[params[@"packageName"] isEqual:@"strix OS"]&&[params[@"glassesType"] isEqual:@"S3"]&&[params[@"deviceType"] isEqual:@"iOS"])return @"firmware";
     if([params[@"packageType"] isEqual:@"app"])return @"app";
     return @"unknown";
 }
@@ -45,6 +47,17 @@ static NSString *OTAVersionName(void){ /* "1.0.4.12" -> "0100040012" */
     return out;
 }
 static long OTAVersionCode(void){return OTAVersionName().longLongValue;} /* "0100040012" -> 100040012 */
+static long QueryVersionCode(NSString *target){ /* 查询携带的眼镜当前版本码（01.00.04.0012 -> 100040012） */
+    NSURLComponents *u=[NSURLComponents componentsWithString:[@"http://127.0.0.1" stringByAppendingString:[target stringByReplacingOccurrencesOfString:@"+" withString:@"%20"]]];
+    for(NSURLQueryItem *item in u.queryItems)if([item.name isEqual:@"versionCode"]&&item.value.length<24)return item.value.longLongValue;
+    return 0;
+}
+/* 服务版本严格高于眼镜当前版本：同基座（TAP2 重刷 TAP2）也要出更新卡。 */
+static long OTAServedVersionCode(NSString *target){
+    long natural=OTAVersionCode(),current=QueryVersionCode(target);
+    return natural>current?natural:current+1;
+}
+static NSString *OTAServedVersionName(NSString *target){return [NSString stringWithFormat:@"%010ld",OTAServedVersionCode(target)];}
 @implementation TIOExperimentalOTAFeed {
     dispatch_queue_t _queue;
     dispatch_source_t _listener;
@@ -130,7 +143,7 @@ static long OTAVersionCode(void){return OTAVersionName().longLongValue;} /* "010
             NSString *kind=QueryKind(target);if([kind isEqual:@"firmware"])_firmwareQueries++;else if([kind isEqual:@"app"])_appQueries++;else _unknownQueries++;
             if(_archive&&[kind isEqual:@"firmware"]){
                 NSDictionary *c=TIOOTACandidate();unsigned pins=[c[@"payloadPins"] isKindOfClass:NSArray.class]?[c[@"payloadPins"] count]:0;
-                data=@{@"taskName":[NSString stringWithFormat:@"%@ PRIVATE EXPERIMENT",c[@"codeName"]?:@"TURBO"],@"appName":@"Strix OS",@"packageName":@"Strix OS",@"versionName":OTAVersionName(),@"versionCode":@(OTAVersionCode()),@"upgradeType":@1,@"userScope":@0,@"updateDesc":[NSString stringWithFormat:@"PRIVATE EXPERIMENT %@: AP modified, other %u payloads byte-identical to %@. Runtime unverified.",c[@"codeName"]?:@"",pins>0?pins-2:0,c[@"baseVersion"]?:@""],@"appIcon":@"",@"apkSize":@(_archive.length),@"apkMd5":_md5,@"downloadUrl":[NSString stringWithFormat:@"http://127.0.0.1:%u/p/%@/%@",_port,_token,OTAZipName()]};
+                data=@{@"taskName":[NSString stringWithFormat:@"%@ PRIVATE EXPERIMENT",c[@"codeName"]?:@"TURBO"],@"appName":@"Strix OS",@"packageName":@"Strix OS",@"versionName":OTAServedVersionName(target),@"versionCode":@(OTAServedVersionCode(target)),@"upgradeType":@1,@"userScope":@0,@"updateDesc":[NSString stringWithFormat:@"PRIVATE EXPERIMENT %@: AP modified, other %u payloads byte-identical to %@. Runtime unverified.",c[@"codeName"]?:@"",pins>0?pins-2:0,c[@"baseVersion"]?:@""],@"appIcon":@"",@"apkSize":@(_archive.length),@"apkMd5":_md5,@"downloadUrl":[NSString stringWithFormat:@"http://127.0.0.1:%u/p/%@/%@",_port,_token,OTAZipName()]};
             }
             response=@{@"error_code":@1000,@"error_msg":@"success",@"data":data};
         }else if(_archive&&[target isEqual:[NSString stringWithFormat:@"/p/%@/%@",_token,OTAZipName()]]){

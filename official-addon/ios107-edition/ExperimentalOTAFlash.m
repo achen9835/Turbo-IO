@@ -24,12 +24,12 @@
 #endif
 BOOL TIOOTAFileCallBlocked(NSString *method,BOOL scopedImage,NSUInteger stage){
  if(![method isKindOfClass:NSString.class])return YES;
- if([method isEqual:@"rayneonet_sendFile"]&&scopedImage&&stage==0)return NO;
- // 2026-10-29：官方离线翻译/文件传输与固件包共用 rayneonet_sendFile 通道。
- // 未武装（stage==0）时全放行——老门禁把官方传输一并拦掉，正是 1.0.10
- // 离线翻译「云端服务异常」的定因。试刷授权后（stage>0）仍拦非本方通道，
- // 保护固件包不被并发文件流打断（授权红线不变）。
- if(stage==0)return NO;
+ // 2026-10-29 v2：只有传输窗口（stage==2）拦非本方文件流。授权未传输（stage==1）、
+ // 已收尾/中止（stage==3）与未武装（stage==0）一律放行——授权期/收尾期把官方翻译
+ // 的 rayneonet_sendFile 一并拦掉，正是离线翻译「云端服务异常」的手机侧根因。
+ // 固件本体走 business 9 帧校验分片（memcmp 逐片核对），并发文件流不会静默损坏，
+ // 传输窗口的拦截只是保通道安静，不需要延伸到整个授权期。
+ if(stage!=2)return NO;
  NSString *lower=method.lowercaseString;
  return [lower containsString:@"sendfile"]||[lower containsString:@"ota"]||[lower containsString:@"upgrade"];
 }
@@ -106,7 +106,7 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
     }
 }
 - (BOOL)cancel{@synchronized(self){if(_stage>=2)return NO;_stage=0;_files=nil;_manifest=nil;_device=nil;_deadline=0;return YES;}}
-- (NSDictionary *)status{@synchronized(self){return @{@"stage":@(_stage),@"authorized":@(_stage==1||_stage==2),@"started":@(_stage>=2),@"versionMatched":@(_versionSent),@"manifestMatched":@(_manifestSent),@"validatedSlices":@(_slices),@"validatedSliceBytes":@(_bytes),@"failure":_failure?:@"",@"runtimeValidated":@NO};}}
+- (NSDictionary *)status{@synchronized(self){if(_stage&&isfinite(_deadline)&&NSProcessInfo.processInfo.systemUptime>=_deadline){if(_stage<2)[self cancel];else{_stage=3;_failure=[_failure length]?_failure:@"会话超时自动收尾";}}return @{@"stage":@(_stage),@"authorized":@(_stage==1||_stage==2),@"started":@(_stage>=2),@"versionMatched":@(_versionSent),@"manifestMatched":@(_manifestSent),@"validatedSlices":@(_slices),@"validatedSliceBytes":@(_bytes),@"failure":_failure?:@"",@"runtimeValidated":@NO};}}
 @end
 BOOL TIOOTAFlashBuild(void){
 #if TARGET_OS_IPHONE && TIO_OTA_FLASH_ENABLED
