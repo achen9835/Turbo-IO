@@ -23,10 +23,15 @@
 #endif
 #endif
 BOOL TIOOTAFileCallBlocked(NSString *method,BOOL scopedImage,NSUInteger stage){
-    if(![method isKindOfClass:NSString.class])return YES;
-    if([method isEqual:@"rayneonet_sendFile"]&&scopedImage&&stage==0)return NO;
-    NSString *lower=method.lowercaseString;
-    return [lower containsString:@"sendfile"]||[lower containsString:@"ota"]||[lower containsString:@"upgrade"];
+ if(![method isKindOfClass:NSString.class])return YES;
+ if([method isEqual:@"rayneonet_sendFile"]&&scopedImage&&stage==0)return NO;
+ // 2026-10-29：官方离线翻译/文件传输与固件包共用 rayneonet_sendFile 通道。
+ // 未武装（stage==0）时全放行——老门禁把官方传输一并拦掉，正是 1.0.10
+ // 离线翻译「云端服务异常」的定因。试刷授权后（stage>0）仍拦非本方通道，
+ // 保护固件包不被并发文件流打断（授权红线不变）。
+ if(stage==0)return NO;
+ NSString *lower=method.lowercaseString;
+ return [lower containsString:@"sendfile"]||[lower containsString:@"ota"]||[lower containsString:@"upgrade"];
 }
 static id Error(NSError **error,NSString *s){if(error)*error=[NSError errorWithDomain:@"TurboIO.OTAFlash" code:1 userInfo:@{NSLocalizedDescriptionKey:s}];return nil;}
 static BOOL Number(id n,NSUInteger *out){
@@ -149,11 +154,9 @@ void TIOOTAFlashDisableAutoUpdateIfRequested(void){
 // Second layer of the update-check silence (see TIOOTAUpdateCheckBlockCall):
 // force the official "firmware auto-update" switch off, so a version cached
 // before the block existed cannot trigger a background download or prompt.
-// Default ON (TIOUpdateCheckSilence=NO restores official behavior and stops
-// touching the switch). The experimental flash flow REQUIRES this switch off,
-// so forcing it is compatible with flashing.
+// 2026-10-29 解耦：自动更新强制关闭是刷机红线保护，与版本改写开关无关，
+// 启动时无条件执行（版本改写默认改关后仍保护 TAP2 不被官方固件覆盖）。
 void TIOOTAAutoUpdateDisableForSilence(void){
-    id toggle=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];if(toggle&&![toggle boolValue])return;
     NSUserDefaults *p=NSUserDefaults.standardUserDefaults;NSMutableArray *keys=[NSMutableArray new];
     for(NSString *key in p.dictionaryRepresentation)if([key hasSuffix:@"_ota_firmware_auto_update"])[keys addObject:key];
     if(keys.count>1)return;id v=keys.count?[p objectForKey:keys[0]]:nil;

@@ -38,6 +38,10 @@ NSArray<NSDictionary *> *LegacySections(NSString *page){
 
 NSArray<NSDictionary *> *TIOResearchSections(NSString *page){
  NSMutableDictionary *lookup=[NSMutableDictionary new];for(NSString *p in @[@"model",@"library",@"diagnostics"])for(NSDictionary *section in LegacySections(p))for(NSDictionary *r in section[@"rows"])lookup[r[@"key"]]=r;
+ // 2026-10-29 导航聚焦裁剪（用户拍板：只保留导航，飞书及其余功能不迁）：
+ // 菜单只留导航与固件试刷（刷机工具链，导航验收必需）。其余入口不再出现；
+ // 代码保留编译但不可达，官方功能（离线翻译等）不受注入干扰。
+ NSSet *keep=[NSSet setWithObjects:@"navigation",@"experimentalOTA",nil];
  NSArray *groups=nil;
  if([page isEqual:@"model"])groups=@[@[@"日常对话",@"mode",@"search"],@[@"模型与接口",@"api",@"thinking"],@[@"语音设置",@"exit"],@[@"Agent 与工具",@"agent",@"knowledge",@"tools",@"searchKey"],@[@"提示词与记忆",@"prompt",@"history"]];
  if([page isEqual:@"library"])groups=@[@[@"随身应用",@"music",@"weread",@"navigation",
@@ -47,5 +51,5 @@ NSArray<NSDictionary *> *TIOResearchSections(NSString *page){
  @"recordings"],@[@"文字整理",@"summary"],@[@"全天智记",@"lifelogText",@"lifelogAudio",@"capture",@"archive"]];
     if([page isEqual:@"diagnostics"])groups=@[@[@"运行与日志",@"diagnosticsRuntime",@"glassesLog",@"status"],@[@"协议实验",@"subtitleHUD",@"a2ui",@"apiTest",@"searchTest",@"todoTest"],@[@"显示实验",@"displayPhone",@"imageRXLab"],@[@"实验固件 · 有风险",@"experimentalOTA"]];
     if(!groups)return @[];NSMutableArray *sections=[NSMutableArray new];NSDictionary *names=@{@"music":@"音乐",@"weread":@"微信读书",@"navigation":@"导航",@"apps":@"应用广场",@"cards":@"仪表盘卡片",@"recordings":@"录音与分享"};
- for(NSArray *group in groups){NSMutableArray *rows=[NSMutableArray new];for(NSUInteger i=1;i<group.count;i++){NSDictionary *r=lookup[group[i]];if(r){NSMutableDictionary *m=[r mutableCopy];if(names[group[i]])m[@"title"]=names[group[i]];[rows addObject:m];}}if(rows.count)[sections addObject:@{@"title":group[0],@"rows":rows}];}return sections;
+ for(NSArray *group in groups){NSMutableArray *rows=[NSMutableArray new];for(NSUInteger i=1;i<group.count;i++){if(![keep containsObject:group[i]])continue;NSDictionary *r=lookup[group[i]];if(r){NSMutableDictionary *m=[r mutableCopy];if(names[group[i]])m[@"title"]=names[group[i]];[rows addObject:m];}}if(rows.count)[sections addObject:@{@"title":group[0],@"rows":rows}];}return sections;
 }

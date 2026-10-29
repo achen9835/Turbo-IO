@@ -127,11 +127,13 @@ void TIOOTAObserveInboundBizNine(NSData *payload){
 // jams, the version field is never blank, and any local "current < latest"
 // comparison reads "up to date". Native-side observers (flash authorization)
 // still receive the real payload -- only the forwarded envelope is rewritten.
-// Default ON; TIOUpdateCheckSilence=NO restores official behavior; an
-// armed/started flash session (stage>0) passes the real reply through.
+// 2026-10-29 默认改关：99.99.99 改写会挡官方更新卡片（试刷入口出不来）并
+// 污染一切读版本的官方功能（1.0.10 离线翻译一并受害）；URL 回环补丁已能
+// 独立压住官方更新弹窗。需显式 TIOUpdateCheckSilence=YES 才改写；
+// an armed/started flash session (stage>0) passes the real reply through.
 static void AppendVar(NSMutableData *out,uint64_t v){uint8_t b;do{b=v&127;v>>=7;if(v)b|=128;[out appendBytes:&b length:1];}while(v);}
 NSData *TIOOTARewriteVersionReply(NSData *payload){
-    id toggle=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];if(toggle&&![toggle boolValue]){RewriteSkip=@"开关已关闭（官方行为）";return nil;}
+    id toggle=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];if(![toggle boolValue]){RewriteSkip=@"默认关闭（需显式开启才改写）";return nil;}
     if([[TIOOTAFlashStatus() objectForKey:@"stage"] unsignedIntegerValue]>0){RewriteSkip=@"试刷进行中，放行真实回包";return nil;}
     if(![payload isKindOfClass:NSData.class]||payload.length<4||payload.length>65536){RewriteSkip=@"载荷无效";return nil;}
     const uint8_t *b=payload.bytes;NSUInteger at=0,field3Start=NSNotFound;BOOL isVersionReply=NO;NSRange json=NSMakeRange(NSNotFound,0);

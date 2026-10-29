@@ -656,7 +656,7 @@ static void AlwaysOnHook(id self,SEL cmd,id value) {
 @property NSMutableIndexSet *expanded;
 @end
 @implementation TIOPanel
-- (void)viewDidLoad {[super viewDidLoad];self.page=self.page?:@"model";self.sections=TIOResearchSections(self.page);self.expanded=[NSMutableIndexSet indexSetWithIndex:0];self.title=[@{@"model":@"模型与对话",@"library":@"资料与导出",@"diagnostics":@"诊断工具"} objectForKey:self.page];TIOStyleResearchTable(self);self.tableView.tableHeaderView=TIOFeatureHeader(self.title,[self.page isEqual:@"diagnostics"]?@"研究操作有风险，请先阅读说明。":@"常用操作在前，更多选项按需展开。",[self.page isEqual:@"model"]?@"music":@"navigation");}
+- (void)viewDidLoad {[super viewDidLoad];self.page=self.page?:@"library";self.sections=TIOResearchSections(self.page);self.expanded=[NSMutableIndexSet indexSetWithIndex:0];self.title=[@{@"model":@"模型与对话",@"library":@"资料与导出",@"diagnostics":@"诊断工具"} objectForKey:self.page];TIOStyleResearchTable(self);self.tableView.tableHeaderView=TIOFeatureHeader(self.title,[self.page isEqual:@"diagnostics"]?@"研究操作有风险，请先阅读说明。":@"常用操作在前，更多选项按需展开。",[self.page isEqual:@"model"]?@"music":@"navigation");}
 - (void)viewWillAppear:(BOOL)animated{[super viewWillAppear:animated];[self.tableView reloadData];}
 - (void)viewDidAppear:(BOOL)animated{[super viewDidAppear:animated];[NSNotificationCenter.defaultCenter removeObserver:self name:@"TIOResearchClosed" object:nil];[NSNotificationCenter.defaultCenter addObserver:self selector:@selector(cancelPanelTest) name:@"TIOResearchClosed" object:nil];}
 - (void)cancelPanelTest{[_testRequest cancel];_testRequest=nil;}
