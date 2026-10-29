@@ -1,9 +1,10 @@
 #import "RoadPackUI.h"
-#import "RoadMap.h"
+#import "RoadPack.h"
 #import <UIKit/UIKit.h>
 /* 省际路网包管理页：清单来自 roadmap-packs Release；单省下载/删除，
- * 一键全部下载。下载内容只用于 TNR 矢量小地图渲染。 */
-@interface TIORoadPackListController : UITableViewController
+ * 一键全部下载。下载内容只用于 TNR 矢量小地图渲染。
+ * 属性走类扩展，避免与 RoadPackUI.h 的主声明重复。 */
+@interface TIORoadPackListController ()
 @property(nonatomic,copy) NSArray<NSDictionary *> *packs;
 @property(nonatomic,strong) NSMutableDictionary<NSString *, NSNumber *> *progress; /* province -> 0..1 */
 @property(nonatomic,strong) UIRefreshControl *refresher;
