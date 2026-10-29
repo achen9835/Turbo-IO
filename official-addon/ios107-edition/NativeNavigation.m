@@ -84,7 +84,7 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
 }
 @implementation TNVSession{
  NSString *_device,*_task,*_nativeTask,*_note;uint32_t _sid,_seq;NSTimeInterval(^_clock)(void);void(^_sender)(NSData *,NSString *,TNVSubmitted);void(^_cleanup)(NSString *);
- NSData *_packet,*_latest,*_committed,*_sending;NSMutableArray *_early;BOOL _active,_fileBusy,_ack,_submitted,_failed,_stopping,_always;
+ NSData *_packet,*_latest,*_committed,*_sending;NSMutableArray *_early;BOOL _active,_fileBusy,_ack,_submitted,_failed,_stopping,_stopped,_always;
  NSData *_mapLatest,*_map2Latest,*_mapCommitted,*_mapSending,*_poseLatest,*_poseCommitted;NSTimeInterval _poseAt,_lastPose;NSUInteger _maps,_poses;BOOL _extended,_probed,_mapV2;
  NSString *_source;NSUInteger _wireBytes;
  NSTimeInterval _deadline,_lastOffer,_lastCommit,_lastWire,_next;NSUInteger _count;unsigned _op;
@@ -101,7 +101,7 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
  if(op==TNR_POSE){_poseCommitted=_sending;_lastPose=_clock();_poses++;}
  if(op==TNR_CLEAR){_mapCommitted=nil;_poseCommitted=nil;}
  _sending=nil;
- if(op==TN_STOP){_active=NO;_stopping=NO;_note=@"眼镜已确认退出导航";}else _note=@"原生导航已提交 · 镜片效果待确认";
+ if(op==TN_STOP){_active=NO;_stopping=NO;_stopped=YES;_note=@"眼镜已确认退出导航";}else _note=@"原生导航已提交 · 镜片效果待确认";
 }
 - (BOOL)send:(enum TNOp)op scene:(NSData *)scene{
  if(self.busy||_failed||_seq==UINT32_MAX)return NO;uint8_t b[TNR_MAX_BYTES];size_t n=op>=TNR_SCENE?tnr_wrap(b,sizeof b,op,_sid,++_seq,scene.bytes,scene.length):tn_encode(b,sizeof b,op,_sid,++_seq,scene?(const TNScene *)scene.bytes:NULL);if(!n)return NO;
@@ -116,14 +116,34 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
  if(![frame isKindOfClass:NSDictionary.class]||![frame[@"phase"] isEqual:@"navigating"])return;
  NSData *map=frame[@"tnrScene"],*pose=frame[@"tnrPose"];id at=frame[@"tnrPoseAt"];
  BOOL valid=[map isKindOfClass:NSData.class]&&[pose isKindOfClass:NSData.class]&&[at isKindOfClass:NSNumber.class]&&isfinite([at doubleValue])&&[at doubleValue]<=_clock()&&_clock()-[at doubleValue]<=4&&tnr_body_valid(TNR_SCENE,map.bytes,map.length)&&tnr_body_valid(TNR_POSE,pose.bytes,pose.length)&&U32(map.bytes)==U32(pose.bytes);
- if(!valid){_mapLatest=nil;_map2Latest=nil;_poseLatest=nil;return;}
+ if(!valid){/* tnrHold=矢量图暂缺（定位暂缺/图源未就绪）：保留最后一张图，避免每个
+  * 静止间隙都发 TNR_CLEAR 把镜片上的路网清掉；只有路网开关关闭（无 hold 标记）
+  * 才走清屏。 */if([frame[@"tnrHold"] isEqual:@YES])return;_mapLatest=nil;_map2Latest=nil;_poseLatest=nil;return;}
  NSData *v2=frame[@"tnrScene2"];_map2Latest=[v2 isKindOfClass:NSData.class]&&tnr_body_valid(TNR_SCENE2,v2.bytes,v2.length)&&U32(v2.bytes)==U32(map.bytes)?[v2 copy]:nil;
  _extended=YES;_mapLatest=[map copy];_poseLatest=[pose copy];_poseAt=[at doubleValue];
 }
 - (BOOL)start:(NSDictionary *)frame always:(BOOL)always{if(_seq||_active||self.busy||_failed)return NO;TNScene s;if(!TNVScene(frame,always,&s))return NO;[self mapOffer:frame];_source=[frame[@"tnrSource"] isKindOfClass:NSString.class]?frame[@"tnrSource"]:@"unknown";_always=always;_latest=[NSData dataWithBytes:&s length:sizeof s];_lastOffer=_clock();_active=YES;_note=@"正在请求自动打开原生导航";if(![self send:TN_START scene:_latest]){_active=NO;return NO;}return YES;}
 - (void)offer:(NSDictionary *)frame{if(!_active||_stopping)return;[self mapOffer:frame];TNScene s;if(!TNVScene(frame,_always,&s)){/* Only terminal phases stop the session; transient non-navigating frames (planning/reroute transitions) must not kill a live render. */if([frame[@"phase"] isEqual:@"arrived"]||[frame[@"phase"] isEqual:@"stopped"])[self stop];return;}_latest=[NSData dataWithBytes:&s length:sizeof s];_lastOffer=_clock();}
 - (void)setAlways:(BOOL)always{_always=always;if(_latest){NSMutableData *d=[_latest mutableCopy];((TNScene *)d.mutableBytes)->mode=always?TN_ALWAYS:TN_SMART;_latest=d;}}
-- (void)stop{if(!_active)return;_stopping=YES;_note=@"等待在途包结束后退出导航";[self pump];}
+// Best-effort terminal stop: bypasses the in-flight/failed guards so a dead or
+// stuck session still delivers TN_STOP. The firmware only leaves the nav page
+// on TN_STOP -- without this, a phone-side exit after any mid-run failure left
+// the lens showing "导航数据已过期" forever (真机 2026-10-30 反馈).
+- (void)sendStopOnce{
+ if(_stopped||!_sid)return;_stopped=YES;_stopping=NO;
+ uint8_t b[TNR_MAX_BYTES];size_t n=tn_encode(b,sizeof b,TN_STOP,_sid,++_seq,NULL);
+ if(!n){_note=@"退出指令构造失败；请用眼镜返回键退出";return;}
+ NSString *task=NSUUID.UUID.UUIDString;_note=@"已补发退出指令，等待眼镜退出";
+ __weak typeof(self) weak=self;_sender([NSData dataWithBytes:b length:n],task,^(BOOL ok,NSString *native){TNVSession *s=weak;if(!s)return;s->_note=ok?@"已补发退出指令，等待眼镜退出":@"补发退出指令提交失败；请用眼镜返回键退出";});
+}
+- (void)stop{
+ if(_stopping||_stopped)return;
+ if(!_active){[self sendStopOnce];return;}
+ _stopping=YES;_note=@"等待在途包结束后退出导航";[self pump];
+ // The normal TN_STOP goes out as soon as the in-flight packet settles; if the
+ // channel is wedged (busy never clears / session already failed), force it.
+ __weak typeof(self) weak=self;dispatch_after(dispatch_time(DISPATCH_TIME_NOW,3*NSEC_PER_SEC),dispatch_get_main_queue(),^{TNVSession *s=weak;if(s&&s->_stopping&&!s->_stopped)[s sendStopOnce];});
+}
 - (void)disconnect{[self fail:@"连接中断；已停止。眼镜按60秒策略退出常亮，请查看手机。"];}
 - (void)pump{
  if(_packet&&_clock()>=_deadline){[self fail:@"导航协议超时；停止发送，请确认已刷TNV1固件并用实体键退出旧画面。"];return;}

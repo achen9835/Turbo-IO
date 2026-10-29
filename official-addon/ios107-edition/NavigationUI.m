@@ -236,6 +236,9 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
         decorated[@"travel"]=self.sessionTransport==TIONavigationWalk?@"walk":self.sessionTransport==TIONavigationRide?@"ride":@"drive"; /* 自适应缩放基准：步行/骑行/驾驶 */
         if(self.roadLocation){decorated[@"tnrLocation"]=self.roadLocation;decorated[@"tnrLocationAt"]=@(self.roadLocationAt);if(self.navHeadingDeg>=0)decorated[@"navHeading"]=@(self.navHeadingDeg);}
         frame=[self.roadMap decorate:decorated coordinates:self.roadCoordinates];
+        // 路网开着但这一帧没出图（定位暂缺/图源未就绪）时告诉会话层「暂缺」，
+        // 保留镜片上最后一张图；只有路网开关关闭才让会话清屏（TNR_CLEAR）。
+        if(self.roadMap.enabled&&![frame[@"tnrScene"] isKindOfClass:NSData.class]){NSMutableDictionary *held=[frame mutableCopy];held[@"tnrHold"]=@YES;frame=[held copy];}
     }
 #endif
     self.display=frame;TIONavOfferDisplay(frame);[self.teleHUD offer:frame at:NSProcessInfo.processInfo.systemUptime];[self.subtitleHUD offer:frame at:NSProcessInfo.processInfo.systemUptime];
@@ -638,6 +641,16 @@ static NSMutableArray *TIONavAheadCoords(NSArray<AMapNaviSegment *> *segments,NS
  dispatch_async(dispatch_get_main_queue(),^{if(manager!=self.manager||!self.active||self.routeReady||self.planning||self.rerouting)return;
   NSArray<AMapNaviSegment *> *segments=manager.naviRoute.routeSegments;NSMutableArray *coords=[NSMutableArray new];
   if(segment>=0&&segment<(NSInteger)segments.count&&link>=0&&point>=0)coords=TIONavAheadCoords(segments,(NSUInteger)segment,(NSUInteger)link,(NSUInteger)point);
+#if TIO_DISPLAY_PHONE
+  // 模拟导航/静止时 updateNaviLocation 可能不报（引擎不驱动模拟定位回调），
+  // 矢量小地图的原点与航向改从路线当前点推导——路网不再依赖 GPS 回调。
+  if(coords.count>=2&&NSProcessInfo.processInfo.systemUptime-self.roadLocationAt>2){
+   self.roadLocation=coords.firstObject;self.roadLocationAt=NSProcessInfo.processInfo.systemUptime;
+   double lat0=[coords[0][0] doubleValue],lon0=[coords[0][1] doubleValue],lat1=[coords[1][0] doubleValue],lon1=[coords[1][1] doubleValue];
+   double bearing=fmod(atan2((lon1-lon0)*cos(lat0*M_PI/180),lat1-lat0)*180/M_PI+360,360);
+   self.roadHeading=bearing;if(self.navHeadingDeg<0)self.navHeadingDeg=(NSInteger)bearing%360;
+  }
+#endif
   [frame addEntriesFromDictionary:TNVNormalizeCoordinates(coords)];[self applySceneExtensions:frame];self.lastInfo=NSProcessInfo.processInfo.systemUptime;self.staleShown=NO;[self setFrame:frame];
  });
 }

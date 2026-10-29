@@ -3,6 +3,7 @@
 #import "ReaderUI.h"
 #import "ReaderBridge.h"
 #import "NativeNavigation.h"
+#import "NavigationUI.h"
 #import "TNVTransport.h"
 #import "ProtocolContext.h"
 #import "ExperimentalOTAFlash.h"
@@ -16,7 +17,13 @@ BOOL TNVConsume(NSDictionary *e){if(Peer&&![Peer isEqual:TIOProtocolDevice()])[S
 BOOL TNVPauseForOTA(void){return !Session.active&&!Session.busy;}
 void TNVPump(void){
  if(Peer&&![Peer isEqual:TIOProtocolDevice()])[Session disconnect];
- [Session pump];NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;if(now-LastSave<1)return;LastSave=now;
+ [Session pump];
+ // Fail-transition breadcrumb: a mid-run session death used to be invisible
+ // (the lens just froze) until the user read the status note much later.
+ static BOOL LastFailed=NO;BOOL failed=[Session.status[@"failed"] boolValue];
+ if(failed&&!LastFailed)TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD会话中断：%@（自动重试上镜中）",Session.status[@"note"]?:@"原因未知"]);
+ LastFailed=failed;
+ NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;if(now-LastSave<1)return;LastSave=now;
  NSString *root=[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/TurboIOPrivateAddon"];
  [NSFileManager.defaultManager createDirectoryAtPath:root withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@0700} error:nil];
  NSMutableDictionary *d=[TNVStatus() mutableCopy];d[@"build"]=@"NAVIGATION-PHONE-02-BG";d[@"physicalVerified"]=@NO;d[@"timestamp"]=@(NSDate.date.timeIntervalSince1970);d[@"appState"]=@(UIApplication.sharedApplication.applicationState);
@@ -32,10 +39,12 @@ BOOL TNVStart(NSDictionary *frame){
  if(!TMMusicPauseForOTA()){TNVRefusal=@"音乐桥未就绪（playing/active/busy）";return NO;}
  if(!TWReaderPauseForOTA()){TNVRefusal=@"提词桥占线（已请求关闭，2秒后重试可自愈）";return NO;}
  if(Session.active||Session.busy){TNVRefusal=@"上一导航会话仍占用（active/busy）";return NO;}
- NSUInteger flashStage=[TIOOTAFlashStatus()[@"stage"] unsignedIntegerValue];
- // 只拦武装（1）与传输（2）窗口；3=已收尾/超时终态、0=无会话。刷完固件后
- // stage 停在终态直到重启 App，按 !=0 拦会把刷机后的导航整个堵死。
- if(flashStage==1||flashStage==2){TNVRefusal=@"实验OTA进行中";return NO;}
+ NSDictionary *flash=TIOOTAFlashStatus();NSUInteger flashStage=[flash[@"stage"] unsignedIntegerValue];
+ // 只拦武装（1）与活跃传输（2 且 120 秒内有分片往来）窗口；3=已收尾/超时终态、
+ // 0=无会话。刷完固件后 stage 粘 2 直到 15 分钟超时才落 3（01505d2 已知），
+ // 一刀切拦 2 会把刷机后的导航堵死 15 分钟——按 99b1812 意图收窄到活跃窗口。
+ BOOL flashActive=flashStage==1||(flashStage==2&&NSProcessInfo.processInfo.systemUptime-[flash[@"lastActivity"] doubleValue]<120);
+ if(flashActive){TNVRefusal=@"实验OTA进行中";return NO;}
  NSString *device=TIOProtocolDevice();if(!device.length){TNVRefusal=@"设备号未知（协议缓存为空）";return NO;}
  TNScene scene;if(!TNVScene(frame,TNVAlways(),&scene)){TNVRefusal=@"转向帧无效（等待指引数据）";return NO;}
  TNVRefusal=@"";

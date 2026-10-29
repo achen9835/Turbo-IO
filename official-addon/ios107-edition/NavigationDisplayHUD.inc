@@ -25,7 +25,11 @@
 - (void)autoStartNativeHUDIfNeeded{
  if(!self.autoNativeHUD)return;
  NSDictionary *s=TDPPhoneNavigationStatus();
- if([s[@"active"] boolValue]){self.autoNativeHUD=NO;if(self.voiceBridgeTask!=UIBackgroundTaskInvalid){[self endVoiceBridgeTask];TIOVoiceNavTrace(@"锁屏桥接：HUD已激活，桥接结束");}return;}
+ // 会话活着时只复位尝试计数、保持武装：中途任何一次传输超时/拒绝都会让
+ // 会话死掉（active 翻 NO），武装保住的重试循环就是「冻结后自动重新上镜」
+ // 的自愈路径（真机 2026-10-30：模拟不跟帧/停不掉，皆因会话死后无恢复）。
+ // 用户手动停止（toggleDisplayHUD）与结束导航（halt）都会解除武装，不会抢。
+ if([s[@"active"] boolValue]){self.autoNativeHUDAttempts=0;if(self.voiceBridgeTask!=UIBackgroundTaskInvalid){[self endVoiceBridgeTask];TIOVoiceNavTrace(@"锁屏桥接：HUD已激活，桥接结束");}return;}
  if(![self canStartDisplayHUD])return;
  NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
  if(now<self.autoNativeHUDNextAt)return;
@@ -40,7 +44,7 @@
   void(^verify)(void)=^{
    if(g!=self.generation||!self.active)return;
    NSDictionary *v=TDPPhoneNavigationStatus();
-   if(![v[@"active"] boolValue]){TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD：未上镜（%@），重新上镜",v[@"note"]?:@"原因未知"]);self.autoNativeHUD=YES;}};
+   if(![v[@"active"] boolValue])TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD：未上镜（%@），重新上镜",v[@"note"]?:@"原因未知"]);};
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,2*NSEC_PER_SEC),dispatch_get_main_queue(),verify);
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC),dispatch_get_main_queue(),verify);
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(8.5*NSEC_PER_SEC)),dispatch_get_main_queue(),verify); // 8.5s covers the protocol's 8s reply deadline.
@@ -90,7 +94,7 @@
  if(subtitleLeftover)message=[message stringByAppendingString:@"\n检测到上次字幕会话未确认退出：请同时确认镜片已回首页、没有字幕残留，再开始。"];
  UIAlertController *a=[UIAlertController alertControllerWithTitle:@"开启原生导航？" message:message preferredStyle:UIAlertControllerStyleAlert];
  [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
- [a addAction:[UIAlertAction actionWithTitle:@"已确认，开始" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){if(g!=self.generation)return;if(subtitleLeftover)TIOSubtitleConfirmIdle();if(![self canStartDisplayHUD])return;BOOL ok=TDPPhoneNavigationStart([self displayHUDFrame]);if(!ok)[self alert:@"HUD未开启" message:@"请确认连接和无在途文件，再查看状态；不会自动重试。" ] ;[self refreshDisplayHUD];}]];[self presentViewController:a animated:YES completion:nil];
+ [a addAction:[UIAlertAction actionWithTitle:@"已确认，开始" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){if(g!=self.generation)return;if(subtitleLeftover)TIOSubtitleConfirmIdle();if(![self canStartDisplayHUD])return;BOOL ok=TDPPhoneNavigationStart([self displayHUDFrame]);if(ok){self.autoNativeHUD=YES;self.autoNativeHUDAttempts=0;self.autoNativeHUDNextAt=0; /* 手动开启成功同样纳入自愈：会话中途死掉会自动重新上镜 */}else [self alert:@"HUD未开启" message:@"请确认连接和无在途文件，再查看状态；不会自动重试。" ] ;[self refreshDisplayHUD];}]];[self presentViewController:a animated:YES completion:nil];
 }
 #if TIO_AMAP_ENABLED
 - (void)attachNativeHUD{

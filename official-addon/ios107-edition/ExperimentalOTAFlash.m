@@ -58,7 +58,7 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
 }
 @implementation TIOOTAFlashGate{
     NSDictionary<NSString *,NSData *> *_files;NSArray *_manifest;NSString *_device,*_failure;
-    NSTimeInterval _deadline;NSUInteger _stage,_slices,_bytes;BOOL _versionSent,_manifestSent;
+    NSTimeInterval _deadline,_lastActivity;NSUInteger _stage,_slices,_bytes;BOOL _versionSent,_manifestSent;
 }
 - (BOOL)prepareDirectory:(NSURL *)directory device:(NSString *)device uptime:(NSTimeInterval)now error:(NSError **)error{
     @synchronized(self){
@@ -102,11 +102,11 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
             if(ok){_slices++;_bytes+=size;}
         }else ok=NO;
         if(!ok){_failure=@"非预期设备、会话、清单或分片，发送被拒绝";if(_stage==2)_stage=3;return NO;}
-        if(t==4)_stage=2;if(t==5)_versionSent=YES;if(t==6)_manifestSent=YES;return YES;
+        if(t==4)_stage=2;if(t==5)_versionSent=YES;if(t==6)_manifestSent=YES;_lastActivity=now;return YES;
     }
 }
 - (BOOL)cancel{@synchronized(self){if(_stage>=2)return NO;_stage=0;_files=nil;_manifest=nil;_device=nil;_deadline=0;return YES;}}
-- (NSDictionary *)status{@synchronized(self){if(_stage&&isfinite(_deadline)&&NSProcessInfo.processInfo.systemUptime>=_deadline){if(_stage<2)[self cancel];else{_stage=3;_failure=[_failure length]?_failure:@"会话超时自动收尾";}}return @{@"stage":@(_stage),@"authorized":@(_stage==1||_stage==2),@"started":@(_stage>=2),@"versionMatched":@(_versionSent),@"manifestMatched":@(_manifestSent),@"validatedSlices":@(_slices),@"validatedSliceBytes":@(_bytes),@"failure":_failure?:@"",@"runtimeValidated":@NO};}}
+- (NSDictionary *)status{@synchronized(self){if(_stage&&isfinite(_deadline)&&NSProcessInfo.processInfo.systemUptime>=_deadline){if(_stage<2)[self cancel];else{_stage=3;_failure=[_failure length]?_failure:@"会话超时自动收尾";}}return @{@"stage":@(_stage),@"authorized":@(_stage==1||_stage==2),@"started":@(_stage>=2),@"versionMatched":@(_versionSent),@"manifestMatched":@(_manifestSent),@"validatedSlices":@(_slices),@"validatedSliceBytes":@(_bytes),@"lastActivity":@(_lastActivity),@"failure":_failure?:@"",@"runtimeValidated":@NO};}}
 @end
 BOOL TIOOTAFlashBuild(void){
 #if TARGET_OS_IPHONE && TIO_OTA_FLASH_ENABLED
