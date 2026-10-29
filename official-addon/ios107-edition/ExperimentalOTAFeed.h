@@ -10,8 +10,6 @@
 - (void)disarm;
 - (void)stop;
 - (NSDictionary *)status;
-// Bounded loopback HTTP round-trip; call off main, never authorizes anything.
-- (BOOL)checkHealth;
 @end
 // Opt-in package marker plus exact host/path checks; normal builds never listen.
 void TIOStartExperimentalOTAFeedIfMarked(void);

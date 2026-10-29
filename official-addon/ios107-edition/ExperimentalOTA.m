@@ -7,26 +7,71 @@
 #include <dirent.h>
 #include <errno.h>
 
-NSString *TIOExperimentalOTASHA(void){return @"6ae710233feec65e23816f4c89e75584de5f1abdde1f0aa8d74c4a3535ca8473";}
+extern const unsigned char TIOOTACandidateJSON[];
+extern const unsigned int TIOOTACandidateJSONLength;
+
+static BOOL TIOHex64(NSString *s){if(s.length!=64)return NO;for(NSUInteger i=0;i<64;i++){unichar c=[s characterAtIndex:i];if(!((c>='0'&&c<='9')||(c>='a'&&c<='f')))return NO;}return YES;}
+
+NSDictionary *TIOOTACandidate(void){
+    static NSDictionary *candidate;
+    static dispatch_once_t once;
+    dispatch_once(&once,^{
+        NSData *data=[NSData dataWithBytesNoCopy:(void *)TIOOTACandidateJSON length:TIOOTACandidateJSONLength freeWhenDone:NO];
+        id json=[NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        NSDictionary *root=[json isKindOfClass:NSDictionary.class]?json:nil;
+        BOOL ok=root&&[root[@"schema"] isEqual:@1];
+        NSDictionary *zip=root[@"zip"]; ok=ok&&[zip isKindOfClass:NSDictionary.class]&&[zip[@"size"] isKindOfClass:NSNumber.class]&&TIOHex64(zip[@"sha256"]);
+        ok=ok&&[root[@"otaSize"] isKindOfClass:NSNumber.class];
+        NSDictionary *ap=root[@"ap"]; ok=ok&&[ap isKindOfClass:NSDictionary.class]&&[ap[@"name"] isKindOfClass:NSString.class]&&[ap[@"size"] isKindOfClass:NSNumber.class]&&TIOHex64(ap[@"sha256"]);
+        ok=ok&&[root[@"apBudgetBytes"] isKindOfClass:NSNumber.class];
+        NSDictionary *manifest=root[@"manifest"]; ok=ok&&[manifest isKindOfClass:NSDictionary.class]&&[manifest[@"name"] isKindOfClass:NSString.class]&&[manifest[@"size"] isKindOfClass:NSNumber.class]&&TIOHex64(manifest[@"sha256"]);
+        ok=ok&&TIOHex64(root[@"stockAPSHA256"])&&[root[@"codeName"] isKindOfClass:NSString.class]&&[root[@"confirmToken"] isKindOfClass:NSString.class]&&[root[@"baseVersion"] isKindOfClass:NSString.class];
+        NSArray *pins=root[@"payloadPins"]; ok=ok&&[pins isKindOfClass:NSArray.class]&&pins.count>=3;
+        NSMutableSet *names=NSMutableSet.new; BOOL pinsOk=ok;
+        for(id item in pins){NSDictionary *pin=[item isKindOfClass:NSDictionary.class]?item:nil; NSString *name=pin[@"name"]; ok=ok&&[name isKindOfClass:NSString.class]&&name.length>0&&[name rangeOfString:@"/"].location==NSNotFound&&[name rangeOfString:@"\\"].location==NSNotFound&&[pin[@"size"] isKindOfClass:NSNumber.class]&&TIOHex64(pin[@"sha256"]); if(!ok){pinsOk=NO;break;} if([names containsObject:name]){pinsOk=NO;break;} [names addObject:name];}
+        ok=ok&&pinsOk&&[names containsObject:ap[@"name"]]&&[names containsObject:manifest[@"name"]];
+        if(ok)candidate=root;
+    });
+    return candidate;
+}
+
+NSString *TIOExperimentalOTASHA(void){return TIOOTACandidate()[@"zip"][@"sha256"]?:@"0000000000000000000000000000000000000000000000000000000000000000";}
+NSString *TIOOTAOfficialDirectoryName(void){
+    NSString *base=[TIOOTACandidate()[@"baseVersion"] stringByReplacingOccurrencesOfString:@"Strix OS " withString:@""];
+    return [NSString stringWithFormat:@"Strix_OS_%@",base.length?base:@"1.0.4.12"];
+}
+BOOL TIOOTAAcceptsReadback(NSString *osVersion){
+    NSDictionary *c=TIOOTACandidate();if(!c||![osVersion isKindOfClass:NSString.class])return NO;
+    if([osVersion isEqual:c[@"baseVersion"]])return YES;
+    NSArray *from=c[@"upgradeFrom"];
+    for(id item in [from isKindOfClass:NSArray.class]?from:@[])if([osVersion isEqual:item])return YES;
+    return NO;
+}
 static id Fail(NSError **error,NSString *message){if(error)*error=[NSError errorWithDomain:@"TurboIO.ExperimentalOTA" code:1 userInfo:@{NSLocalizedDescriptionKey:message}];return nil;}
 NSDictionary *TIOCheckExperimentalOTA(NSData *data,NSError **error){
-    if(data.length!=8842896)return Fail(error,@"文件大小不符。只接受本次 TMG2 实验 ZIP，未保存、未发送。");
+    NSDictionary *candidate=TIOOTACandidate();
+    if(!candidate)return Fail(error,@"候选描述缺失或无效。拒绝未知包，未保存、未发送。");
+    NSNumber *zipSize=candidate[@"zip"][@"size"];
+    if(data.length!=[zipSize unsignedIntegerValue])return Fail(error,@"文件大小不符。只接受本次实验 ZIP，未保存、未发送。");
     unsigned char digest[CC_SHA256_DIGEST_LENGTH];CC_SHA256(data.bytes,(CC_LONG)data.length,digest);
     NSMutableString *hex=[NSMutableString new];for(NSUInteger i=0;i<sizeof(digest);i++)[hex appendFormat:@"%02x",digest[i]];
-    if(![hex isEqual:TIOExperimentalOTASHA()])return Fail(error,@"SHA-256 不匹配。拒绝未知、旧版或已修改的包，未发送。");
+    if(![hex isEqual:candidate[@"zip"][@"sha256"]])return Fail(error,@"SHA-256 不匹配。拒绝未知、旧版或已修改的包，未发送。");
     // The exact archive has independently passed full ZIP/manifest/AP auditing
     // on Mac. This is exact-byte identity, not a generic ZIP manifest parser.
-    return @{@"schema":@1,@"candidate":@"Turbo Menu TMG2",@"baseFirmware":@"1.0.5.5",
-             @"archiveSHA256":hex,@"archiveBytes":@(data.length),@"changedPayloads":@[@"nuttx_ap.bin"],
-             @"unchangedPayloadCount":@14,@"integrityPassed":@YES,@"sent":@NO,
+    return @{@"schema":@1,@"candidate":candidate[@"codeName"],@"baseFirmware":candidate[@"baseVersion"],
+             @"archiveSHA256":hex,@"archiveBytes":@(data.length),@"changedPayloads":@[candidate[@"ap"][@"name"]],
+             @"unchangedPayloadCount":@( [candidate[@"payloadPins"] count]-1 ),@"integrityPassed":@YES,@"sent":@NO,
              @"runtimeValidated":@NO,@"officialDispatchConnected":@NO};
 }
 static NSData *Read(NSURL *source,NSError **error){
     if(!source.isFileURL)return Fail(error,@"只接受本地文件。");
+    NSDictionary *candidate=TIOOTACandidate();
+    if(!candidate)return Fail(error,@"候选描述缺失或无效。未保存、未发送。");
+    unsigned long long cap=[candidate[@"zip"][@"size"] unsignedLongLongValue];
     NSInputStream *stream=[NSInputStream inputStreamWithURL:source];[stream open];
     NSMutableData *data=[NSMutableData new];uint8_t buffer[65536];NSInteger n;
     while((n=[stream read:buffer maxLength:sizeof(buffer)])>0){
-        if(data.length+(NSUInteger)n>8842896){[stream close];return Fail(error,@"文件过大；未保存、未发送。");}
+        if(data.length+(NSUInteger)n>cap){[stream close];return Fail(error,@"文件过大；未保存、未发送。");}
         [data appendBytes:buffer length:(NSUInteger)n];
     }
     NSError *readError=stream.streamError;[stream close];
@@ -55,27 +100,19 @@ NSDictionary *TIOImportExperimentalOTA(NSURL *source,NSURL *directory,NSError **
     return result;
 }
 
-static NSDictionary *PayloadPins(void){return @{
-    @"OtaFileInfo.json":@[@2700,@"2438f3ad4f7966ff5d1a4b489b8fb931f6410933063b43a8dc092cd4dc5acdae"],
-    @"bt_controller.bin":@[@625364,@"0060cc360b04577e8f5ce8f5d54fabde6103a6fef5a1a052260097920165a0c6"],
-    @"cb_fw_venus.bin":@[@114592,@"8799f12071bdac082218e3601c24ab0989275fc2f7db74e37b8314a225c2cf7d"],
-    @"fac_test_img.bin":@[@1821552,@"18eb0901c3e0daeae48dd5f015252b6931ea7368f0160c2c985c4e74296d17eb"],
-    @"images.bin":@[@383431,@"219ba2f7935850a059ac7e6a1ffa181056ce70891501db28238940dfbdc44cc5"],
-    @"lotties.bin":@[@651481,@"ad66d83a3394034f825a12769aad292fc03e59fa865fe06bc43536b918a0b32b"],
-    @"nuttx_ap.bin":@[@7408584,@"13c1b953ac50b91c87ebbf039b3795eb82e6c47912e7e7d2bfd911f989c14261"],
-    @"nuttx_apc1.bin":@[@1423532,@"40ea15260a56b6c642120b3234a871662d0e74709deab14cda64be0949dacb40"],
-    @"nuttx_audio.bin":@[@1461920,@"549a72c032595e3829da7d63b7e1fd13cceda1a55dfefa7a7cad02db5a9b42ab"],
-    @"nuttx_bth.bin":@[@1189216,@"d48cb821f30045ea681cae0bfdab766c6d02be6f7b2bd5a75e1c41dc127d1a30"],
-    @"ota_installer_progress.bin":@[@5616,@"6fd65d296a667e1a7d94ec129adfd26458a4008ef403b331f855192c36eb3e3f"],
-    @"pil_algo_up_demo_nand.dll":@[@504388,@"e266726fe055ac6ec6f785a9440e8da7421402f2b4d3d7889039ad9b94e119c2"],
-    @"pil_algo_vad_demo.dll":@[@433900,@"a3253e86dcdcb92a4d0d32fb4a0800da8761138c021a93d1c1dbca51268b66a2"],
-    @"pil_algo_wakeup_dll_nand.dll":@[@287560,@"d1594cb8658b228e52c2606d02f1eab696d35a11ed42ddcb725e76a745f5550f"],
-    @"rives.bin":@[@689431,@"836bc019f7152890b94cafafe2edaa024f317526318349f7833319e41158b104"],
-    @"smf.json":@[@23510,@"2713dc3a302a65c101fa981500cd8b217766c526b6045bf02db5e9e6763d076d"]};}
+static NSDictionary *PayloadPins(void){
+    NSDictionary *candidate=TIOOTACandidate();
+    if(!candidate)return nil;
+    NSMutableDictionary *pins=[NSMutableDictionary new];
+    for(NSDictionary *pin in candidate[@"payloadPins"])pins[pin[@"name"]]=@[pin[@"size"],pin[@"sha256"]];
+    return pins;
+}
 static BOOL SameStat(struct stat a,struct stat b){return a.st_dev==b.st_dev&&a.st_ino==b.st_ino&&a.st_size==b.st_size&&a.st_mode==b.st_mode&&a.st_nlink==b.st_nlink&&a.st_mtimespec.tv_sec==b.st_mtimespec.tv_sec&&a.st_mtimespec.tv_nsec==b.st_mtimespec.tv_nsec&&a.st_ctimespec.tv_sec==b.st_ctimespec.tv_sec&&a.st_ctimespec.tv_nsec==b.st_ctimespec.tv_nsec;}
 NSDictionary<NSString *,NSData *> *TIOCopyExperimentalOTAPayloads(NSURL *directory,NSError **error){
     if(!TIOCheckExperimentalOTADirectory(directory,error))return nil;
-    NSMutableDictionary *copy=[NSMutableDictionary new];NSDictionary *pins=PayloadPins();
+    NSDictionary *pins=PayloadPins();
+    if(!pins)return Fail(error,@"候选描述缺失或无效；未授权发送。");
+    NSMutableDictionary *copy=[NSMutableDictionary new];
     for(NSString *name in pins){
         NSData *data=[NSData dataWithContentsOfURL:[directory URLByAppendingPathComponent:name] options:0 error:error];
         if(!data||data.length!=[pins[name][0] unsignedIntegerValue])return Fail(error,@"待传文件在冻结时改变；未授权发送。");
@@ -88,15 +125,17 @@ NSDictionary<NSString *,NSData *> *TIOCopyExperimentalOTAPayloads(NSURL *directo
 }
 NSDictionary *TIOCheckExperimentalOTADirectory(NSURL *directory,NSError **error){
     if(!directory.isFileURL)return Fail(error,@"只接受本地待传目录。");
+    NSDictionary *pins=PayloadPins();
+    if(!pins)return Fail(error,@"候选描述缺失或无效；未发送。");
     // Open a directory handle and use openat/O_NOFOLLOW for every member. Never
     // follow a member symlink, FIFO or device. Do not modify old OTA caches.
     int root=open(directory.path.fileSystemRepresentation,O_RDONLY|O_DIRECTORY|O_NOFOLLOW|O_CLOEXEC);
     if(root<0)return Fail(error,@"待传目录不存在、不可读或为符号链接；未发送。");
-    struct stat before,after;BOOL ok=fstat(root,&before)==0;NSDictionary *pins=PayloadPins();NSMutableSet *names=[NSMutableSet new];
+    struct stat before,after;BOOL ok=fstat(root,&before)==0;NSMutableSet *names=[NSMutableSet new];
     int copy=dup(root);DIR *stream=copy>=0?fdopendir(copy):NULL;if(!stream){if(copy>=0)close(copy);ok=NO;}
-    if(stream){struct dirent *item;errno=0;while((item=readdir(stream))){if(!strcmp(item->d_name,".")||!strcmp(item->d_name,".."))continue;NSString *name=[NSString stringWithUTF8String:item->d_name];if(!name||names.count>=16||!pins[name]){ok=NO;break;}[names addObject:name];errno=0;}if(errno)ok=NO;closedir(stream);}
+    if(stream){struct dirent *item;errno=0;while((item=readdir(stream))){if(!strcmp(item->d_name,".")||!strcmp(item->d_name,".."))continue;NSString *name=[NSString stringWithUTF8String:item->d_name];if(!name||names.count>=pins.count||!pins[name]){ok=NO;break;}[names addObject:name];errno=0;}if(errno)ok=NO;closedir(stream);}
     if(names.count!=pins.count)ok=NO;
-    NSMutableDictionary *identities=[NSMutableDictionary new];NSString *problem=@"文件集合与 TMG2 不符，可能是旧缓存或残缺目录；未发送。";
+    NSMutableDictionary *identities=[NSMutableDictionary new];NSString *problem=@"文件集合与固定候选不符，可能是旧缓存或残缺目录；未发送。";
     for(NSString *name in [pins.allKeys sortedArrayUsingSelector:@selector(compare:)]){
         if(!ok)break;
         int fd=openat(root,name.fileSystemRepresentation,O_RDONLY|O_NOFOLLOW|O_NONBLOCK|O_CLOEXEC);
@@ -110,12 +149,12 @@ NSDictionary *TIOCheckExperimentalOTADirectory(NSURL *directory,NSError **error)
             ok=ok&&[hash isEqual:pins[name][1]]&&fstat(fd,&last)==0&&SameStat(first,last);
             if(ok)identities[name]=[NSData dataWithBytes:&last length:sizeof(last)];
         }
-        close(fd);if(!ok)problem=[NSString stringWithFormat:@"%@ 与固定 TMG2 不一致或读取期间改变；未发送。",name];
+        close(fd);if(!ok)problem=[NSString stringWithFormat:@"%@ 与固定候选不一致或读取期间改变；未发送。",name];
     }
     // A second pass catches names/inodes replaced after an earlier file was read.
     for(NSString *name in identities){struct stat prior,current;[identities[name] getBytes:&prior length:sizeof(prior)];if(fstatat(root,name.fileSystemRepresentation,&current,AT_SYMLINK_NOFOLLOW)||!SameStat(prior,current))ok=NO;}
     ok=ok&&fstat(root,&after)==0&&SameStat(before,after);
     struct stat currentPath;if(lstat(directory.path.fileSystemRepresentation,&currentPath)||!SameStat(before,currentPath))ok=NO;
     close(root);if(!ok)return Fail(error,problem);
-    return @{@"candidate":@"Turbo Menu TMG2",@"checkedMembers":@16,@"integrityPassed":@YES,@"snapshotOnly":@YES,@"transferSessionBound":@NO,@"sent":@NO,@"flashAuthorized":@NO};
+    return @{@"candidate":TIOOTACandidate()[@"codeName"],@"checkedMembers":@(pins.count),@"integrityPassed":@YES,@"snapshotOnly":@YES,@"transferSessionBound":@NO,@"sent":@NO,@"flashAuthorized":@NO};
 }

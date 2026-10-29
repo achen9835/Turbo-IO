@@ -10,8 +10,6 @@ NSDictionary *TNVNormalizeCoordinates(NSArray *);
 - (void)offer:(NSDictionary *)frame;
 - (void)setAlways:(BOOL)always;
 - (void)stop;
-- (void)setReplayPaused:(BOOL)paused;
-- (void)backgroundDrainExpired;
 - (void)disconnect;
 - (void)pump;
 - (BOOL)consume:(NSDictionary *)event;

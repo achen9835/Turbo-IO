@@ -24,6 +24,10 @@ if [[ ${TIO_AMAP_ENABLED:-0} == 1 ]]; then
   nav_options+=(-F "$nav_root/search" -framework AMapSearchKit)
 fi
 sdk_path=$(xcrun --sdk iphoneos --show-sdk-path)
+# Embed the pinned OTA candidate descriptor (single source of truth, shared with
+# watch-remote/flash_check.py and the Android assets) as C byte arrays.
+candidate_file=${TIO_OTA_CANDIDATE:-candidates/tfp1-focus-04.json}
+python3 gen_otacandidate.py "$candidate_file" build/OTACandidate.gen.m
 link_options=()
 if [[ ${TIO_OTA_FLASH_ENABLED:-0} == 1 ]]; then
   [[ ${TIO_OTA_PREPARATION_ENABLED:-0} != 1 && "$mode" == embedded ]] || { echo 'Flash gate requires separate embedded build' >&2; exit 2; }
@@ -46,7 +50,7 @@ fi
 # Keep the normal embedded build unchanged until the device comparison passes.
 if [[ ${TIO_DISPLAY_PHONE:-0} == 1 ]]; then
   [[ ${TIO_IMAGE_RX_LAB:-0} == 1 && "$mode" == embedded ]] || exit 2
-  image_options+=(-DTIO_DISPLAY_PHONE=1 -DTIO_DISPLAY_DIAGNOSTICS=1 -DTIO_NATIVE_NAV=1 nav_runtime.c RoadMap.m NativeNavigation.m TNVTransport.m NativeNavigationUI.m display_runtime.c display_client.c display_carrier.c DisplayDelta.c DisplayNavigation.m DisplayHUDRenderer.m DisplayReplyObserver.m DisplayPhoneSession.m DisplayPhoneTransport.m DisplayPhoneUI.m DisplayDiagnostics.m)
+  image_options+=(-DTIO_DISPLAY_PHONE=1 -DTIO_DISPLAY_DIAGNOSTICS=1 -DTIO_NATIVE_NAV=1 nav_runtime.c nav_map.c NativeNavigation.m TNVTransport.m NativeNavigationUI.m RoadMap.m RoadPack.m RoadPackUI.m display_runtime.c display_client.c display_carrier.c DisplayDelta.c DisplayNavigation.m DisplayHUDRenderer.m DisplayReplyObserver.m DisplayPhoneSession.m DisplayPhoneTransport.m DisplayPhoneUI.m DisplayDiagnostics.m)
 fi
 if [[ ${TIO_DISPLAY_FLASH:-0} == 1 ]]; then
   [[ ${TIO_DISPLAY_PHONE:-0} == 1 && ${TIO_OTA_FLASH_ENABLED:-0} == 1 && "$mode" == embedded ]] || exit 2
@@ -59,6 +63,7 @@ xcrun --sdk iphoneos clang -arch arm64 -isysroot "$sdk_path" -miphoneos-version-
   -fobjc-arc -fmodules -dynamiclib -Wall -Wextra -Wno-unused-parameter -Wno-incompatible-pointer-types MenuLayout.m MenuLayoutUI.m menu_config.c Brightness.m BrightnessCodec.m MusicLibrary.m camera-v1/camera.c camera-v1/CameraLink.m camera-v1/CameraImage.m camera-v1/CameraUI.m camera-v1/CameraProfiles.c camera-v1/CameraCapture.m -framework Photos \
   -framework Foundation -framework UIKit -framework Security -framework UniformTypeIdentifiers -framework CoreLocation -framework AVFAudio \
   -framework WatchConnectivity WatchRemoteGate.m WatchGlobalBridge.m remote.c WatchRemoteAddon.m LocalTranslationEntry.m ExperimentalOTA.m ExperimentalOTAGuard.m ExperimentalOTAFlash.m ExperimentalOTAFeed.m ExperimentalOTAUI.m NavigationModes.m ProtocolContext.m NavigationSubtitleHUD.m NavigationPlaces.m NavigationPlacePicker.m \
+  build/OTACandidate.gen.m \
   ${nav_options[@]+"${nav_options[@]}"} \
   ${image_options[@]+"${image_options[@]}"} \
   "-DTIO_TARGET_BUNDLE_ID=\"$bundle\"" -install_name "$install_name" ${link_options[@]+"${link_options[@]}"} \

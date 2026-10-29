@@ -6,8 +6,10 @@
 #define TNR_MAX_PATHS 96u
 #define TNR_MAX_POINTS 768u
 #define TNR_MAX_BYTES 4096u
-#define TNR_W 192u
-#define TNR_H 144u
+/* Canvas grew 192x144 -> 296x148 (2026-10-28 layout: map-primary). Same wire
+ * format; only the renderer geometry changed. Phone copy must stay identical. */
+#define TNR_W 296u
+#define TNR_H 148u
 #define TNR_STALE_MS 5000u
 #define TNR_MAX_LABELS 4u
 #define TNR_LABEL_BYTES 32u
@@ -26,6 +28,10 @@ typedef struct {
 bool tnr_body_valid(unsigned op,const uint8_t *,size_t);
 bool tnr_receive(TNRState *,unsigned op,const uint8_t *,size_t,uint32_t now);
 bool tnr_position(const TNRState *,uint32_t now,TNRPose *);
+TNRPoint tnr_ahead(const TNRState *,const TNRPose *,unsigned metres); /* heading-ray fallback */
+TNRPoint tnr_route_ahead(const TNRState *,const TNRPose *,unsigned metres); /* route-arc marker projection */
+int32_t tnr_route_base_qm(const TNRState *,const TNRPose *,const TNRPath *); /* signed arc offset to path start */
+TNRPoint tnr_project(const TNRState *,const TNRPose *,TNRPoint); /* scene-space -> canvas, for the congestion route tint */
 bool tnr_stale(const TNRState *,uint32_t now);
 bool tnr_needs_draw(const TNRState *,uint32_t now);
 void tnr_draw(const TNRState *,uint32_t now,uint8_t out[TNR_W*TNR_H]);

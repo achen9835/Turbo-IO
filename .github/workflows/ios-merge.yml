@@ -186,7 +186,7 @@ jobs:
       - name: 编译 TurboIO 扩展 dylib
         run: |
           if [[ "${{ inputs.enable_focus }}" == 'true' ]]; then
-            # FOCUS-04 集成版：独立源码树与构建脚本，强制启用高德导航
+            # 集成版：官方最新插件树 ios107-edition（其余功能原样，导航/刷机为我方线），强制启用高德导航
             export TIO_AMAP_ENABLED=1 TIO_AMAP_SDK_ROOT="$PWD/official-addon/build/amap-sdk" \
               TIO_OTA_FLASH_ENABLED=1 TIO_IMAGE_RX_LAB=1 TIO_IMAGE_RX_WIDE=1 \
               TIO_DISPLAY_PHONE=1 TIO_DISPLAY_FLASH=1
@@ -195,8 +195,8 @@ jobs:
               export TIO_APP_SDK=1
               echo "已启用 TIO_APP_SDK：应用广场 + TCE1 仪表盘卡片"
             fi
-            bash official-addon/focus-edition/build.sh embedded "${{ inputs.bundle_id }}"
-            ADDON=official-addon/focus-edition/build/image-rx-lab/TurboIOPrivateAddon.dylib
+            bash official-addon/ios107-edition/build.sh embedded "${{ inputs.bundle_id }}"
+            ADDON=official-addon/ios107-edition/build/image-rx-lab/TurboIOPrivateAddon.dylib
           else
             if [[ "${{ inputs.enable_amap }}" == 'true' ]]; then export TIO_AMAP_ENABLED=1; fi
             bash official-addon/build.sh embedded "${{ inputs.bundle_id }}"

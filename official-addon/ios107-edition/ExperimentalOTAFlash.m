@@ -1,15 +1,11 @@
-#import "OTAHost.h"
-#import "ExperimentalOTAFeed.h"
-#import "dots-v1/DotsGlassesTransfer.h"
-#import "context-english-v1/ContextEnglishTransport.h"
 #import "ExperimentalOTAFlash.h"
 #import "MusicTransport.h"
 #import "ReaderTransport.h"
-#import "AppTransport.h"
-#import "AppBridge.h"
 #import "FocusTransport.h"
-#import "RideTransport.h"
 #import "TDTransport.h"
+#if TIO_APP_SDK
+#import "AppTransport.h"
+#endif
 #import "ExperimentalOTA.h"
 #import "ExperimentalOTAGuard.h"
 #include <TargetConditionals.h>
@@ -27,10 +23,15 @@
 #endif
 #endif
 BOOL TIOOTAFileCallBlocked(NSString *method,BOOL scopedImage,NSUInteger stage){
-    if(![method isKindOfClass:NSString.class])return YES;
-    if([method isEqual:@"rayneonet_sendFile"]&&scopedImage&&stage==0)return NO;
-    NSString *lower=method.lowercaseString;
-    return [lower containsString:@"sendfile"]||[lower containsString:@"ota"]||[lower containsString:@"upgrade"];
+ if(![method isKindOfClass:NSString.class])return YES;
+ if([method isEqual:@"rayneonet_sendFile"]&&scopedImage&&stage==0)return NO;
+ // 2026-10-29：官方离线翻译/文件传输与固件包共用 rayneonet_sendFile 通道。
+ // 未武装（stage==0）时全放行——老门禁把官方传输一并拦掉，正是 1.0.10
+ // 离线翻译「云端服务异常」的定因。试刷授权后（stage>0）仍拦非本方通道，
+ // 保护固件包不被并发文件流打断（授权红线不变）。
+ if(stage==0)return NO;
+ NSString *lower=method.lowercaseString;
+ return [lower containsString:@"sendfile"]||[lower containsString:@"ota"]||[lower containsString:@"upgrade"];
 }
 static id Error(NSError **error,NSString *s){if(error)*error=[NSError errorWithDomain:@"TurboIO.OTAFlash" code:1 userInfo:@{NSLocalizedDescriptionKey:s}];return nil;}
 static BOOL Number(id n,NSUInteger *out){
@@ -63,7 +64,16 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
     @synchronized(self){
         if(_stage||![device isKindOfClass:NSString.class]||!device.length||device.length>200||!isfinite(now)||now<0){Error(error,@"当前不是可授权状态或没有有效设备；未开放。");return NO;}
         NSDictionary *files=TIOCopyExperimentalOTAPayloads(directory,error);if(!files)return NO;
-        id manifest=[NSJSONSerialization JSONObjectWithData:files[@"OtaFileInfo.json"] options:0 error:error];if(![manifest isKindOfClass:NSArray.class]||[manifest count]!=15)return NO;
+        /* 清单负载数随候选底座走（TAP1/1.0.4.12=14，TAP2/1.0.5.5=15 含新增
+         * bt_controller.bin），从 payloadPins 派生而非写死。2026-10-27 真机：
+         * 写死 14 使 TAP2 授权在此被拒且 error 未置——状态行 nil 显示为空白。 */
+        NSArray *pins=TIOOTACandidate()[@"payloadPins"];
+        NSUInteger expected=[pins isKindOfClass:NSArray.class]&&pins.count>1?pins.count-1:0;
+        id manifest=[NSJSONSerialization JSONObjectWithData:files[@"OtaFileInfo.json"] options:0 error:error];
+        if(![manifest isKindOfClass:NSArray.class]||!expected||[manifest count]!=expected){
+            NSString *actual=@"非清单结构";
+            if([manifest isKindOfClass:NSArray.class])actual=[NSString stringWithFormat:@"%lu 项",(unsigned long)[manifest count]];
+            Error(error,[NSString stringWithFormat:@"官方解压目录清单负载数不符：候选要求 %lu 项，实际 %@。未授权。",(unsigned long)expected,actual]);return NO;}
         _files=files;_manifest=manifest;_device=[device copy];_deadline=now+900;_stage=1;_failure=nil;return YES;
     }
 }
@@ -77,13 +87,13 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
         // recovery loop can establish that no glasses transfer is active.
         if((t==1||t==2||t==11)&&empty)return YES;
         NSUInteger n=0;
-        if(t==3&&dict&&[j count]==1&&Number(j[@"OtaSize"],&n)&&n==8842896&&!binary.length)return YES;
-        if(!_stage){if(t==4)_failure=@"TMG2 试刷尚未授权；开始指令未发送。请先在实验固件页完成 TMG2 风险确认。";return NO;}
+        if(t==3&&dict&&[j count]==1&&Number(j[@"OtaSize"],&n)&&TIOOTACandidate()&&n==(NSUInteger)[TIOOTACandidate()[@"otaSize"] unsignedLongLongValue]&&!binary.length)return YES;
+        if(!_stage){if(t==4)_failure=[NSString stringWithFormat:@"%@ 试刷尚未授权；开始指令未发送。请先在实验固件页完成风险确认。",TIOOTACandidate()[@"codeName"]?:@"候选"];return NO;}
         if(_stage==3||!isfinite(now)||now<0)return NO;
         if(_stage==1&&now>=_deadline){[self cancel];return NO;}
         BOOL ok=[device isEqual:_device];
         if(t==4)ok=ok&&_stage==1&&dict&&[j count]==1&&Number(j[@"Mode"],&n)&&n==2&&!binary.length;
-        else if(t==5)ok=ok&&_stage==2&&dict&&[j isEqual:@{@"OtaVersion":@"Strix OS 1.0.5.5"}]&&!binary.length;
+        else if(t==5)ok=ok&&_stage==2&&dict&&TIOOTACandidate()&&[j isEqual:@{@"OtaVersion":TIOOTACandidate()[@"baseVersion"]}]&&!binary.length;
         else if(t==6)ok=ok&&_stage==2&&_versionSent&&[j isKindOfClass:NSArray.class]&&[j isEqual:_manifest]&&!binary.length;
         else if(t==7){
             NSUInteger start=0,size=0;NSString *name=dict?j[@"Name"]:nil;NSData *file=[name isKindOfClass:NSString.class]?_files[name]:nil;
@@ -105,7 +115,9 @@ BOOL TIOOTAFlashBuild(void){
     // Authorization/feed still require the exact marker below.
     return YES;
 #else
-    return TIOOTA107HostMatches(NSBundle.mainBundle.infoDictionary);
+    // 打包脚本按宿主底座写 ios105-/ios107-/ios1010- 前缀（补丁脚本 report.edition），
+    // 门禁接受三代标记，后缀不变；其他值仍一律拒绝。
+    return [@[@"ios105-tfp1-loopback-flash-gated",@"ios107-tfp1-loopback-flash-gated",@"ios1010-tfp1-loopback-flash-gated"] containsObject:[NSBundle.mainBundle objectForInfoDictionaryKey:@"TIOExperimentalOTAQueryRouting"]];
 #endif
 #else
     return NO;
@@ -124,12 +136,12 @@ BOOL TIOOTAAutoUpdateDisabled(NSDictionary *preferences){
 static TIOOTAFlashGate *Current(void){@synchronized(NSProcessInfo.processInfo){if(!Gate)Gate=[TIOOTAFlashGate new];return Gate;}}
 BOOL TIOOTAFlashProtected(void){
 #if TARGET_OS_IPHONE && TIO_DISPLAY_FLASH
-    if(!TIOOTA107HostMatches(NSBundle.mainBundle.infoDictionary))return NO;
+    if(![@[@"ios105-tfp1-loopback-flash-gated",@"ios107-tfp1-loopback-flash-gated",@"ios1010-tfp1-loopback-flash-gated"] containsObject:[NSBundle.mainBundle objectForInfoDictionaryKey:@"TIOExperimentalOTAQueryRouting"]])return NO;
 #endif
     return TIOOTAFlashBuild()&&[TIOOTAGuardStatus()[@"transportHookReady"] boolValue];
 }
 void TIOOTAFlashDisableAutoUpdateIfRequested(void){
-    if(!TIOOTAFlashProtected()||![NSProcessInfo.processInfo.environment[@"TIO_OTA_DISABLE_AUTO_ONCE"] isEqual:@"DISABLE_FOR_PRIVATE_TMG2"])return;
+    if(!TIOOTAFlashProtected()||![NSProcessInfo.processInfo.environment[@"TIO_OTA_DISABLE_AUTO_ONCE"] isEqual:@"DISABLE_FOR_PRIVATE_TFP1"])return;
     NSUserDefaults *p=NSUserDefaults.standardUserDefaults;NSMutableArray *keys=[NSMutableArray new];
     for(NSString *key in p.dictionaryRepresentation)if([key hasSuffix:@"_ota_firmware_auto_update"])[keys addObject:key];
     // Do not guess between accounts. The private pre-install preference backup
@@ -137,6 +149,21 @@ void TIOOTAFlashDisableAutoUpdateIfRequested(void){
     if(keys.count!=1)return;id v=[p objectForKey:keys[0]];
     if([v isKindOfClass:NSString.class]&&([v isEqual:@"true"]||[v isEqual:@"false"]))[p setObject:@"false" forKey:keys[0]];
     else if([v isKindOfClass:NSNumber.class]&&CFGetTypeID((__bridge CFTypeRef)v)==CFBooleanGetTypeID())[p setBool:NO forKey:keys[0]];
+    [p synchronize];
+}
+// Second layer of the update-check silence (see TIOOTAUpdateCheckBlockCall):
+// force the official "firmware auto-update" switch off, so a version cached
+// before the block existed cannot trigger a background download or prompt.
+// 2026-10-29 解耦：自动更新强制关闭是刷机红线保护，与版本改写开关无关，
+// 启动时无条件执行（版本改写默认改关后仍保护 TAP2 不被官方固件覆盖）。
+void TIOOTAAutoUpdateDisableForSilence(void){
+    NSUserDefaults *p=NSUserDefaults.standardUserDefaults;NSMutableArray *keys=[NSMutableArray new];
+    for(NSString *key in p.dictionaryRepresentation)if([key hasSuffix:@"_ota_firmware_auto_update"])[keys addObject:key];
+    if(keys.count>1)return;id v=keys.count?[p objectForKey:keys[0]]:nil;
+    if([v isKindOfClass:NSString.class]&&[v isEqual:@"true"])[p setObject:@"false" forKey:keys[0]];
+    else if([v isKindOfClass:NSNumber.class]&&CFGetTypeID((__bridge CFTypeRef)v)==CFBooleanGetTypeID()&&[v boolValue])[p setBool:NO forKey:keys[0]];
+    else if(!v)[p setBool:NO forKey:@"ota_firmware_auto_update"]; /* 键从未落盘（官方页显示的"关"只是缺省值，重装即丢）：补一条显式关闭记录，试刷前置检查才读得到 */
+    else return;
     [p synchronize];
 }
 static id Get(id obj,NSString *key){@try{return [obj valueForKey:key];}@catch(NSException *e){return nil;}}
@@ -149,8 +176,6 @@ BOOL TIOOTAFlashBlockCall(id call){
         NSUInteger business=0;if(![args isKindOfClass:NSDictionary.class]||!Number(args[@"businessId"],&business))return YES;
         if(business!=9)return NO;
         id data=args[@"payload"];if(![data isKindOfClass:NSData.class])data=Get(data,@"data");
-        if(!TIOOTA107HostMatches(NSBundle.mainBundle.infoDictionary))
-            return !TIOOTAIsEmptyVersionQuery(data);
 #if TIO_DISPLAY_PHONE && !TIO_DISPLAY_FLASH
         // Phone-only test package: no OTA mutation, even if an old gate was armed.
         return !TIOPhoneOTAReadAllowed(data);
@@ -159,12 +184,15 @@ BOOL TIOOTAFlashBlockCall(id call){
     }
     // The pinned files path uses business 9 frames, never sendFile / ZIP mode.
     BOOL scopedImage=NO;
+#if TIO_APP_SDK
+    scopedImage=TAPIsScopedCall(method,args);
+#endif
 #if TIO_IMAGE_RX_LAB
-    scopedImage=TIOImageUploadIsScopedCall(method,args);
+    scopedImage=scopedImage||TIOImageUploadIsScopedCall(method,args);
 #if TIO_DISPLAY_PHONE
     scopedImage=scopedImage||TDPPhoneIsScopedCall(method,args);
 #if TIO_NATIVE_NAV
-    scopedImage=scopedImage||TDGlassesIsScopedCall(method,args)||TAPIsScopedCall(method,args)||TNVIsScopedCall(method,args)||TMIsScopedCall(method,args)||TWIsScopedCall(method,args)||TFIsScopedCall(method,args)||CEIsScopedCall(method,args)||DRIsScopedCall(method,args)||TDIsScopedCall(method,args);
+    scopedImage=scopedImage||TNVIsScopedCall(method,args)||TMIsScopedCall(method,args)||TWIsScopedCall(method,args)||TFIsScopedCall(method,args)||TDIsScopedCall(method,args);
 #endif
 #endif
 #endif
@@ -175,17 +203,11 @@ void TIOOTAFlashObserveEvent(NSDictionary *event){
     NSDictionary *m=event[@"message"];NSUInteger business=0;if(![m isKindOfClass:NSDictionary.class]||!Number(m[@"businessId"],&business)||business!=9)return;
     NSDictionary *f=TIOOTAFrame(m[@"payload"]);id j=f[@"json"];
     if([f[@"type"] isEqual:@1]){@synchronized(NSProcessInfo.processInfo){ObservedDevice=nil;ObservedAt=0;}}
-    if([f[@"type"] isEqual:@1]&&[j isKindOfClass:NSDictionary.class]&&[@[@"Strix OS 1.0.4.12",@"Strix OS 1.0.5.5"] containsObject:j[@"OsVersion"]]&&[j[@"OtaValidationConfirmed"] isEqual:@YES]&&[m[@"deviceId"] isKindOfClass:NSString.class]){
+    if([f[@"type"] isEqual:@1]&&[j isKindOfClass:NSDictionary.class]&&TIOOTAAcceptsReadback(j[@"OsVersion"])&&[j[@"OtaValidationConfirmed"] isEqual:@YES]&&[m[@"deviceId"] isKindOfClass:NSString.class]){
         @synchronized(NSProcessInfo.processInfo){ObservedDevice=[m[@"deviceId"] copy];ObservedAt=NSProcessInfo.processInfo.systemUptime;}
     }
 }
 BOOL TIOOTAFlashAuthorize(NSError **error){
-    if(!TIOOTA107HostMatches(NSBundle.mainBundle.infoDictionary)){Error(error,@"1.0.7 OTA 专用宿主或路由标记不匹配，未授权。");return NO;}
-    NSDictionary *feed=TIOExperimentalOTAFeedStatus();
-    if(![feed[@"bootstrapEligible"] boolValue]||![feed[@"running"] boolValue]||![feed[@"healthPassed"] boolValue]){Error(error,@"未确认本机下载来源与健康检查，未授权。");return NO;}
-#if TARGET_OS_IPHONE && TIO_DISPLAY_PHONE
-    if(TAPPhoneBridge.shared.busy||TAPPhoneBridge.shared.needsReadback){Error(error,@"应用文件仍在传输或结果未知，先查询完成；未开放升级。");return NO;}
-#endif
     if(!TIOOTAFlashProtected()){Error(error,@"没有试刷构建与发送保护；未开放。");return NO;}
 #if TARGET_OS_IPHONE && TIO_DISPLAY_FLASH
     if(!TDPPhonePauseForOTA()){Error(error,@"显示文件仍在传输或结果未知，请等待终态；未开放升级。若任务无法收尾，先退出显示页并重启 App 重新检查。");return NO;}
@@ -193,8 +215,8 @@ BOOL TIOOTAFlashAuthorize(NSError **error){
     if(!TIOOTAAutoUpdateDisabled(NSUserDefaults.standardUserDefaults.dictionaryRepresentation)){Error(error,@"请先在官方眼镜软件版本页关闭自动更新；未读到明确关闭状态，不授予试刷权限。");return NO;}
     NSString *device;NSTimeInterval at;@synchronized(NSProcessInfo.processInfo){device=ObservedDevice;at=ObservedAt;}
     NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
-    if(!device.length||now-at>120){Error(error,@"请先从官方固件页重新检查版本；需要两分钟内的 1.0.4.12 或 1.0.5.5 有效回读。");return NO;}
-    NSURL *dir=[NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/ota/Strix_OS_1.0.5.5"] isDirectory:YES];
+    if(!device.length||now-at>120){Error(error,[NSString stringWithFormat:@"请先从官方固件页重新检查版本；需要两分钟内对 %@ 的有效回读。",TIOOTACandidate()[@"baseVersion"]?:@"候选底座版本"]);return NO;}
+    NSURL *dir=[NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Library/Application Support/ota/%@",TIOOTAOfficialDirectoryName()]] isDirectory:YES];
     return [Current() prepareDirectory:dir device:device uptime:now error:error];
 }
 BOOL TIOOTAFlashCancel(void){return [Current() cancel];}

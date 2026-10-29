@@ -3,7 +3,7 @@
 int main(void){@autoreleasepool{
     struct {struct mach_header_64 h;struct uuid_command c;} image={0};
     image.h.magic=MH_MAGIC_64;image.h.filetype=MH_EXECUTE;image.h.ncmds=1;image.h.sizeofcmds=sizeof(image.c);image.c.cmd=LC_UUID;image.c.cmdsize=sizeof(image.c);
-    NSArray *pairs=@[@[@"1.0.2",@"67"],@[@"1.0.4",@"195"],@[@"1.0.5",@"201"],@[@"1.0.6",@"218"],@[@"1.0.7",@"230"]];
+    NSArray *pairs=@[@[@"1.0.2",@"67"],@[@"1.0.4",@"195"],@[@"1.0.5",@"201"],@[@"1.0.6",@"218"],@[@"1.0.7",@"230"],@[@"1.0.10",@"258"]];
     for(NSArray *pair in pairs){
         NSDictionary *info=@{@"CFBundleShortVersionString":pair[0],@"CFBundleVersion":pair[1]};
         [[[NSUUID alloc]initWithUUIDString:TIOHostExpectedUUID(info)] getUUIDBytes:image.c.uuid];
