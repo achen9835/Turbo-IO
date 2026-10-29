@@ -47,12 +47,18 @@ jobs:
           set -e
           AREAS="${INPUT_AREAS:-all}"
           if [ "$AREAS" = "all" ]; then
-            # 解析 Geofabrik 中国页的子区链接（形如 <a href="guangdong.html">）
-            LIST=$(curl -sfL --retry 3 https://download.geofabrik.de/asia/china.html \
-              | grep -oE 'href="[a-z][a-z_-]*\.html"' \
-              | sed -E 's/href="([a-z][a-z_-]*)\.html"/\1/' \
-              | grep -vE '^(china|asia)$' | sort -u | tr '\n' ' ')
-            if [ -z "$LIST" ]; then echo "无法解析省级清单（Geofabrik 页面结构变了？）" >&2; exit 1; fi
+            # 主源 openstreetmap.fr：目录页直接列 <a href="guangdong-latest.osm.pbf">；
+            # Geofabrik 兜底（子区页 guangdong.html）。两者均不可达才报错。
+            LIST=$(curl -sfL --retry 3 --max-time 60 https://download.openstreetmap.fr/extracts/asia/china/ \
+              | grep -oE 'href="[a-z][a-z_-]*-latest\.osm\.pbf"' \
+              | sed -E 's/href="([a-z][a-z_-]*)-latest\.osm\.pbf"/\1/' | sort -u | tr '\n' ' ')
+            if [ -z "$LIST" ]; then
+              LIST=$(curl -sfL --retry 3 --max-time 60 https://download.geofabrik.de/asia/china.html \
+                | grep -oE 'href="[a-z][a-z_-]*\.html"' \
+                | sed -E 's/href="([a-z][a-z_-]*)\.html"/\1/' \
+                | grep -vE '^(china|asia)$' | sort -u | tr '\n' ' ')
+            fi
+            if [ -z "$LIST" ]; then echo "省级清单两个源都取不到（fr/geofabrik 均失败）" >&2; exit 1; fi
           else
             LIST=$(echo "$AREAS" | tr ',' ' ')
           fi
@@ -117,10 +123,10 @@ jobs:
           PROV: ${{ matrix.province }}
         run: |
           set -e
-          curl -L --fail --retry 3 -o prov.osm.pbf \
-            "https://download.geofabrik.de/asia/china/${PROV}-latest.osm.pbf" \
-          || curl -L --fail --retry 3 -o prov.osm.pbf \
-            "https://download.openstreetmap.fr/extracts/asia/china/${PROV}-latest.osm.pbf"
+          curl -L --fail --retry 3 --max-time 600 -o prov.osm.pbf \
+            "https://download.openstreetmap.fr/extracts/asia/china/${PROV}-latest.osm.pbf" \
+          || curl -L --fail --retry 3 --max-time 600 -o prov.osm.pbf \
+            "https://download.geofabrik.de/asia/china/${PROV}-latest.osm.pbf"
           ls -la prov.osm.pbf
       - name: Filter, export and build pack
         if: steps.fresh.outputs.keep != 'yes'
