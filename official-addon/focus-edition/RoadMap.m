@@ -236,7 +236,7 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  // Prefetch before the rendered viewport reaches an edge. Do not clear the old
  // region while a new request is queued, rate-limited, fails, or is parsing.
  // 已有省份包覆盖时不再向 Overpass 发请求（省流量也省图源限额）。
- if(![self hasCoverage:wgs margin:300]&&![TIORoadPackManager shared] coversLat:[wgs[0] doubleValue] lon:[wgs[1] doubleValue]])[self request:wgs];
+ if(![self hasCoverage:wgs margin:300]&&![[TIORoadPackManager shared] coversLat:[wgs[0] doubleValue] lon:[wgs[1] doubleValue]])[self request:wgs];
  if(covered)_note=_task?@"周边路网已显示 · 正在预取下一段":@"周边路网已就绪 · © OpenStreetMap";
  else _note=_task?@"正在加载周边道路 · 保留已知路网":self.allowNetwork?(_requests>=6?@"本次图源请求已达上限 · 仅显示已有道路":@"当前区域路网暂缺 · 保留已有道路"):@"未授权周边道路 · 仅显示已有道路";
  double now=NSProcessInfo.processInfo.systemUptime,heading=[frame[@"navHeading"] doubleValue],turn=fabs(fmod(heading-_labelHeading+540,360)-180);

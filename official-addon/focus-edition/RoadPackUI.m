@@ -1,4 +1,5 @@
-#import "RoadPack.h"
+#import "RoadPackUI.h"
+#import "RoadMap.h"
 #import <UIKit/UIKit.h>
 /* 省际路网包管理页：清单来自 roadmap-packs Release；单省下载/删除，
  * 一键全部下载。下载内容只用于 TNR 矢量小地图渲染。 */
@@ -81,7 +82,7 @@
         [b setTitle:@"删除" forState:UIControlStateNormal];
         b.enabled = YES;
     } else {
-        b.backgroundColor = UIColor.systemFill;
+        b.backgroundColor = UIColor.systemGray4Color;
         [b setTitle:@"下载" forState:UIControlStateNormal];
         b.enabled = YES;
     }
@@ -90,7 +91,7 @@
 - (void)action:(UIButton *)sender {
     if (sender.tag >= (NSInteger)self.packs.count) return;
     NSDictionary *p = self.packs[sender.tag];
-    NSString *province = p[@"province];
+    NSString *province = p[@"province"];
     if ([[TIORoadPackManager shared] packDownloaded:province]) {
         UIAlertController *a = [UIAlertController alertControllerWithTitle:@"删除路网包"
             message:[NSString stringWithFormat:@"删除 %@ 的离线路网？删除后该省需要重新下载才能离线显示。", p[@"display"] ?: province]

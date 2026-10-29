@@ -226,7 +226,7 @@ static uint32_t rd32(const uint8_t *p) { return p[0] | (uint32_t)p[1] << 8 | (ui
         id obj = (code == 200 && data.length && data.length < 1024u * 1024u) ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
         BOOL valid = [obj isKindOfClass:[NSDictionary class]] && [obj[@"packs"] isKindOfClass:NSArray.class] && [obj[@"packs"] count] <= 64;
         if (valid) for (NSDictionary *p in obj[@"packs"])
-            if (![p[@"province"] isKindOfClass:NSString.class] || ![p[@"file"] isKindOfClass:NSString.class] || ![p[@"sha256"] isKindOfClass:NSString.class] || p[@"file"].length > 96 || p[@"province"].length > 64) valid = NO;
+            if (![p[@"province"] isKindOfClass:NSString.class] || ![p[@"file"] isKindOfClass:NSString.class] || ![p[@"sha256"] isKindOfClass:NSString.class] || [p[@"file"] length] > 96 || [p[@"province"] length] > 64) valid = NO;
         dispatch_async(dispatch_get_main_queue(), ^{
             if (valid) {
                 self->_manifest = obj[@"packs"];
