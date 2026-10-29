@@ -32,7 +32,10 @@ BOOL TNVStart(NSDictionary *frame){
  if(!TMMusicPauseForOTA()){TNVRefusal=@"音乐桥未就绪（playing/active/busy）";return NO;}
  if(!TWReaderPauseForOTA()){TNVRefusal=@"提词桥占线（已请求关闭，2秒后重试可自愈）";return NO;}
  if(Session.active||Session.busy){TNVRefusal=@"上一导航会话仍占用（active/busy）";return NO;}
- if([TIOOTAFlashStatus()[@"stage"] unsignedIntegerValue]){TNVRefusal=@"实验OTA进行中";return NO;}
+ NSUInteger flashStage=[TIOOTAFlashStatus()[@"stage"] unsignedIntegerValue];
+ // 只拦武装（1）与传输（2）窗口；3=已收尾/超时终态、0=无会话。刷完固件后
+ // stage 停在终态直到重启 App，按 !=0 拦会把刷机后的导航整个堵死。
+ if(flashStage==1||flashStage==2){TNVRefusal=@"实验OTA进行中";return NO;}
  NSString *device=TIOProtocolDevice();if(!device.length){TNVRefusal=@"设备号未知（协议缓存为空）";return NO;}
  TNScene scene;if(!TNVScene(frame,TNVAlways(),&scene)){TNVRefusal=@"转向帧无效（等待指引数据）";return NO;}
  TNVRefusal=@"";
