@@ -1,0 +1,1248 @@
+{
+  "kind": "TAP1-developer-runtime-experimental-candidate",
+  "deviceIO": false,
+  "flashed": false,
+  "originalAP": "53afdf5298815849eafca6f315a70606d2a605aff2e563f79050f797d615a988",
+  "candidateAP": "ef55d052779939aef9c263f589d930337463209674added573e3a8090d403141",
+  "candidateAPBytes": 9569480,
+  "moduleOffset": "0x9072c0",
+  "moduleVA": "0x10a972c0",
+  "moduleBytes": 102912,
+  "extensionISA": "Armv8-M Mainline Thumb, Cortex-M33 subset, hard-float ABI",
+  "apCapacity": "0x9f0000",
+  "changes": [
+    {
+      "offset": "0x60fe2c",
+      "length": 2,
+      "before": "dc20",
+      "after": "fc20",
+      "role": "AppList allocation 220 to 252"
+    },
+    {
+      "offset": "0x60a784",
+      "length": 4,
+      "before": "90b583b0",
+      "after": "fdf206bf",
+      "role": "Entry trampoline show"
+    },
+    {
+      "offset": "0x60a7b8",
+      "length": 4,
+      "before": "b0b582b0",
+      "after": "fdf207bf",
+      "role": "Entry trampoline hide"
+    },
+    {
+      "offset": "0x609660",
+      "length": 4,
+      "before": "f0b50446",
+      "after": "fef2e2bf",
+      "role": "Entry trampoline destroy"
+    },
+    {
+      "offset": "0x60a310",
+      "length": 6,
+      "before": "b0b590f89430",
+      "after": "fef2c9b900bf",
+      "role": "Entry trampoline wheel"
+    },
+    {
+      "offset": "0x60a890",
+      "length": 4,
+      "before": "b0b582b0",
+      "after": "fdf254bf",
+      "role": "Entry trampoline event"
+    },
+    {
+      "offset": "0x55ba90",
+      "length": 4,
+      "before": "b0b50c46",
+      "after": "acf384bf",
+      "role": "Entry trampoline message"
+    },
+    {
+      "offset": "0x6c67c8",
+      "length": 4,
+      "before": "f0b5c3b0",
+      "after": "50f26fba",
+      "role": "Entry trampoline dc_text"
+    },
+    {
+      "offset": "0x609dec",
+      "length": 4,
+      "before": "2de9f04f",
+      "after": "fdf24dbe",
+      "role": "Entry trampoline names"
+    },
+    {
+      "offset": "0x6098b8",
+      "length": 4,
+      "before": "2de9f047",
+      "after": "fef225bb",
+      "role": "Entry trampoline dots"
+    },
+    {
+      "offset": "0x609896",
+      "length": 4,
+      "before": "98b50446",
+      "after": "fef221bb",
+      "role": "Entry trampoline delete_dots"
+    },
+    {
+      "offset": "0x609c58",
+      "length": 4,
+      "before": "b0b584b0",
+      "after": "fef230ba",
+      "role": "Entry trampoline lottie"
+    },
+    {
+      "offset": "0x609838",
+      "length": 4,
+      "before": "80b500af",
+      "after": "fef21bb9",
+      "role": "Entry trampoline app_id"
+    },
+    {
+      "offset": "0x609c1a",
+      "length": 4,
+      "before": "2de9f041",
+      "after": "fef217b9",
+      "role": "Entry trampoline refresh_label"
+    },
+    {
+      "offset": "0x611dd0",
+      "length": 4,
+      "before": "f0b585b0",
+      "after": "fcf226ba",
+      "role": "Entry trampoline vm_event"
+    },
+    {
+      "offset": "0x60911a",
+      "length": 4,
+      "before": "0628a8bf",
+      "after": "0df3e1be",
+      "role": "Native eight-slot method frame_start"
+    },
+    {
+      "offset": "0x609130",
+      "length": 4,
+      "before": "1e22a0f1",
+      "after": "0df3dabe",
+      "role": "Native eight-slot method frame_index"
+    },
+    {
+      "offset": "0x60a01c",
+      "length": 4,
+      "before": "2de9f04f",
+      "after": "fef296b9",
+      "role": "Native eight-slot method label_frame"
+    },
+    {
+      "offset": "0x60a484",
+      "length": 4,
+      "before": "0629a8bf",
+      "after": "fdf2e8bf",
+      "role": "Native eight-slot method label_index"
+    },
+    {
+      "offset": "0x609a44",
+      "length": 4,
+      "before": "2de9f04f",
+      "after": "fef214bd",
+      "role": "Native eight-slot method indicator"
+    },
+    {
+      "offset": "0x609d38",
+      "length": 4,
+      "before": "b0b50446",
+      "after": "fdf20abd",
+      "role": "Native eight-slot method frame"
+    },
+    {
+      "offset": "0x609d6e",
+      "length": 4,
+      "before": "80b5b3ee",
+      "after": "fdf2ccbc",
+      "role": "Native eight-slot method render_slide"
+    },
+    {
+      "offset": "0x60a2b8",
+      "length": 4,
+      "before": "f1ee087a",
+      "after": "f2ee067a",
+      "role": "wheel target maximum 6.0 -> 11.0 (twelve items)"
+    },
+    {
+      "offset": "0x6092f0",
+      "length": 4,
+      "before": "efeece40",
+      "after": "78773741",
+      "role": "follow upper 11.4667 (twelve items)"
+    },
+    {
+      "offset": "0x609328",
+      "length": 4,
+      "before": "efeece40",
+      "after": "78773741",
+      "role": "spring upper 11.4667 (twelve items)"
+    },
+    {
+      "offset": "0x549d1a",
+      "length": 10,
+      "before": "00241f48204b84610360",
+      "after": "cdf3d4f800bf00bf00bf",
+      "role": "Launcher NULL file callback becomes copied image receiver"
+    },
+    {
+      "offset": "0x60fe3c",
+      "length": 4,
+      "before": "f9f74efb",
+      "after": "f8f284fb",
+      "role": "Initialize tail after original constructor"
+    }
+  ],
+  "footerRelocated": true,
+  "headerUnchanged": true,
+  "unchangedPayloads": 13,
+  "payloads": [
+    {
+      "name": "nuttx_audio.bin",
+      "bytes": 1461920,
+      "sha256": "549a72c032595e3829da7d63b7e1fd13cceda1a55dfefa7a7cad02db5a9b42ab",
+      "unchanged": true
+    },
+    {
+      "name": "cb_fw_venus.bin",
+      "bytes": 114592,
+      "sha256": "8799f12071bdac082218e3601c24ab0989275fc2f7db74e37b8314a225c2cf7d",
+      "unchanged": true
+    },
+    {
+      "name": "nuttx_ap.bin",
+      "bytes": 9569480,
+      "sha256": "ef55d052779939aef9c263f589d930337463209674added573e3a8090d403141",
+      "unchanged": false
+    },
+    {
+      "name": "ota_installer_progress.bin",
+      "bytes": 5616,
+      "sha256": "6fd65d296a667e1a7d94ec129adfd26458a4008ef403b331f855192c36eb3e3f",
+      "unchanged": true
+    },
+    {
+      "name": "images.bin",
+      "bytes": 324283,
+      "sha256": "192fefaa70545856884c89a9186e3f86d8f99a0738b201e116a11bc63011c158",
+      "unchanged": true
+    },
+    {
+      "name": "lotties.bin",
+      "bytes": 651481,
+      "sha256": "ad66d83a3394034f825a12769aad292fc03e59fa865fe06bc43536b918a0b32b",
+      "unchanged": true
+    },
+    {
+      "name": "rives.bin",
+      "bytes": 689431,
+      "sha256": "836bc019f7152890b94cafafe2edaa024f317526318349f7833319e41158b104",
+      "unchanged": true
+    },
+    {
+      "name": "nuttx_bth.bin",
+      "bytes": 1160160,
+      "sha256": "a8f4594868bffbd3bc08a38d1f3899571608e2d57869d147de3d06f3e4f7a12a",
+      "unchanged": true
+    },
+    {
+      "name": "fac_test_img.bin",
+      "bytes": 1821552,
+      "sha256": "18eb0901c3e0daeae48dd5f015252b6931ea7368f0160c2c985c4e74296d17eb",
+      "unchanged": true
+    },
+    {
+      "name": "nuttx_apc1.bin",
+      "bytes": 1420248,
+      "sha256": "97d56ffc6dd575ad3d8bf7739d49e491ad7e4a959db8770b653f5302e171fb5c",
+      "unchanged": true
+    },
+    {
+      "name": "smf.json",
+      "bytes": 23510,
+      "sha256": "2713dc3a302a65c101fa981500cd8b217766c526b6045bf02db5e9e6763d076d",
+      "unchanged": true
+    },
+    {
+      "name": "pil_algo_vad_demo.dll",
+      "bytes": 433432,
+      "sha256": "7ac5b5191202adea20c62642987fa0049024dde9c386ba6cd08a1f29ddd5c92c",
+      "unchanged": true
+    },
+    {
+      "name": "pil_algo_wakeup_dll_nand.dll",
+      "bytes": 287560,
+      "sha256": "d1594cb8658b228e52c2606d02f1eab696d35a11ed42ddcb725e76a745f5550f",
+      "unchanged": true
+    },
+    {
+      "name": "pil_algo_up_demo_nand.dll",
+      "bytes": 504388,
+      "sha256": "e266726fe055ac6ec6f785a9440e8da7421402f2b4d3d7889039ad9b94e119c2",
+      "unchanged": true
+    }
+  ],
+  "bindings": [
+    {
+      "alias": "ext_106e7b5c",
+      "name": "stock-literal",
+      "address": "0x106e7b5d"
+    },
+    {
+      "alias": "ext_106e8458",
+      "name": "stock-literal",
+      "address": "0x106e8459"
+    },
+    {
+      "alias": "ext_106e8460",
+      "name": "stock-literal",
+      "address": "0x106e8461"
+    },
+    {
+      "alias": "ext_106d3310",
+      "name": "stock-literal",
+      "address": "0x106d3311"
+    },
+    {
+      "alias": "ext_106d4c48",
+      "name": "stock-literal",
+      "address": "0x106d4c49"
+    },
+    {
+      "alias": "ext_106d693c",
+      "name": "stock-literal",
+      "address": "0x106d693d"
+    },
+    {
+      "alias": "ext_10941968",
+      "name": "stock-literal",
+      "address": "0x10941969"
+    },
+    {
+      "alias": "ext_106d245c",
+      "name": "stock-literal",
+      "address": "0x106d245d"
+    },
+    {
+      "alias": "ext_106b61f0",
+      "name": "stock-literal",
+      "address": "0x106b61f1"
+    },
+    {
+      "alias": "ext_106b60c4",
+      "name": "stock-literal",
+      "address": "0x106b60c5"
+    },
+    {
+      "alias": "ext_106b6028",
+      "name": "stock-literal",
+      "address": "0x106b6029"
+    },
+    {
+      "alias": "ext_107d5cd8",
+      "name": "stock-literal",
+      "address": "0x107d5cd9"
+    },
+    {
+      "alias": "tap_fs_errno",
+      "name": "__errno",
+      "address": "0x105cee29"
+    },
+    {
+      "alias": "tap_fs_fopen",
+      "name": "fopen",
+      "address": "0x105d1b37"
+    },
+    {
+      "alias": "tap_fs_fclose",
+      "name": "fclose",
+      "address": "0x105d1b71"
+    },
+    {
+      "alias": "tap_fs_fread",
+      "name": "fread",
+      "address": "0x105d1c93"
+    },
+    {
+      "alias": "tap_fs_fwrite",
+      "name": "fwrite",
+      "address": "0x105d1f3f"
+    },
+    {
+      "alias": "tap_fs_fflush",
+      "name": "fflush",
+      "address": "0x105d2057"
+    },
+    {
+      "alias": "tap_fs_ferror",
+      "name": "ferror",
+      "address": "0x105d22bb"
+    },
+    {
+      "alias": "tap_fs_feof",
+      "name": "feof",
+      "address": "0x108c065f"
+    },
+    {
+      "alias": "tap_fs_fileno",
+      "name": "fileno",
+      "address": "0x108c3531"
+    },
+    {
+      "alias": "tap_fs_mkdir",
+      "name": "mkdir",
+      "address": "0x10863219"
+    },
+    {
+      "alias": "tap_fs_statfs",
+      "name": "statfs",
+      "address": "0x10863f91"
+    },
+    {
+      "alias": "tap_fs_fsync",
+      "name": "fsync",
+      "address": "0x108645bb"
+    },
+    {
+      "alias": "tio_lv_obj_set_style_border_color",
+      "name": "lv_obj_set_style_border_color",
+      "address": "0x1065a507"
+    },
+    {
+      "alias": "tap_lv_border_opa",
+      "name": "lv_obj_set_style_border_opa",
+      "address": "0x1065a527"
+    },
+    {
+      "alias": "tap_random",
+      "name": "arc4random",
+      "address": "0x108c0a55"
+    },
+    {
+      "alias": "strlen",
+      "name": "strlen",
+      "address": "0x100301"
+    },
+    {
+      "alias": "strcmp",
+      "name": "strcmp",
+      "address": "0x100109"
+    },
+    {
+      "alias": "dc_resolve",
+      "name": "a2ui_props_resolve_text",
+      "address": "0x10858fb5"
+    },
+    {
+      "alias": "dc_hints",
+      "name": "a2ui_component_apply_parent_flex_hints",
+      "address": "0x10859495"
+    },
+    {
+      "alias": "dc_weight",
+      "name": "a2ui_component_apply_weight",
+      "address": "0x10859439"
+    },
+    {
+      "alias": "dc_text_mode",
+      "name": "lv_label_set_long_mode",
+      "address": "0x10600e91"
+    },
+    {
+      "alias": "dc_remove_style",
+      "name": "lv_obj_remove_style_all",
+      "address": "0x10659b09"
+    },
+    {
+      "alias": "ce_text_align",
+      "name": "lv_obj_set_style_text_align",
+      "address": "0x1065a6bb"
+    },
+    {
+      "alias": "ce_cache_drop",
+      "name": "lv_image_cache_drop",
+      "address": "0x105f1c51"
+    },
+    {
+      "alias": "ce_header_drop",
+      "name": "lv_image_header_cache_drop",
+      "address": "0x105f1d59"
+    },
+    {
+      "alias": "stock_ctor",
+      "name": "rayneo::app::launcher::AppListView::AppListView",
+      "address": "0x107994dd"
+    },
+    {
+      "alias": "native_adjusted_delta",
+      "name": "rayneo::app::launcher::AppListView::adjustedRawWheelDelta",
+      "address": "0x10799211"
+    },
+    {
+      "alias": "native_unregister_wheel",
+      "name": "rayneo::app::launcher::AppListView::unregisterRawWheelListener",
+      "address": "0x1079923d"
+    },
+    {
+      "alias": "native_settled",
+      "name": "rayneo::app::launcher::AppListView::isRawWheelSlideSettled",
+      "address": "0x1079932d"
+    },
+    {
+      "alias": "native_wake_overlay",
+      "name": "rayneo::app::launcher::isLauncherEncoderWakeOverlayVisible",
+      "address": "0x107a0255"
+    },
+    {
+      "alias": "native_report_activity",
+      "name": "lv_rayneo_display_report_activity",
+      "address": "0x10747f69"
+    },
+    {
+      "alias": "native_has_flag",
+      "name": "lv_obj_has_flag",
+      "address": "0x10655203"
+    },
+    {
+      "alias": "native_event_code",
+      "name": "lv_event_get_code",
+      "address": "0x105f3ac9"
+    },
+    {
+      "alias": "native_event_key",
+      "name": "lv_event_get_key",
+      "address": "0x10656591"
+    },
+    {
+      "alias": "native_label_create",
+      "name": "lv_label_create",
+      "address": "0x10600371"
+    },
+    {
+      "alias": "native_label_text",
+      "name": "lv_label_set_text",
+      "address": "0x10600d01"
+    },
+    {
+      "alias": "native_text_color",
+      "name": "lv_obj_set_style_text_color",
+      "address": "0x1065a62d"
+    },
+    {
+      "alias": "native_align",
+      "name": "lv_obj_align",
+      "address": "0x10656a01"
+    },
+    {
+      "alias": "native_log",
+      "name": "logger_log",
+      "address": "0x107d5cd9"
+    },
+    {
+      "alias": "stream_memalign",
+      "name": "memalign",
+      "address": "0x105d7eed"
+    },
+    {
+      "alias": "stream_free",
+      "name": "free",
+      "address": "0x105d6aa5"
+    },
+    {
+      "alias": "stream_tick",
+      "name": "os_get_tick_count",
+      "address": "0x107d60f1"
+    },
+    {
+      "alias": "stream_timer_create",
+      "name": "lv_timer_create",
+      "address": "0x105f6111"
+    },
+    {
+      "alias": "stream_timer_delete",
+      "name": "lv_timer_delete",
+      "address": "0x105f61e9"
+    },
+    {
+      "alias": "stream_timer_next",
+      "name": "lv_timer_get_next",
+      "address": "0x105f661d"
+    },
+    {
+      "alias": "fm_system",
+      "name": "rayneo::service::launcher::MonitorManager::getSysStateMonitor",
+      "address": "0x106e8471"
+    },
+    {
+      "alias": "fm_local_time",
+      "name": "rayneo::service::launcher::SysStateMonitor::getLocalTimestamp",
+      "address": "0x106dc80d"
+    },
+    {
+      "alias": "fm_battery_monitor",
+      "name": "rayneo::service::launcher::MonitorManager::getBatteryMonitor",
+      "address": "0x106e8459"
+    },
+    {
+      "alias": "fm_battery_level",
+      "name": "rayneo::service::launcher::BatteryMonitor::getCurrentBatteryLevel",
+      "address": "0x106d4c41"
+    },
+    {
+      "alias": "focus_screen_on",
+      "name": "lv_rayneo_display_get_screen_on",
+      "address": "0x10747ea9"
+    },
+    {
+      "alias": "stream_event_user",
+      "name": "lv_event_get_user_data",
+      "address": "0x105f3add"
+    },
+    {
+      "alias": "stream_add_event",
+      "name": "lv_obj_add_event_cb",
+      "address": "0x106562e1"
+    },
+    {
+      "alias": "stream_canvas_create",
+      "name": "lv_canvas_create",
+      "address": "0x1081a4c9"
+    },
+    {
+      "alias": "stream_canvas_set_buffer",
+      "name": "lv_canvas_set_buffer",
+      "address": "0x1081a4e5"
+    },
+    {
+      "alias": "stream_stride",
+      "name": "lv_draw_buf_width_to_stride",
+      "address": "0x105ebc65"
+    },
+    {
+      "alias": "stream_display_next",
+      "name": "lv_display_get_next",
+      "address": "0x1065c5cd"
+    },
+    {
+      "alias": "stream_invalidate",
+      "name": "lv_obj_invalidate",
+      "address": "0x10656eb7"
+    },
+    {
+      "alias": "stream_queue_send",
+      "name": "message_processor_send",
+      "address": "0x107d5135"
+    },
+    {
+      "alias": "memcpy",
+      "name": "memcpy",
+      "address": "0x1000a1"
+    },
+    {
+      "alias": "memset",
+      "name": "memset",
+      "address": "0x1000b9"
+    },
+    {
+      "alias": "memcmp",
+      "name": "memcmp",
+      "address": "0x105d3911"
+    },
+    {
+      "alias": "td_gettid",
+      "name": "gettid",
+      "address": "0x105c5d29"
+    },
+    {
+      "alias": "native_snap",
+      "name": "rayneo::app::launcher::AppListView::snapRawWheelToNearestFrame",
+      "address": "0x1079a525"
+    },
+    {
+      "alias": "menu_remove_styles",
+      "name": "lv_obj_remove_style_all",
+      "address": "0x10659b09"
+    },
+    {
+      "alias": "menu_opa",
+      "name": "lv_obj_set_style_opa",
+      "address": "0x1065a6e7"
+    },
+    {
+      "alias": "menu_translate",
+      "name": "lv_obj_set_style_translate_x",
+      "address": "0x1065a2b7"
+    },
+    {
+      "alias": "menu_lottie_frame",
+      "name": "lv_lottie_set_frame",
+      "address": "0x1081ab17"
+    },
+    {
+      "alias": "menu_font",
+      "name": "ResourcePool::GetFont",
+      "address": "0x107de545"
+    },
+    {
+      "alias": "menu_text_font",
+      "name": "lv_obj_set_style_text_font",
+      "address": "0x1065a663"
+    },
+    {
+      "alias": "menu_text_align",
+      "name": "lv_obj_set_style_text_align",
+      "address": "0x1065a6bb"
+    },
+    {
+      "alias": "nav_label_static",
+      "name": "lv_label_set_text_static",
+      "address": "0x10600e5d"
+    },
+    {
+      "alias": "nav_always_on",
+      "name": "lv_rayneo_display_screen_always_on",
+      "address": "0x10747edd"
+    },
+    {
+      "alias": "nav_release_always_on",
+      "name": "lv_rayneo_display_screen_release_always_on",
+      "address": "0x10747f4d"
+    },
+    {
+      "alias": "nav_screen_on",
+      "name": "lv_rayneo_display_screen_on",
+      "address": "0x10747e01"
+    },
+    {
+      "alias": "nav_force_off",
+      "name": "lv_rayneo_display_force_screen_off",
+      "address": "0x10747e6d"
+    },
+    {
+      "alias": "nav_ensure_menu",
+      "name": "rayneo::app::launcher::ViewManager::ensureAppListView",
+      "address": "0x1079fe05"
+    },
+    {
+      "alias": "nav_set_state",
+      "name": "rayneo::app::launcher::ViewManager::setState",
+      "address": "0x107a1c5d"
+    },
+    {
+      "alias": "nav_top_app",
+      "name": "rayneo::service::launcher::LauncherAPI::getCurrentTopAppPkg",
+      "address": "0x106d3311"
+    },
+    {
+      "alias": "nav_monitors",
+      "name": "rayneo::service::launcher::MonitorManager::getInstance",
+      "address": "0x106e7b5d"
+    },
+    {
+      "alias": "nav_link",
+      "name": "rayneo::service::launcher::MonitorManager::getLinkMonitor",
+      "address": "0x106e8469"
+    },
+    {
+      "alias": "nav_input",
+      "name": "rayneo::service::launcher::MonitorManager::getInputEventMonitor",
+      "address": "0x106e8461"
+    },
+    {
+      "alias": "nav_bonded",
+      "name": "rayneo::service::launcher::LinkMonitor::isBond",
+      "address": "0x106d9c49"
+    },
+    {
+      "alias": "nav_folded",
+      "name": "rayneo::service::launcher::InputEventMonitor::isHallFold",
+      "address": "0x106d693d"
+    },
+    {
+      "alias": "nav_connection",
+      "name": "get_conn_state",
+      "address": "0x107612c9"
+    },
+    {
+      "alias": "nav_stop_event",
+      "name": "lv_event_stop_processing",
+      "address": "0x105f3af3"
+    },
+    {
+      "alias": "stream_timer_period",
+      "name": "lv_timer_set_period",
+      "address": "0x105f6451"
+    },
+    {
+      "alias": "tdp_rnlink_send",
+      "name": "rnlink_if_send_payload",
+      "address": "0x10776171"
+    },
+    {
+      "alias": "diag_business_idle",
+      "name": "rayneo::service::launcher::LauncherAPI::isBussinessIdle",
+      "address": "0x106d334d"
+    }
+  ],
+  "checks": {
+    "noUndefinedSymbols": true,
+    "trampolineReadback": true,
+    "branchTargets": true,
+    "diffWhitelist": true,
+    "manifest": true,
+    "zipReadback": true
+  },
+  "runtimeValidated": false,
+  "productionReady": false,
+  "readyToFlash": false,
+  "readyBlockers": [
+    "Reader native lifecycle/menu/phone verification pending",
+    "Fresh explicit flash authorization required"
+  ],
+  "unresolved": [
+    "New music page and native audio/controls not device validated",
+    "Background relaunch and transfer throughput require physical tests"
+  ],
+  "archive": {
+    "name": "StrixOS-1.0.4.12-TurboAppSDK-TAP1-CANDIDATE-NOT-APPROVED.zip",
+    "bytes": 9308576,
+    "sha256": "53d140e942a2190e4390eface785b2537378d093ddedfce5766d784a8e3b50ee"
+  },
+  "imageProfile": {
+    "wide": true,
+    "width": 512,
+    "height": 128,
+    "version": 2
+  },
+  "menuProfile": "native-twelve-TAP1",
+  "sourceInputs": [
+    {
+      "path": "official-addon/ImageWireFormat.h",
+      "sha256": "0969b9b439d022a0f5af61fba19e3a637a632a4618e75943fcfe8cef790bea8a"
+    },
+    {
+      "path": "official-addon/research/animation-runtime-v1/animation.c",
+      "sha256": "15265dc02008ab87f93cc1188c4fae80b9d2dee88e68500665b772104ea0342a"
+    },
+    {
+      "path": "official-addon/research/build-image-rx-candidate.py",
+      "sha256": "5e35477e98f90bbdd6fbe70cae6a8087628c1f303a610ee95fd5f53af0a87d79"
+    },
+    {
+      "path": "official-addon/research/dashboard-editor-v1/editor.c",
+      "sha256": "e28f033276ecc3ac9a10461bd7e35d07558e42a3fcfe44c599ac482171be4b91"
+    },
+    {
+      "path": "official-addon/research/dashboard-editor-v1/editor_native.c",
+      "sha256": "fb7172fbe96407a897753d5bea7836246f3a14742460cf35cdea5faa0c50cc22"
+    },
+    {
+      "path": "official-addon/research/diagnostics-v1/command.c",
+      "sha256": "f518084202f2f0d95ea74c8fc26ab2c840a73fe4d9908fddfad3c96a9c2e95e8"
+    },
+    {
+      "path": "official-addon/research/diagnostics-v1/diagnostics.c",
+      "sha256": "6c5db8ea337099dc3e14f624e6fa09c5081a40689124a9e57ac5b3cee567f70d"
+    },
+    {
+      "path": "official-addon/research/diagnostics-v1/diagnostics_service.c",
+      "sha256": "ccdbe89bc973ac0a231dbe96e7fc3009ac11be8c23f80b839727f0990763edd4"
+    },
+    {
+      "path": "official-addon/research/diagnostics-v1/native_light.c",
+      "sha256": "476d883f7a27572f9e2720e5caa218dca4ef60db65cc11b42c8424082de28950"
+    },
+    {
+      "path": "official-addon/research/display-runtime-v1/display_carrier.c",
+      "sha256": "bc2ee8205c4b34f2265cb952a0307548bbe4a8073ba91fbc1f11c2ede19ae308"
+    },
+    {
+      "path": "official-addon/research/display-runtime-v1/display_runtime.c",
+      "sha256": "a03a15b93eef3a30fad5555749ddc9b8171f31d75a7aa768b098eb6012ea549b"
+    },
+    {
+      "path": "official-addon/research/display-runtime-v1/native_display_file.c",
+      "sha256": "ecc8dbb5b265abb4ff065929dd58e2a820575a6c64696d016776e9a8d023d018"
+    },
+    {
+      "path": "official-addon/research/display-runtime-v1/native_display_page.c",
+      "sha256": "08f926bba7ad54aab1ab25ef7c10a43727597ed862188d47e6ecb2d953bb85ca"
+    },
+    {
+      "path": "official-addon/research/focus-v1/focus.c",
+      "sha256": "d589bb5ff1f0b5be349561150d4219eaf1fdbaeb953f3d2cc539f47b18b98fed"
+    },
+    {
+      "path": "official-addon/research/focus-v1/focus_menu.c",
+      "sha256": "52b94ad30d264cf378a0d89e5871aae88ba6ba674b225aafe5eb36d06833b05a"
+    },
+    {
+      "path": "official-addon/research/focus-v1/focus_menu_native.c",
+      "sha256": "3ac9e8c9801ecc5a275a5f3c40e75d288d140158aab321f1a2d143132cafde79"
+    },
+    {
+      "path": "official-addon/research/focus-v1/focus_service.c",
+      "sha256": "1dacc1c5a2973c248e59faba2c5e8728347d63da3052f7fb4216225d7604ce4f"
+    },
+    {
+      "path": "official-addon/research/focus-v1/focus_view.c",
+      "sha256": "b5a0ac5440d2aa4058bceaf9ebf6efa3fbebd70f8bb1604437bbf8782cf49179"
+    },
+    {
+      "path": "official-addon/research/image-upload-test/image_mailbox.h",
+      "sha256": "6386acd207919aac0632f39f0c62a7a9e916a6a9cdaebc293715c2e0ef02f8eb"
+    },
+    {
+      "path": "official-addon/research/image-upload-test/image_receiver.h",
+      "sha256": "3ccaa2879bc6910b8bce365e815aa87ba9435e32e46a79e3af8b37b84b85d2bd"
+    },
+    {
+      "path": "official-addon/research/image-upload-test/image_test.h",
+      "sha256": "65e4b7b17ea05c093e90df5e5de79bda7ed1e7a0c7e9b136c227d46b751eb373"
+    },
+    {
+      "path": "official-addon/research/image-upload-test/native_file_bridge.h",
+      "sha256": "7d7b1c5da8a9bf5d4670d742c721e4c5c27859d9ebb9604d1d7c7baf8e8a7b4e"
+    },
+    {
+      "path": "official-addon/research/image-upload-test/native_page.h",
+      "sha256": "1dab5acbbaaca47f1648d5385a9a667c3bdf97e0dd747b96f67ab2a20be456d0"
+    },
+    {
+      "path": "official-addon/research/image-upload-test/render_idle.c",
+      "sha256": "b6fa81e7f87027755b7686987e7585d2f8df89cdd1b17d2467a4c950411a1625"
+    },
+    {
+      "path": "official-addon/research/image-upload-test/render_idle.h",
+      "sha256": "4e2b5d8c377e8e811fab95035577813538eab9c330e5b747e727ae2be8d17fdf"
+    },
+    {
+      "path": "official-addon/research/image-upload-test/ui_scene.h",
+      "sha256": "0ae30383515fb5f8f9fae14205dd914fd50c41c0c18ff1d710d4c3977d0ce635"
+    },
+    {
+      "path": "official-addon/research/menu8-native-carousel.h",
+      "sha256": "c801e12e82f5b1ad042c05312b33ef7d545d3805fbaaeb62df9111ee2e1b2d7c"
+    },
+    {
+      "path": "official-addon/research/menu8-native-lvgl.c",
+      "sha256": "b96a7e827ed4e94a439fbabb0c1167d13f7321fb1f919ce1ecf0a9bb3a52b086"
+    },
+    {
+      "path": "official-addon/research/menu8-renderer.c",
+      "sha256": "24ddf69b65cf75e0eb4ca63e429a865ae289396bf8a7d3a0f61aebdc135ffe48"
+    },
+    {
+      "path": "official-addon/research/menu8-renderer.h",
+      "sha256": "23c1486efbd933977645b08c0d32ccbf22b3a781000c9a00f86b1045b4b7bad4"
+    },
+    {
+      "path": "official-addon/research/menu8-sidecar.h",
+      "sha256": "406868200f39d8c40e9c64a18f076cc80ee942f5dc422c69e11e1503f6ffec72"
+    },
+    {
+      "path": "official-addon/research/menu8_native_profile.py",
+      "sha256": "a20cb73e33336991b2c7675e8a81e44f85b62dc26d7499e33dc8275c1c70a001"
+    },
+    {
+      "path": "official-addon/research/music-runtime-v1/menu10.c",
+      "sha256": "607b05dc5907d935f868841ff1704c62e4d5466768045f04dffda547bd4f1ec1"
+    },
+    {
+      "path": "official-addon/research/music-runtime-v1/music.c",
+      "sha256": "b0189a6fba3dbeac11722c8ce6f4f8332a7d5a1f4f883fb88e25dcff33d15b2d"
+    },
+    {
+      "path": "official-addon/research/music-runtime-v1/music_service.c",
+      "sha256": "e94321163d1270083bad58813c5ff113ef2766f6b4792093e243f46ba6fb25d1"
+    },
+    {
+      "path": "official-addon/research/navigation-runtime-v1/nav_lvgl.c",
+      "sha256": "3a6c98bc83f6eeca222b17b4da2dff261e32f59496b4cd83b33e8d204378fe2c"
+    },
+    {
+      "path": "official-addon/research/navigation-runtime-v1/nav_runtime.c",
+      "sha256": "c8020cfff6c4d8bec6762296698a6f0a613da9d26a815b5aaa7b78aaf2ef9003"
+    },
+    {
+      "path": "official-addon/research/navigation-runtime-v1/nav_service.c",
+      "sha256": "369b96aadaca5de9fe7c017dbfabe1bb77f088366293a2b6215f86e468d129eb"
+    },
+    {
+      "path": "official-addon/research/navigation-runtime-v1/nav_view.c",
+      "sha256": "d10b5942c4d12206de35bab6f3686e91582cfe056b41a3f5eaf94bbfcc9212a4"
+    },
+    {
+      "path": "official-addon/research/navigation-runtime-v1/nav_visual.c",
+      "sha256": "d39afbb19eb609807bc64d360ffad64d7d597cd17a804877216b18a20764d95d"
+    },
+    {
+      "path": "official-addon/research/weread-v1/reader.c",
+      "sha256": "ea4fee5aa24eb26675f5c34523f10de70a0752ffc2334a774b0aa2626a384edf"
+    },
+    {
+      "path": "official-addon/research/weread-v1/reader_service.c",
+      "sha256": "53cb878e3438d6bdcc3f5a0c02c86530a26279923afdea6c2a793d69a86c2e1c"
+    },
+    {
+      "path": "official-addon/research/weread-v1/reader_view.c",
+      "sha256": "196708a8d84a51dd792901e78e5606338a0324b47177516e0be3da2cacd38cb5"
+    },
+    {
+      "path": "official-addon/research/display-runtime-v1/display_carrier.h",
+      "sha256": "8a39d5b0a3fc7a11b50e9b9b75a5f69fcfb037810b13a0ef6561f3465401d189"
+    },
+    {
+      "path": "official-addon/research/display-runtime-v1/display_client.h",
+      "sha256": "a7d8a12e2ff645bc72c0dfabe1061a345b45262eadd47278fca5141e192ed8e4"
+    },
+    {
+      "path": "official-addon/research/display-runtime-v1/display_memory.h",
+      "sha256": "3d3d97686f2c8aeffc27277c5706c8d2e5f63adec2ecb08f6e6777efaada74b3"
+    },
+    {
+      "path": "official-addon/research/display-runtime-v1/display_runtime.h",
+      "sha256": "59885f38981bfaacad9ea0f88d32f1414d9a09823b98304eb0d0afb5687cebb7"
+    },
+    {
+      "path": "official-addon/research/display-runtime-v1/DisplayPhoneSession.h",
+      "sha256": "bce085798206d6864745ffa13ecaa34b4b4e1020b8b5c14035f055047f174a97"
+    },
+    {
+      "path": "official-addon/research/display-runtime-v1/DisplayPhoneTransport.h",
+      "sha256": "1ad02430c4b74be1641271d2936cbdf90eca04c84ee8e5145d60e16d2de366ef"
+    },
+    {
+      "path": "official-addon/research/display-runtime-v1/DisplayPhoneUI.h",
+      "sha256": "87a6899fcca093a40efcebaa3011532060f9851b53f08aa5b0c445091985b04e"
+    },
+    {
+      "path": "official-addon/research/display-runtime-v1/DisplayReplyObserver.h",
+      "sha256": "db8b6846bf0ed49aa4f367f1caa53a279e52fbff04a0c0dec95cc0cd72b3ee3e"
+    },
+    {
+      "path": "official-addon/research/display-runtime-v1/native_display_file.h",
+      "sha256": "cf0a8d6af824d6dca29a7117866c784aeeaa2bc6a9f915c1de2a653a15e45b13"
+    },
+    {
+      "path": "official-addon/research/display-runtime-v1/native_display_page.h",
+      "sha256": "82d89c3cd94132a1dc3446695b8ce8eb66659b90da35696f44594e2e1035da37"
+    },
+    {
+      "path": "official-addon/research/navigation-runtime-v1/menu9.h",
+      "sha256": "bbf7f03a36f8b633eb0321e0c209b45f003256afa3294f196243475c03b538cf"
+    },
+    {
+      "path": "official-addon/research/navigation-runtime-v1/NativeNavigation.h",
+      "sha256": "2cf18f01544d7f530b9ff1665a65d5826a97e79d87f476ee33f4a142a451ab91"
+    },
+    {
+      "path": "official-addon/research/navigation-runtime-v1/nav_lvgl.h",
+      "sha256": "fd387f196f1dda97fc8f6008356aa2160ef2c6cb3781ddb074c6084cbde40105"
+    },
+    {
+      "path": "official-addon/research/navigation-runtime-v1/nav_runtime.h",
+      "sha256": "24f4ee84897c97fd648671d241874d9327db2ccc40f00ccd538eb2616f3627d3"
+    },
+    {
+      "path": "official-addon/research/navigation-runtime-v1/nav_service.h",
+      "sha256": "9a8c1654803c332ec26401ebff7051f3feccfa359961629f521a10a28dc4f197"
+    },
+    {
+      "path": "official-addon/research/navigation-runtime-v1/nav_view.h",
+      "sha256": "c09d5b324eb8df3f08dac74579beb411fe978845e8d4c0f19d5cab5c3d45b28a"
+    },
+    {
+      "path": "official-addon/research/navigation-runtime-v1/nav_visual.h",
+      "sha256": "2f47a415012f5775c338e43d2cc08cc5c0a5789d1363a907e0b11377687e6988"
+    },
+    {
+      "path": "D:/Documents/code/Turbo-IO/firmware-research/strix-1.0.4.12/tap1/out/candidate-20261021-181115/official-addon/research/navigation-runtime-v1/menu9_profile.py",
+      "sha256": "6f223f7f0826b66ff9959e05cad1733aedae96fe4fc211d69f7f9c3c18f13f11"
+    },
+    {
+      "path": "official-addon/research/animation-runtime-v1/animation.h",
+      "sha256": "0db660a85d89cde870dda860f100cb405c179eab3f2776ba8ed8b89944d83176"
+    },
+    {
+      "path": "official-addon/research/animation-runtime-v1/assets/encoded-v1/anime-idle-192x176-l8.bin",
+      "sha256": "f758dd6e3cdf5fc6550238df26e46111e9d45d098b9d95f649626ea58210ee1d"
+    },
+    {
+      "path": "official-addon/research/music-runtime-v1/music.h",
+      "sha256": "2f854d99734c598363004db86d373c80188452f2e128d3c2803a5d62c0151a59"
+    },
+    {
+      "path": "official-addon/research/music-runtime-v1/music_input.h",
+      "sha256": "0964165184288a15e14c891a1a4d7818a81140290b8c1af572f2b50977a6b29d"
+    },
+    {
+      "path": "official-addon/research/music-runtime-v1/music_service.h",
+      "sha256": "52d7d25fcdbbdf2a2f0200babb4170a23924a6a9110356808a37fc23e9d90402"
+    },
+    {
+      "path": "official-addon/research/weread-v1/reader.c",
+      "sha256": "ea4fee5aa24eb26675f5c34523f10de70a0752ffc2334a774b0aa2626a384edf"
+    },
+    {
+      "path": "official-addon/research/weread-v1/reader.h",
+      "sha256": "f5fe9d0e0a1177642a1f930fe9868afe384d18c9870f0d71f6782d96d4dbd06c"
+    },
+    {
+      "path": "official-addon/research/weread-v1/reader_input.h",
+      "sha256": "9ec5e178dfd1bf451a3733e0e0957d27f8da6e67189acae3ae8c1c335d209475"
+    },
+    {
+      "path": "official-addon/research/weread-v1/reader_input_test.c",
+      "sha256": "326145ba47643e3b65f67bc0c433cc2b613edfe7a6dc3d84ba706864aed0e578"
+    },
+    {
+      "path": "official-addon/research/weread-v1/reader_service.c",
+      "sha256": "53cb878e3438d6bdcc3f5a0c02c86530a26279923afdea6c2a793d69a86c2e1c"
+    },
+    {
+      "path": "official-addon/research/weread-v1/reader_service.h",
+      "sha256": "dea3507b0a7da36dcab31e5a80a6ed725025c4899da9e26c99328a4f9f7f75c6"
+    },
+    {
+      "path": "official-addon/research/weread-v1/reader_test.c",
+      "sha256": "16800e3d759a6cfbd23a1217c53e4d01298b720447224098c8e5e7c8e25fb8ad"
+    },
+    {
+      "path": "official-addon/research/weread-v1/reader_view.c",
+      "sha256": "196708a8d84a51dd792901e78e5606338a0324b47177516e0be3da2cacd38cb5"
+    },
+    {
+      "path": "official-addon/research/weread-v1/reader_view.h",
+      "sha256": "586da019a567fe46b21d804b6b07e95e1e100e33d1b17eae083893426b4af5d8"
+    },
+    {
+      "path": "official-addon/research/weread-v1/reader_view_test.c",
+      "sha256": "95dd7cbf19ab3e28b2148844eb9191a89ad8d5c1e0a45df74df635a7dd1bae67"
+    },
+    {
+      "path": "official-addon/research/focus-v1/focus.c",
+      "sha256": "d589bb5ff1f0b5be349561150d4219eaf1fdbaeb953f3d2cc539f47b18b98fed"
+    },
+    {
+      "path": "official-addon/research/focus-v1/focus.h",
+      "sha256": "129ae6f3509455704c7b768ecd23f0e34b60f2cc2f55dcd1f5fffad00442e930"
+    },
+    {
+      "path": "official-addon/research/focus-v1/focus_menu.c",
+      "sha256": "52b94ad30d264cf378a0d89e5871aae88ba6ba674b225aafe5eb36d06833b05a"
+    },
+    {
+      "path": "official-addon/research/focus-v1/focus_menu.h",
+      "sha256": "dc655e9b1e0e36a44b077fd2baf434b394044826fbd5ce7f4fa263297ed837fe"
+    },
+    {
+      "path": "official-addon/research/focus-v1/focus_menu_native.c",
+      "sha256": "3ac9e8c9801ecc5a275a5f3c40e75d288d140158aab321f1a2d143132cafde79"
+    },
+    {
+      "path": "official-addon/research/focus-v1/focus_service.c",
+      "sha256": "1dacc1c5a2973c248e59faba2c5e8728347d63da3052f7fb4216225d7604ce4f"
+    },
+    {
+      "path": "official-addon/research/focus-v1/focus_service.h",
+      "sha256": "2d5f634e25f81df8831dc948556b8580655ce984f6f8cf3ae10bb6605b0a702e"
+    },
+    {
+      "path": "official-addon/research/focus-v1/focus_view.c",
+      "sha256": "b5a0ac5440d2aa4058bceaf9ebf6efa3fbebd70f8bb1604437bbf8782cf49179"
+    },
+    {
+      "path": "official-addon/research/focus-v1/focus_view.h",
+      "sha256": "986b7f62d9e5415e61f4d6f257de667f437d700808e8d847b2bb3567d5cab388"
+    }
+  ],
+  "displayProfile": {
+    "protocol": "TDP1",
+    "phoneBuild": "DISPLAY-PHONE-01",
+    "width": 512,
+    "height": 128,
+    "packetMax": 512,
+    "pixelChunkMax": 472,
+    "fileName": "turbo-display.tdp",
+    "replyBusiness": 15,
+    "replyPBType": 6,
+    "replyCommand": "turbo_display_v1",
+    "fullFrameDeadlineMs": 30000,
+    "leaseMs": 120000
+  },
+  "navigationProfile": {
+    "protocol": "TNV1",
+    "packetMax": 512,
+    "sceneMax": 328,
+    "idleMs": 60000,
+    "fileName": "turbo-navigation.tnv",
+    "replyCommand": "turbo_nav_v1",
+    "menuIndex": 8,
+    "phoneAutoOpen": true
+  },
+  "animationProfile": {
+    "width": 192,
+    "height": 176,
+    "format": "L8",
+    "sourceFrames": 1,
+    "sourcePoseFPS": 0,
+    "targetCanvasFPS": 0,
+    "durationMs": 0,
+    "pageTimeoutMs": 60000,
+    "benchmark": "Disabled: one static frame, one submission, no moving marker",
+    "additionalPixelHeapBytes": 0,
+    "assetBytes": 33792,
+    "assetSHA256": "912a7a9f9ae6b7462a31894e4268944326b65680080a06b68373f68939d504c1",
+    "menu": "Turbo Display shows first pose; valid TDP upload replaces it; TNV1 retained"
+  },
+  "musicProfile": {
+    "protocol": "TMU1",
+    "file": "turbo-music.tmu",
+    "packetMax": 4096,
+    "menuIndex": 9,
+    "cover": [
+      144,
+      144
+    ],
+    "lyricsBytes": 24576,
+    "linesMax": 192,
+    "canvasFPS": 30,
+    "idleModes": [
+      0,
+      30,
+      60
+    ],
+    "replyCommand": "turbo_music_v1"
+  },
+  "readerProfile": {
+    "protocol": "TWR1",
+    "menuIndex": 10,
+    "banksBytes": 49152,
+    "cover": [
+      64,
+      88
+    ],
+    "booksPerPage": 4,
+    "speedMaxCPM": 480,
+    "packetMax": 512,
+    "leaseMs": 90000
+  },
+  "focusProfile": {
+    "menuIndex": 11,
+    "protocol": "TFP1",
+    "timerOwner": "independent bounded heap service",
+    "screenLeaseMs": 10000,
+    "compactAfterMs": 3000,
+    "noOtherPayloadChanges": true,
+    "physicalSleepValidated": false
+  }
+}
