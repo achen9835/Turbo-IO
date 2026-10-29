@@ -29,6 +29,44 @@ static NSString *QueryKind(NSString *target){
     return @"unknown";
 }
 static BOOL SendAll(int fd,NSData *data){const uint8_t *p=data.bytes;NSUInteger n=data.length;while(n){ssize_t k=send(fd,p,MIN(n,65536),0);if(k<0&&errno==EINTR)continue;if(k<=0)return NO;p+=k;n-=(NSUInteger)k;}return YES;}
+/* 官方升级接口在网关后（裸请求 401）；把 App 自己发出的请求原样转发到官方
+ * 主机（https 固定清单），只记录响应里的固件元数据与下载链接——请求头/查询
+ * 值可能含账号与设备标识，绝不落盘（见下方隐私规则）。CDN 下载链接是公开的
+ * （file-tdp-ffalcon-o.api.leiniao.com 直接可取），拿到链接在电脑端下载即可。 */
+static NSDictionary *OfficialFetch(NSString *origPath,NSString *query,NSDictionary *headers){
+    static NSArray *hosts;static dispatch_once_t once;dispatch_once(&once,^{hosts=@[@"xr-api-p.rayneo.cn",@"xr-api-pre.rayneo.cn",@"xr-api-t.rayneo.cn",@"xr-api-d.rayneo.cn",@"xr-api-hw-t.rayneo.com",@"on-hweudc-o.api.leiniao.com"];});
+    NSSet *skip=[NSSet setWithArray:@[@"host",@"connection",@"content-length",@"transfer-encoding",@"accept-encoding",@"keep-alive",@"upgrade",@"expect"]];
+    for(NSString *host in hosts){
+        NSURL *url=[NSURL URLWithString:[NSString stringWithFormat:@"https://%@%@%@%@",host,origPath,query.length?@"?":@"",query]];if(!url)continue;
+        NSMutableURLRequest *req=[NSMutableURLRequest requestWithURL:url cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:10];
+        for(NSString *name in headers)if(![skip containsObject:name]&&[headers[name] isKindOfClass:NSString.class])[req setValue:headers[name] forHTTPHeaderField:name];
+        dispatch_semaphore_t sem=dispatch_semaphore_create(0);__block NSData *body=nil;__block NSInteger code=0;
+        [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *d,NSURLResponse *r,NSError *e){
+            if(!e&&[r isKindOfClass:NSHTTPURLResponse.class]){body=d;code=[(NSHTTPURLResponse *)r statusCode];}
+            dispatch_semaphore_signal(sem);}] resume];
+        dispatch_semaphore_wait(sem,dispatch_time(DISPATCH_TIME_NOW,12*NSEC_PER_SEC));
+        if(code!=200||!body.length||body.length>2*1024*1024)continue;
+        id j=[NSJSONSerialization JSONObjectWithData:body options:0 error:nil];
+        if(![j isKindOfClass:NSDictionary.class]||![j[@"error_code"] isEqual:@1000])continue;
+        NSMutableDictionary *rec=[@{@"host":host,@"path":origPath,@"at":@(NSDate.date.timeIntervalSince1970)} mutableCopy];
+        NSDictionary *card=[j[@"data"] isKindOfClass:NSDictionary.class]?j[@"data"]:nil;
+        if(card){
+            rec[@"hasUpdate"]=@YES;
+            for(NSString *k in @[@"taskName",@"packageName",@"versionName",@"versionCode",@"upgradeType",@"updateDesc",@"apkSize",@"apkMd5",@"downloadUrl"])if([card[k] isKindOfClass:NSString.class]||[card[k] isKindOfClass:NSNumber.class])rec[k]=card[k];
+        }else rec[@"hasUpdate"]=@NO;
+        return rec;
+    }
+    return @{@"error":@"官方接口未响应或鉴权未通过（换个网络/稍后再试）",@"at":@(NSDate.date.timeIntervalSince1970)};
+}
+static void SaveOfficialCapture(NSDictionary *record){
+    if(![record isKindOfClass:NSDictionary.class])return;
+    NSString *dir=[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/TurboIOPrivateAddon"];
+    [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@0700} error:nil];
+    NSString *path=[dir stringByAppendingPathComponent:@"ota-official-capture.json"];
+    NSData *j=[NSJSONSerialization dataWithJSONObject:record options:NSJSONWritingPrettyPrinted error:nil];
+    if(j.length)[j writeToFile:path options:NSDataWritingAtomic error:nil];
+    [NSFileManager.defaultManager setAttributes:@{NSFilePosixPermissions:@0600} ofItemAtPath:path error:nil];
+}
 static void Reply(int fd,NSInteger status,NSData *body,NSString *mime,NSDictionary *extra,BOOL head){
     NSMutableString *h=[NSMutableString stringWithFormat:@"HTTP/1.1 %ld %@\r\nContent-Length: %lu\r\nContent-Type: %@\r\nCache-Control: no-store\r\nConnection: close\r\nX-Content-Type-Options: nosniff\r\n",(long)status,status==200?@"OK":status==206?@"Partial Content":@"Rejected",(unsigned long)body.length,mime];
     for(NSString *key in extra)[h appendFormat:@"%@: %@\r\n",key,extra[key]];
@@ -64,9 +102,10 @@ static NSString *OTAServedVersionName(NSString *target){return [NSString stringW
     uint16_t _port;
     NSData *_archive;
     NSString *_token, *_md5;
-    NSTimeInterval _deadline;
+    NSTimeInterval _deadline,_lastForward;
     NSUInteger _queries, _downloads, _rejected;
     NSUInteger _firmwareQueries, _appQueries, _unknownQueries;
+    NSDictionary *_officialCapture;NSUInteger _officialForwards;
 }
 - (instancetype)init{if((self=[super init]))_queue=dispatch_queue_create("io.turboio.ota.loopback",DISPATCH_QUEUE_SERIAL);return self;}
 - (uint16_t)port{@synchronized(self){return _port;}}
@@ -122,7 +161,7 @@ static NSString *OTAServedVersionName(NSString *target){return [NSString stringW
 - (void)disarm{@synchronized(self){_archive=nil;_token=nil;_md5=nil;_deadline=0;}}
 - (void)stop{@synchronized(self){[self disarm];if(_listener){dispatch_source_cancel(_listener);_listener=nil;}_port=0;}}
 - (void)dealloc{if(_listener)dispatch_source_cancel(_listener);}
-- (NSDictionary *)status{@synchronized(self){[self expireLocked];return @{@"running":@(_listener!=nil),@"port":@(_port),@"armed":@(_archive!=nil),@"queryCount":@(_queries),@"firmwareQueries":@(_firmwareQueries),@"appQueries":@(_appQueries),@"unknownQueries":@(_unknownQueries),@"downloadRequests":@(_downloads),@"rejectedCount":@(_rejected),@"armingCompiledIn":@(TIO_OTA_FEED_ARMING_ENABLED),@"runtimeValidated":@NO};}}
+- (NSDictionary *)status{@synchronized(self){[self expireLocked];return @{@"running":@(_listener!=nil),@"port":@(_port),@"armed":@(_archive!=nil),@"queryCount":@(_queries),@"firmwareQueries":@(_firmwareQueries),@"appQueries":@(_appQueries),@"unknownQueries":@(_unknownQueries),@"downloadRequests":@(_downloads),@"rejectedCount":@(_rejected),@"officialForwards":@(_officialForwards),@"lastOfficial":_officialCapture?:@{},@"armingCompiledIn":@(TIO_OTA_FEED_ARMING_ENABLED),@"runtimeValidated":@NO};}}
 - (void)handleClient:(int)fd{
     // Headers and query may contain account/device identifiers. Never log or persist them.
     NSMutableData *request=[NSMutableData new];NSData *end=[@"\r\n\r\n" dataUsingEncoding:NSASCIIStringEncoding];NSTimeInterval until=NSProcessInfo.processInfo.systemUptime+2;
@@ -135,12 +174,21 @@ static NSString *OTAServedVersionName(NSString *target){return [NSString stringW
     NSString *method=first.count?first[0]:@"",*target=first.count>1?first[1]:@"";
     BOOL head=[method isEqual:@"HEAD"];
     NSDictionary *response=nil;NSData *body=nil;NSString *mime=@"application/json";NSInteger code=200;NSDictionary *extra=@{};
+    BOOL capture=NO;NSString *capturePath=nil,*captureQuery=nil;
     @synchronized(self){[self expireLocked];
         if(!valid||![headers[@"host"] isEqual:[NSString stringWithFormat:@"127.0.0.1:%u",_port]]||headers[@"transfer-encoding"]||(headers[@"content-length"]&&![headers[@"content-length"] isEqual:@"0"]))code=400;
         else if(![method isEqual:@"GET"]&&!head)code=405;
         else if([QueryPaths() containsObject:[[target componentsSeparatedByString:@"?"] firstObject]]){
             _queries++;id data=NSNull.null;
             NSString *kind=QueryKind(target);if([kind isEqual:@"firmware"])_firmwareQueries++;else if([kind isEqual:@"app"])_appQueries++;else _unknownQueries++;
+            // 未武装时把真实固件查询转发到官方接口捕获更新链接（30 秒节流）；
+            // 给 App 的应答仍是「无更新」，页面行为不变，刷写风险为零。
+            if(!_archive&&[kind isEqual:@"firmware"]&&NSProcessInfo.processInfo.systemUptime-_lastForward>30){
+                NSString *bare=[[target componentsSeparatedByString:@"?"] firstObject];
+                capturePath=[bare isEqual:@"/g/xxxxxxxA78p2M"]?@"/xrlauncherapi/v1/signApi/gray/upgrade":[bare isEqual:@"/g/xxxxxxxxxxCCXhB"]?@"/xrlauncherhwapi/v1/signApi/gray/upgrade":nil;
+                NSRange q=[target rangeOfString:@"?"];captureQuery=q.location==NSNotFound?@"":[target substringFromIndex:q.location+1];
+                capture=capturePath!=nil;_lastForward=NSProcessInfo.processInfo.systemUptime;if(capture)_officialForwards++;
+            }
             if(_archive&&[kind isEqual:@"firmware"]){
                 NSDictionary *c=TIOOTACandidate();unsigned pins=[c[@"payloadPins"] isKindOfClass:NSArray.class]?[c[@"payloadPins"] count]:0;
                 data=@{@"taskName":[NSString stringWithFormat:@"%@ PRIVATE EXPERIMENT",c[@"codeName"]?:@"TURBO"],@"appName":@"Strix OS",@"packageName":@"Strix OS",@"versionName":OTAServedVersionName(target),@"versionCode":@(OTAServedVersionCode(target)),@"upgradeType":@1,@"userScope":@0,@"updateDesc":[NSString stringWithFormat:@"PRIVATE EXPERIMENT %@: AP modified, other %u payloads byte-identical to %@. Runtime unverified.",c[@"codeName"]?:@"",pins>0?pins-2:0,c[@"baseVersion"]?:@""],@"appIcon":@"",@"apkSize":@(_archive.length),@"apkMd5":_md5,@"downloadUrl":[NSString stringWithFormat:@"http://127.0.0.1:%u/p/%@/%@",_port,_token,OTAZipName()]};
@@ -162,6 +210,7 @@ static NSString *OTAServedVersionName(NSString *target){return [NSString stringW
         }else code=404;
         if(code>=400){_rejected++;body=[NSData data];}
     }
+    if(capture){NSDictionary *rec=OfficialFetch(capturePath,captureQuery,headers);@synchronized(self){_officialCapture=rec;}SaveOfficialCapture(rec);}
     if(response)body=[NSJSONSerialization dataWithJSONObject:response options:0 error:nil];
     Reply(fd,code,body?:[NSData data],mime,extra,head);
     TIORefreshExperimentalOTAReport();
