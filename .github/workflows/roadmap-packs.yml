@@ -1,0 +1,203 @@
+name: Road Map Packs
+
+# 省际离线路网包（TNR 矢量小地图数据源）生成流水线。
+#
+# 用法（2026-10-28 v2：加省不再逐个手动跑）：
+#   - provinces 输入 `all`（默认）：自动解析 Geofabrik 中国子区清单，
+#     矩阵并行生成【全部省份】的包；30 天内已构建且未变的省自动跳过，
+#     所以重复跑 `all` 只补新省/刷新旧省，不会全量重造。
+#   - 也可以逗号分隔指定省：`guangdong,zhejiang`。
+#   - force=true 忽略新鲜度强制重建。
+#   - 每月 2 日自动跑一次 all（只刷新 >45 天的包；不需要就删掉 schedule 段）。
+#
+# 流程：resolve（解析省清单）→ build（每省一个矩阵作业：下载 pbf →
+# osmium 过滤道路 → 打包 .pack）→ publish（合并 manifest、上传 Release）。
+# App 端「导航 → 省际路网包」直接按 manifest 下载，无需重装/重编。
+
+on:
+  workflow_dispatch:
+    inputs:
+      provinces:
+        description: 'all = 全部省；或逗号分隔 slugs（guangdong,zhejiang）'
+        required: false
+        default: 'all'
+      force:
+        description: '忽略新鲜度强制重建'
+        type: boolean
+        required: false
+        default: false
+  schedule:
+    - cron: '0 18 2 * *' # 每月 2 日 18:00 UTC 自动刷新（fresh<45d 跳过）
+
+permissions:
+  contents: write
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      matrix: ${{ steps.set.outputs.matrix }}
+    steps:
+      - name: Resolve province list
+        id: set
+        env:
+          INPUT_AREAS: ${{ inputs.provinces }}
+        run: |
+          set -e
+          AREAS="${INPUT_AREAS:-all}"
+          if [ "$AREAS" = "all" ]; then
+            # 解析 Geofabrik 中国页的子区链接（形如 <a href="guangdong.html">）
+            LIST=$(curl -sfL --retry 3 https://download.geofabrik.de/asia/china.html \
+              | grep -oE 'href="[a-z][a-z_-]*\.html"' \
+              | sed -E 's/href="([a-z][a-z_-]*)\.html"/\1/' \
+              | grep -vE '^(china|asia)$' | sort -u | tr '\n' ' ')
+            if [ -z "$LIST" ]; then echo "无法解析省级清单（Geofabrik 页面结构变了？）" >&2; exit 1; fi
+          else
+            LIST=$(echo "$AREAS" | tr ',' ' ')
+          fi
+          MATRIX=$(python3 - "$LIST" <<'PY'
+          import json, sys
+          provs = [p for p in sys.argv[1].split() if p]
+          print(json.dumps({"province": provs}))
+          PY
+          )
+          echo "matrix=$MATRIX" >> "$GITHUB_OUTPUT"
+          echo "将处理省份: $LIST"
+
+  build:
+    needs: resolve
+    runs-on: macos-15
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix: ${{ fromJson(needs.resolve.outputs.matrix) }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Freshness check (skip recently built)
+        id: fresh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROV: ${{ matrix.province }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          set -e
+          if [ "$FORCE" = "true" ]; then echo "keep=no" >> "$GITHUB_OUTPUT"; exit 0; fi
+          KEEP=no
+          if gh release download roadmap-packs --repo "$GITHUB_REPOSITORY" --pattern manifest.json --dir rel 2>/dev/null; then
+            KEEP=$(python3 - "$PROV" <<'PY'
+            import datetime, json, os, sys
+            prov = sys.argv[1]
+            entry = None
+            try:
+                m = json.load(open('rel/manifest.json', encoding='utf-8'))
+                entry = next((p for p in m.get('packs', []) if p.get('province') == prov), None)
+            except OSError:
+                pass
+            if entry and entry.get('builtAt'):
+                try:
+                    built = datetime.datetime.fromisoformat(entry['builtAt'].replace('Z', '+00:00'))
+                    if (datetime.datetime.now(datetime.timezone.utc) - built).days < 45:
+                        print('yes'); raise SystemExit
+                except ValueError:
+                    pass
+            print('no')
+            PY
+            )
+          fi
+          echo "keep=$KEEP" >> "$GITHUB_OUTPUT"
+          echo "province=$PROV fresh-skip=$KEEP"
+      - name: Install osmium
+        if: steps.fresh.outputs.keep != 'yes'
+        run: brew install osmium-tool
+      - name: Download province extract
+        if: steps.fresh.outputs.keep != 'yes'
+        env:
+          PROV: ${{ matrix.province }}
+        run: |
+          set -e
+          curl -L --fail --retry 3 -o prov.osm.pbf \
+            "https://download.geofabrik.de/asia/china/${PROV}-latest.osm.pbf" \
+          || curl -L --fail --retry 3 -o prov.osm.pbf \
+            "https://download.openstreetmap.fr/extracts/asia/china/${PROV}-latest.osm.pbf"
+          ls -la prov.osm.pbf
+      - name: Filter, export and build pack
+        if: steps.fresh.outputs.keep != 'yes'
+        env:
+          PROV: ${{ matrix.province }}
+        run: |
+          set -e
+          osmium tags-filter prov.osm.pbf w/highway -o roads.osm.pbf --overwrite
+          osmium export roads.osm.pbf -f geojsonseq -o roads.geojsonseq --overwrite
+          BUILT_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+          python3 tools/roadmap-pack-builder.py \
+            --input roads.geojsonseq \
+            --province "$PROV" \
+            --display "$PROV" \
+            --out "TurboRoadMap-$PROV.pack"
+          python3 - "$PROV" "$BUILT_AT" <<'PY'
+          import json, os, sys
+          prov, built = sys.argv[1], sys.argv[2]
+          path = f'TurboRoadMap-{prov}.pack.meta.json'
+          meta = json.load(open(path, encoding='utf-8'))
+          meta['builtAt'] = built
+          json.dump(meta, open(path, 'w', encoding='utf-8'), ensure_ascii=False)
+          PY
+          ls -la "TurboRoadMap-$PROV.pack"
+      - name: Upload pack artifact
+        if: steps.fresh.outputs.keep != 'yes'
+        uses: actions/upload-artifact@v4
+        with:
+          name: pack-${{ matrix.province }}
+          path: |
+            TurboRoadMap-${{ matrix.province }}.pack
+            TurboRoadMap-${{ matrix.province }}.pack.meta.json
+          retention-days: 3
+      - name: Clean large intermediates
+        if: always()
+        run: rm -f prov.osm.pbf roads.osm.pbf roads.geojsonseq
+
+  publish:
+    needs: build
+    if: ${{ !cancelled() && needs.build.result != 'skipped' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download pack artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: packs
+          pattern: 'pack-*'
+          merge-multiple: true
+      - name: Publish to roadmap-packs release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -e
+          TAG=roadmap-packs
+          shopt -s nullglob
+          PACKS=(packs/*.pack)
+          if [ ${#PACKS[@]} -eq 0 ]; then echo "没有新包（全部命中新鲜度跳过）——只刷新 manifest"; fi
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$TAG" --repo "$GITHUB_REPOSITORY" \
+                 --title "省际矢量路网包（TNR 小地图数据源）" \
+                 --notes "自动生成的省级离线路网包；App 内「导航 → 省际路网包」直接下载。"
+          mkdir -p rel
+          if gh release download "$TAG" --repo "$GITHUB_REPOSITORY" --pattern manifest.json --dir rel 2>/dev/null; then
+            echo "existing manifest fetched"
+          else
+            echo '{"schema":1,"packs":[]}' > rel/manifest.json
+          fi
+          for META in packs/*.meta.json; do
+            [ -e "$META" ] || continue
+            python3 tools/roadmap-manifest-update.py rel/manifest.json "$META"
+          done
+          if [ ${#PACKS[@]} -gt 0 ]; then
+            gh release upload "$TAG" packs/*.pack rel/manifest.json --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release upload "$TAG" rel/manifest.json --clobber --repo "$GITHUB_REPOSITORY"
+          fi
+          echo "published: https://github.com/$GITHUB_REPOSITORY/releases/tag/$TAG"
+          python3 -c "import json; m=json.load(open('rel/manifest.json')); print('manifest 省数:', len(m['packs']))"
