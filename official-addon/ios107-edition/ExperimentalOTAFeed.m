@@ -181,9 +181,11 @@ static NSString *OTAServedVersionName(NSString *target){return [NSString stringW
         else if([QueryPaths() containsObject:[[target componentsSeparatedByString:@"?"] firstObject]]){
             _queries++;id data=NSNull.null;
             NSString *kind=QueryKind(target);if([kind isEqual:@"firmware"])_firmwareQueries++;else if([kind isEqual:@"app"])_appQueries++;else _unknownQueries++;
-            // 未武装时把真实固件查询转发到官方接口捕获更新链接（30 秒节流）；
-            // 给 App 的应答仍是「无更新」，页面行为不变，刷写风险为零。
-            if(!_archive&&[kind isEqual:@"firmware"]&&NSProcessInfo.processInfo.systemUptime-_lastForward>30){
+            // 未武装时把查询转发到官方接口捕获更新链接（30 秒节流）。不挑
+            // kind：真实查询的参数组合可能与分类器假设有出入，抓取不该因此
+            // 静默归零（2026-10-30 真机「点了啥也没有」教训）。给 App 的
+            // 应答仍是「无更新」，页面行为不变，刷写风险为零。
+            if(!_archive&&NSProcessInfo.processInfo.systemUptime-_lastForward>30){
                 NSString *bare=[[target componentsSeparatedByString:@"?"] firstObject];
                 capturePath=[bare isEqual:@"/g/xxxxxxxA78p2M"]?@"/xrlauncherapi/v1/signApi/gray/upgrade":[bare isEqual:@"/g/xxxxxxxxxxCCXhB"]?@"/xrlauncherhwapi/v1/signApi/gray/upgrade":nil;
                 NSRange q=[target rangeOfString:@"?"];captureQuery=q.location==NSNotFound?@"":[target substringFromIndex:q.location+1];
