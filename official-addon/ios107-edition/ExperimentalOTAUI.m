@@ -41,9 +41,17 @@ static NSUInteger CandMembers(void){NSArray *p=TIOOTACandidate()[@"payloadPins"]
         if(path.row==5){cell.textLabel.text=@"★ 核对官方目录并授权一次试刷（一键）";cell.detailTextLabel.text=[NSString stringWithFormat:@"自动逐字节核对官方解压目录 %lu 项，通过后再输入确认字完成冻结授权；一步替代上面两项。仍须回官方页手动开始安装。",(unsigned long)CandMembers()];cell.accessibilityIdentifier=@"experimental-ota-oneclick";}
         else if(path.row==6){NSDictionary *f6=TIOExperimentalOTAFeedStatus(),*g6=TIOOTAGuardStatus();id cur6=[NSUserDefaults.standardUserDefaults objectForKey:@"TIOUpdateCheckSilence"];BOOL off6=![cur6 boolValue];cell.textLabel.text=off6?@"版本改写：已关（默认 · 回真实版本）":@"版本改写：开（99.99.99 · 点此关闭）";cell.detailTextLabel.text=[NSString stringWithFormat:@"点击切换。本机源查询 %@ 次 · 固件类 %@ · App类 %@ · 未匹配 %@ · 下载 %@ · 拒收 %@ · 改写 %@ 次\n默认关闭（2026-10-29）：改写会挡官方更新卡片并污染一切读版本的官方功能（离线翻译等）；刷机时保持关闭即可，官方页不出卡片时先看武装状态。自动更新强制关闭与此项解耦，始终保护。",f6[@"queryCount"]?:@0,f6[@"firmwareQueries"]?:@0,f6[@"appQueries"]?:@0,f6[@"unknownQueries"]?:@0,f6[@"downloadRequests"]?:@0,f6[@"rejectedCount"]?:@0,g6[@"silencedVersionReads"]?:@0];
         NSDictionary *cap=[f6[@"lastOfficial"] isKindOfClass:NSDictionary.class]?f6[@"lastOfficial"]:nil;
+        NSDictionary *fail=[f6[@"lastOfficialFail"] isKindOfClass:NSDictionary.class]?f6[@"lastOfficialFail"]:nil;
         NSString *line;
         if(cap.count&&[cap[@"hasUpdate"] isEqual:@YES])line=[NSString stringWithFormat:@"\n官方响应：有更新 %@ · 大小 %@ · MD5 %@\n下载链接（复制到电脑直接下载）：%@",cap[@"versionName"]?:@"?",cap[@"apkSize"]?:@"?",cap[@"apkMd5"]?:@"?",cap[@"downloadUrl"]?:@"未返回链接"];
-        else if(cap.count)line=[NSString stringWithFormat:@"\n官方响应：%@",cap[@"error"]?:@"无可用更新（已是最新）"];
+        else if(cap.count){
+            NSDictionary *a=[cap[@"asked"] isKindOfClass:NSDictionary.class]?cap[@"asked"]:[NSDictionary new];
+            line=[NSString stringWithFormat:@"\n官方响应：无可用更新（已是最新）· 问的版本 %@ · %@\n各通道：%@",a[@"versionCode"]?:@"?",a[@"glassesType"]?:@"?",cap[@"probed"]?:@"-"];
+        }
+        else if(fail.count){
+            NSDictionary *a=[fail[@"asked"] isKindOfClass:NSDictionary.class]?fail[@"asked"]:[NSDictionary new];
+            line=[NSString stringWithFormat:@"\n官方响应：尚未成功（%@）· 问的版本 %@\n各通道：%@",fail[@"error"]?:@"转发失败",a[@"versionCode"]?:@"?",fail[@"probed"]?:@"-"];
+        }
         else line=[NSString stringWithFormat:@"\n官方响应：尚未抓到（已转发 %@ 次 · 本机源 %@ 次查询）。去官方页点一次检查更新后回来看；若查询数不涨，重启 App 再试。",f6[@"officialForwards"]?:@0,f6[@"queryCount"]?:@0];
         cell.detailTextLabel.text=[cell.detailTextLabel.text stringByAppendingString:line];
         cell.accessibilityIdentifier=@"experimental-ota-silence-toggle";}

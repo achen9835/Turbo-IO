@@ -36,27 +36,45 @@ static BOOL SendAll(int fd,NSData *data){const uint8_t *p=data.bytes;NSUInteger 
 static NSDictionary *OfficialFetch(NSString *origPath,NSString *query,NSDictionary *headers){
     static NSArray *hosts;static dispatch_once_t once;dispatch_once(&once,^{hosts=@[@"xr-api-p.rayneo.cn",@"xr-api-pre.rayneo.cn",@"xr-api-t.rayneo.cn",@"xr-api-d.rayneo.cn",@"xr-api-hw-t.rayneo.com",@"on-hweudc-o.api.leiniao.com"];});
     NSSet *skip=[NSSet setWithArray:@[@"host",@"connection",@"content-length",@"transfer-encoding",@"accept-encoding",@"keep-alive",@"upgrade",@"expect"]];
+    // 记录查询里的非标识参数（版本/型号），用于分辨「带的版本对不对」；账号与
+    // 设备标识类参数绝不落盘。逐通道记录状态（401/超时/无/有更新）——一次
+    // 「未响应」不能再把此前的真实应答抹成谜团。
+    NSMutableDictionary *asked=[NSMutableDictionary new];
+    for(NSString *pair in [query componentsSeparatedByString:@"&"]){
+        NSRange eq=[pair rangeOfString:@"="];if(eq.location==NSNotFound)continue;
+        NSString *k=[pair substringToIndex:eq.location];
+        if([@[@"packageType",@"packageName",@"glassesType",@"deviceType",@"versionCode",@"versionName",@"glassesOsVersion"] containsObject:k])asked[k]=[pair substringFromIndex:eq.location+1];
+    }
+    NSMutableArray *probed=[NSMutableArray new];BOOL anyEnvelope=NO;
+    NSMutableDictionary *result=[@{@"at":@(NSDate.date.timeIntervalSince1970),@"path":origPath,@"asked":asked} mutableCopy];
     for(NSString *host in hosts){
-        NSURL *url=[NSURL URLWithString:[NSString stringWithFormat:@"https://%@%@%@%@",host,origPath,query.length?@"?":@"",query]];if(!url)continue;
+        NSString *raw=[NSString stringWithFormat:@"https://%@%@%@%@",host,origPath,query.length?@"?":@"",query];
+        NSURL *url=[NSURL URLWithString:raw];
+        if(!url)url=[NSURL URLWithString:[raw stringByAddingPercentEncodingWithAllowedCharacters:[NSCharacterSet characterSetWithCharactersInString:@"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~:/?#[]@!$&'()*+,;=%"]]];
+        if(!url){[probed addObject:[NSString stringWithFormat:@"%@:URL错",host]];continue;}
         NSMutableURLRequest *req=[NSMutableURLRequest requestWithURL:url cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:10];
         for(NSString *name in headers)if(![skip containsObject:name]&&[headers[name] isKindOfClass:NSString.class])[req setValue:headers[name] forHTTPHeaderField:name];
         dispatch_semaphore_t sem=dispatch_semaphore_create(0);__block NSData *body=nil;__block NSInteger code=0;
         [[[NSURLSession sharedSession] dataTaskWithRequest:req completionHandler:^(NSData *d,NSURLResponse *r,NSError *e){
             if(!e&&[r isKindOfClass:NSHTTPURLResponse.class]){body=d;code=[(NSHTTPURLResponse *)r statusCode];}
             dispatch_semaphore_signal(sem);}] resume];
-        dispatch_semaphore_wait(sem,dispatch_time(DISPATCH_TIME_NOW,12*NSEC_PER_SEC));
-        if(code!=200||!body.length||body.length>2*1024*1024)continue;
+        if(dispatch_semaphore_wait(sem,dispatch_time(DISPATCH_TIME_NOW,12*NSEC_PER_SEC))!=0){[probed addObject:[NSString stringWithFormat:@"%@:超时",host]];continue;}
+        if(code!=200){[probed addObject:[NSString stringWithFormat:@"%@:%ld",host,(long)code]];continue;}
+        if(!body.length||body.length>2*1024*1024){[probed addObject:[NSString stringWithFormat:@"%@:体异常",host]];continue;}
         id j=[NSJSONSerialization JSONObjectWithData:body options:0 error:nil];
-        if(![j isKindOfClass:NSDictionary.class]||![j[@"error_code"] isEqual:@1000])continue;
-        NSMutableDictionary *rec=[@{@"host":host,@"path":origPath,@"at":@(NSDate.date.timeIntervalSince1970)} mutableCopy];
+        if(![j isKindOfClass:NSDictionary.class]||![j[@"error_code"] isEqual:@1000]){[probed addObject:[NSString stringWithFormat:@"%@:非信封",host]];continue;}
+        anyEnvelope=YES;
         NSDictionary *card=[j[@"data"] isKindOfClass:NSDictionary.class]?j[@"data"]:nil;
+        [probed addObject:card?[NSString stringWithFormat:@"%@:有更新",host]:[NSString stringWithFormat:@"%@:无",host]];
         if(card){
-            rec[@"hasUpdate"]=@YES;
-            for(NSString *k in @[@"taskName",@"packageName",@"versionName",@"versionCode",@"upgradeType",@"updateDesc",@"apkSize",@"apkMd5",@"downloadUrl"])if([card[k] isKindOfClass:NSString.class]||[card[k] isKindOfClass:NSNumber.class])rec[k]=card[k];
-        }else rec[@"hasUpdate"]=@NO;
-        return rec;
+            result[@"ok"]=@YES;result[@"hasUpdate"]=@YES;result[@"host"]=host;
+            for(NSString *k in @[@"taskName",@"packageName",@"versionName",@"versionCode",@"upgradeType",@"updateDesc",@"apkSize",@"apkMd5",@"downloadUrl"])if([card[k] isKindOfClass:NSString.class]||[card[k] isKindOfClass:NSNumber.class])result[k]=card[k];
+            result[@"probed"]=[probed componentsJoinedByString:@" "];return result;
+        }
     }
-    return @{@"error":@"官方接口未响应或鉴权未通过（换个网络/稍后再试）",@"at":@(NSDate.date.timeIntervalSince1970)};
+    result[@"probed"]=[probed componentsJoinedByString:@" "];result[@"ok"]=@(anyEnvelope);result[@"hasUpdate"]=@NO;
+    if(!anyEnvelope)result[@"error"]=@"官方接口未响应或鉴权未通过（各通道状态见下）";
+    return result;
 }
 static void SaveOfficialCapture(NSDictionary *record){
     if(![record isKindOfClass:NSDictionary.class])return;
@@ -105,7 +123,7 @@ static NSString *OTAServedVersionName(NSString *target){return [NSString stringW
     NSTimeInterval _deadline,_lastForward;
     NSUInteger _queries, _downloads, _rejected;
     NSUInteger _firmwareQueries, _appQueries, _unknownQueries;
-    NSDictionary *_officialCapture;NSUInteger _officialForwards;
+    NSDictionary *_officialCapture,*_officialFail;NSUInteger _officialForwards;
 }
 - (instancetype)init{if((self=[super init]))_queue=dispatch_queue_create("io.turboio.ota.loopback",DISPATCH_QUEUE_SERIAL);return self;}
 - (uint16_t)port{@synchronized(self){return _port;}}
@@ -161,7 +179,7 @@ static NSString *OTAServedVersionName(NSString *target){return [NSString stringW
 - (void)disarm{@synchronized(self){_archive=nil;_token=nil;_md5=nil;_deadline=0;}}
 - (void)stop{@synchronized(self){[self disarm];if(_listener){dispatch_source_cancel(_listener);_listener=nil;}_port=0;}}
 - (void)dealloc{if(_listener)dispatch_source_cancel(_listener);}
-- (NSDictionary *)status{@synchronized(self){[self expireLocked];return @{@"running":@(_listener!=nil),@"port":@(_port),@"armed":@(_archive!=nil),@"queryCount":@(_queries),@"firmwareQueries":@(_firmwareQueries),@"appQueries":@(_appQueries),@"unknownQueries":@(_unknownQueries),@"downloadRequests":@(_downloads),@"rejectedCount":@(_rejected),@"officialForwards":@(_officialForwards),@"lastOfficial":_officialCapture?:@{},@"armingCompiledIn":@(TIO_OTA_FEED_ARMING_ENABLED),@"runtimeValidated":@NO};}}
+- (NSDictionary *)status{@synchronized(self){[self expireLocked];return @{@"running":@(_listener!=nil),@"port":@(_port),@"armed":@(_archive!=nil),@"queryCount":@(_queries),@"firmwareQueries":@(_firmwareQueries),@"appQueries":@(_appQueries),@"unknownQueries":@(_unknownQueries),@"downloadRequests":@(_downloads),@"rejectedCount":@(_rejected),@"officialForwards":@(_officialForwards),@"lastOfficial":_officialCapture?:@{},@"lastOfficialFail":_officialFail?:@{},@"armingCompiledIn":@(TIO_OTA_FEED_ARMING_ENABLED),@"runtimeValidated":@NO};}}
 - (void)handleClient:(int)fd{
     // Headers and query may contain account/device identifiers. Never log or persist them.
     NSMutableData *request=[NSMutableData new];NSData *end=[@"\r\n\r\n" dataUsingEncoding:NSASCIIStringEncoding];NSTimeInterval until=NSProcessInfo.processInfo.systemUptime+2;
@@ -181,11 +199,10 @@ static NSString *OTAServedVersionName(NSString *target){return [NSString stringW
         else if([QueryPaths() containsObject:[[target componentsSeparatedByString:@"?"] firstObject]]){
             _queries++;id data=NSNull.null;
             NSString *kind=QueryKind(target);if([kind isEqual:@"firmware"])_firmwareQueries++;else if([kind isEqual:@"app"])_appQueries++;else _unknownQueries++;
-            // 未武装时把查询转发到官方接口捕获更新链接（30 秒节流）。不挑
-            // kind：真实查询的参数组合可能与分类器假设有出入，抓取不该因此
-            // 静默归零（2026-10-30 真机「点了啥也没有」教训）。给 App 的
-            // 应答仍是「无更新」，页面行为不变，刷写风险为零。
-            if(!_archive&&NSProcessInfo.processInfo.systemUptime-_lastForward>30){
+            // 未武装时把固件查询转发到官方接口捕获更新链接（30 秒节流）。
+            // App 更新查询不触发抓取：它会插队把固件结果挤掉（真机 11 次查询
+            // 里 8 次是 App 类）。给 App 的应答仍是「无更新」，页面行为不变。
+            if(!_archive&&![kind isEqual:@"app"]&&NSProcessInfo.processInfo.systemUptime-_lastForward>30){
                 NSString *bare=[[target componentsSeparatedByString:@"?"] firstObject];
                 capturePath=[bare isEqual:@"/g/xxxxxxxA78p2M"]?@"/xrlauncherapi/v1/signApi/gray/upgrade":[bare isEqual:@"/g/xxxxxxxxxxCCXhB"]?@"/xrlauncherhwapi/v1/signApi/gray/upgrade":nil;
                 NSRange q=[target rangeOfString:@"?"];captureQuery=q.location==NSNotFound?@"":[target substringFromIndex:q.location+1];
@@ -212,7 +229,7 @@ static NSString *OTAServedVersionName(NSString *target){return [NSString stringW
         }else code=404;
         if(code>=400){_rejected++;body=[NSData data];}
     }
-    if(capture){NSDictionary *rec=OfficialFetch(capturePath,captureQuery,headers);@synchronized(self){_officialCapture=rec;}SaveOfficialCapture(rec);}
+    if(capture){NSDictionary *rec=OfficialFetch(capturePath,captureQuery,headers);@synchronized(self){if([rec[@"ok"] isEqual:@YES])_officialCapture=rec;else _officialFail=rec;}SaveOfficialCapture(rec);}
     if(response)body=[NSJSONSerialization dataWithJSONObject:response options:0 error:nil];
     Reply(fd,code,body?:[NSData data],mime,extra,head);
     TIORefreshExperimentalOTAReport();
