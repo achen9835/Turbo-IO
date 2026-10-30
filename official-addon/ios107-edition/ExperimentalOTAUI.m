@@ -30,7 +30,7 @@ static NSUInteger CandMembers(void){NSArray *p=TIOOTACandidate()[@"payloadPins"]
 }
 - (void)refresh{TIORefreshExperimentalOTAReport();[self.tableView reloadData];}
 - (NSInteger)numberOfSectionsInTableView:(UITableView *)tableView{return 4;}
-- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{return section==2&&TIOOTAFlashBuild()?7:(section==2&&TIOOTAPreparationBuild()?3:(section==0||section==3?2:1));}
+- (NSInteger)tableView:(UITableView *)tableView numberOfRowsInSection:(NSInteger)section{if(section==2)return TIOOTAFlashBuild()?7:(TIOOTAPreparationBuild()?3:1);if(section==3)return 3;return section==0?2:1;}
 - (NSString *)tableView:(UITableView *)tableView titleForHeaderInSection:(NSInteger)section{return @[@"本地包",@"改动与安装范围",@"官方升级流程",@"手机解压目录 · 只读复核"][section];}
 - (UITableViewCell *)tableView:(UITableView *)tableView cellForRowAtIndexPath:(NSIndexPath *)path{
     UITableViewCell *cell=[[UITableViewCell alloc]initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:nil];TIOStyleResearchCell(cell);
@@ -65,6 +65,7 @@ static NSUInteger CandMembers(void){NSArray *p=TIOOTACandidate()[@"payloadPins"]
         else if(TIOOTAPreparationBuild()){cell.textLabel.text=@"PREPARE 02 · 禁止刷写";cell.detailTextLabel.text=[NSString stringWithFormat:@"隔离钩子：%@；已阻止 %@ 次发送\n来源开放：%@ · 固件查询 %@ · App 查询 %@ · 下载 %@\n这是只下载构建，没有解除发送隔离的入口。",[guard[@"transportHookReady"] boolValue]?@"已安装":@"未安装",guard[@"blockedCalls"],[feed[@"armed"] boolValue]?@"是":@"否",feed[@"firmwareQueries"]?:@0,feed[@"appQueries"]?:@0,feed[@"downloadRequests"]?:@0];cell.accessibilityIdentifier=@"experimental-ota-preparation-status";}
         else{cell.textLabel.text=@"刷机门禁关闭 · 不能开始升级";NSString *base=[feed[@"running"] boolValue]?[NSString stringWithFormat:@"本机升级来源已启动，仅返回“无更新”。已收到 %@ 次查询。\n同版本缓存及官方宿主尚待验收；编译门禁禁止提供实验包。没有发送到眼镜。",feed[@"queryCount"]]:@"本机升级来源组件已编译，当前包未启用实验路由。官方调度尚待验收。\n不覆盖官方缓存、不修改同版本升级开关、不向眼镜发送。";cell.detailTextLabel.text=[base stringByAppendingFormat:@"\n官方更新检查：版本回包已改写 %@ 次（默认关；开启期间官方页固件版本号显示为 99.99.99）。\n出站业务帧 %@ 次（类型：%@）；入站业务帧 %@ 次（类型：%@）；版本回包 %@ 个，键：%@。\n改写状态：%@——弹窗仍在时据此判断真实驱动：入站为0=回包走了未见通道；有其他类型帧=存在未中和的推送；改写成功仍弹=比对不止看OsVersion。",guard[@"silencedVersionReads"]?:@0,guard[@"businessNineCalls"]?:@0,guard[@"businessNineTypes"]?:@"-",guard[@"inboundBizNine"]?:@0,guard[@"inboundBizNineTypes"]?:@"-",guard[@"inboundVersionReplies"]?:@0,guard[@"inboundVersionKeys"]?:@"-",guard[@"rewriteSkip"]?:@"-"];cell.accessibilityIdentifier=@"experimental-ota-not-connected";}}
     else if(path.row==0){cell.textLabel.text=self.busy?@"正在校验…":@"核对官方解压目录";cell.detailTextLabel.text=[NSString stringWithFormat:@"逐个比对全部 %lu 个成员与固定钉值；旧原厂包不会被当作 %@",(unsigned long)CandMembers(),Cand()];cell.accessibilityIdentifier=@"experimental-ota-check-directory";}
+    else if(path.row==2){cell.textLabel.text=@"导出官方解压目录到 Documents/official-capture";cell.detailTextLabel.text=@"把已下载/已解压的官方固件逐个复制到 Documents/official-capture，供爱思「文件管理」导出到电脑（TAP3 基座原料）。只读来源，不动源目录。";cell.accessibilityIdentifier=@"experimental-ota-export-directory";}
     else{cell.textLabel.text=@"目录快照结果";cell.detailTextLabel.text=self.directoryStatus;cell.accessibilityIdentifier=@"experimental-ota-directory-status";}
     cell.selectionStyle=(((path.section==0||path.section==3)&&path.row==0)||(path.section==2&&path.row>0))&&!self.busy?UITableViewCellSelectionStyleDefault:UITableViewCellSelectionStyleNone;return cell;
 }
@@ -95,6 +96,28 @@ static NSUInteger CandMembers(void){NSArray *p=TIOOTACandidate()[@"payloadPins"]
         });
     });
 }
+// 官方直连路线：官方固件下载后即解压在 Library/Application Support/ota/<宿主目录>；
+// 把它逐个复制到 Documents/official-capture（house_arrest/爱思可导出），
+// TAP3 新基座原料不需要等「开始安装」。
+- (void)exportOfficialDirectory{
+    self.busy=YES;self.directoryStatus=@"正在导出官方解压目录到 Documents/official-capture…";[self.tableView reloadData];
+    NSURL *directory=[NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Library/Application Support/ota/%@",TIOOTAOfficialDirectoryName()]] isDirectory:YES];
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
+        NSString *dest=[NSHomeDirectory() stringByAppendingPathComponent:@"Documents/official-capture"];
+        [NSFileManager.defaultManager createDirectoryAtPath:dest withIntermediateDirectories:YES attributes:nil error:nil];
+        NSArray *names=[[NSFileManager.defaultManager contentsOfDirectoryAtPath:directory.path error:nil] sortedArrayUsingSelector:@selector(compare:)];
+        NSUInteger copied=0,bytes=0;
+        for(NSString *name in names){
+            if(!name.length||[name hasPrefix:@"."])continue;
+            NSString *src=[directory.path stringByAppendingPathComponent:name],*dst=[dest stringByAppendingPathComponent:name];
+            NSDictionary *attr=[NSFileManager.defaultManager attributesOfItemAtPath:src error:nil];
+            if(![attr[NSFileType] isEqual:NSFileTypeRegular])continue;
+            [NSFileManager.defaultManager removeItemAtPath:dst error:nil];
+            if([NSFileManager.defaultManager copyItemAtPath:src toPath:dst error:nil]){copied++;bytes+=(NSUInteger)[attr[NSFileSize] unsignedLongLongValue];}
+        }
+        dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;self.directoryStatus=copied?[NSString stringWithFormat:@"已导出 %lu 个文件 · %lu 字节 → Documents/official-capture\n用爱思「文件管理」打开本 App 的 Documents，把 official-capture 整个导出到电脑后发给 AI。",(unsigned long)copied,(unsigned long)bytes]:@"未导出任何文件：官方解压目录为空（先在官方页完成下载）。";[self.tableView reloadData];});
+    });
+}
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path{
     [tableView deselectRowAtIndexPath:path animated:YES];if(self.busy)return;
     if(path.section==2&&path.row==6&&TIOOTAFlashBuild()){NSUserDefaults *d6=NSUserDefaults.standardUserDefaults;id cur6=[d6 objectForKey:@"TIOUpdateCheckSilence"];[d6 setBool:![cur6 boolValue] forKey:@"TIOUpdateCheckSilence"];[d6 synchronize];[self refresh];return;}
@@ -103,6 +126,7 @@ static NSUInteger CandMembers(void){NSArray *p=TIOOTACandidate()[@"payloadPins"]
     if(path.section==2&&path.row==3&&TIOOTAFlashBuild()){[self promptAuthorize];return;}
     if(path.section==2&&path.row==2){TIOCancelExperimentalOTAPreparation();[self refresh];return;}
     if(path.section==2&&path.row==1){UIAlertController *confirm=[UIAlertController alertControllerWithTitle:@"只下载验收，不刷眼镜" message:[NSString stringWithFormat:@"开放 15 分钟本机 %@ 下载源，只供手机获取、校验和解压，不授予升级发送权限。正常语音和天气不因此禁用。若已单独授权，请先撤销未开始的授权。",Cand()] preferredStyle:UIAlertControllerStyleAlert];[confirm addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];[confirm addAction:[UIAlertAction actionWithTitle:@"只下载" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){if([TIOOTAFlashStatus()[@"stage"] integerValue]!=0){self.statusText=@"已有授权或发送会话，不能作为只下载验收开启；未改变会话。";[self refresh];return;}NSError *e=nil;BOOL ok=TIOBeginExperimentalOTAPreparation(&e);self.statusText=ok?@"来源已开放。回官方升级页检查并下载；未授予眼镜升级权限。":e.localizedDescription;[self refresh];}]];[self presentViewController:confirm animated:YES completion:nil];return;}
+    if(path.section==3&&path.row==2){[self exportOfficialDirectory];return;}
     if(path.row!=0)return;
     if(path.section==3){self.busy=YES;self.directoryStatus=@"逐个读取并核对 SHA-256…";[self.tableView reloadData];
         NSURL *directory=[NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Library/Application Support/ota/%@",TIOOTAOfficialDirectoryName()]] isDirectory:YES];
