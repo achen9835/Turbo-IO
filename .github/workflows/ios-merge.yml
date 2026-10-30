@@ -74,6 +74,11 @@ on:
         type: boolean
         required: false
         default: false
+      official_direct:
+        description: '官方直连模式：不演回环补丁（本机 Feed 失效、不能试刷我方候选），App 直接访问官方升级 API——用于取官方固件/官方刷写。默认关'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -244,6 +249,8 @@ jobs:
       # ---------- 模式一：合并 + ad-hoc 签名，回本机用 Sideloadly 重签 ----------
       - name: 合并并打包（ad-hoc）
         if: inputs.signing_mode == 'adhoc'
+        env:
+          TIO_OFFICIAL_DIRECT: '${{ inputs.official_direct }}'
         run: |
           rm -rf merged && mkdir -p merged
           node official-addon/macho-embed.mjs \

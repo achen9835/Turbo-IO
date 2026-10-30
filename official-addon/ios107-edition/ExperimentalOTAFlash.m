@@ -58,7 +58,8 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
 }
 @implementation TIOOTAFlashGate{
     NSDictionary<NSString *,NSData *> *_files;NSArray *_manifest;NSString *_device,*_failure;
-    NSTimeInterval _deadline,_lastActivity;NSUInteger _stage,_slices,_bytes;BOOL _versionSent,_manifestSent;
+    NSTimeInterval _deadline,_lastActivity;NSUInteger _stage,_slices,_bytes,_captureCount,_captureBytes;BOOL _versionSent,_manifestSent;
+    NSMutableDictionary<NSString *,NSMutableData *> *_captureFiles;NSArray *_captureSizes;
 }
 - (BOOL)prepareDirectory:(NSURL *)directory device:(NSString *)device uptime:(NSTimeInterval)now error:(NSError **)error{
     @synchronized(self){
@@ -77,6 +78,20 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
         _files=files;_manifest=manifest;_device=[device copy];_deadline=now+900;_stage=1;_failure=nil;return YES;
     }
 }
+// 官方直连路线的逐片截获：收齐一个负载（按清单 Size 判定）即写入
+// Documents/official-capture/（house_arrest/爱思可导出），供 TAP3 基座重建。
+- (void)captureFlush{
+    if(!_captureFiles)return;
+    NSString *dir=[NSHomeDirectory() stringByAppendingPathComponent:@"Documents/official-capture"];
+    [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+    NSMutableDictionary *sizes=[NSMutableDictionary new];for(NSDictionary *row in _captureSizes)if([row isKindOfClass:NSDictionary.class])sizes[row[@"Name"]]=row[@"Size"];
+    for(NSString *name in _captureFiles){
+        NSMutableData *buf=_captureFiles[name];id want=sizes[name];
+        if(want&&[want unsignedLongLongValue]!=(unsigned long long)buf.length)continue;
+        [buf writeToFile:[dir stringByAppendingPathComponent:name] options:NSDataWritingAtomic error:nil];
+    }
+    if(_captureSizes){NSData *manifest=[NSJSONSerialization dataWithJSONObject:_captureSizes options:NSJSONWritingPrettyPrinted error:nil];if(manifest.length)[manifest writeToFile:[dir stringByAppendingPathComponent:@"OtaFileInfo.json"] options:NSDataWritingAtomic error:nil];}
+}
 - (BOOL)allows:(NSData *)payload device:(NSString *)device uptime:(NSTimeInterval)now{
     @synchronized(self){
         NSDictionary *f=TIOOTAFrame(payload);NSUInteger t=[f[@"type"] unsignedIntegerValue];id j=f[@"json"];NSData *binary=f[@"binary"];
@@ -88,7 +103,28 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
         if((t==1||t==2||t==11)&&empty)return YES;
         NSUInteger n=0;
         if(t==3&&dict&&[j count]==1&&Number(j[@"OtaSize"],&n)&&TIOOTACandidate()&&n==(NSUInteger)[TIOOTACandidate()[@"otaSize"] unsignedLongLongValue]&&!binary.length)return YES;
-        if(!_stage){if(t==4)_failure=[NSString stringWithFormat:@"%@ 试刷尚未授权；开始指令未发送。请先在实验固件页完成风险确认。",TIOOTACandidate()[@"codeName"]?:@"候选"];return NO;}
+        if(!_stage){
+            /* 2026-10-30 官方直连路线：未武装时放行官方固件流量并逐片截获到
+             * Documents/official-capture/（TAP3 新基座原料）。自动更新强制关闭
+             * 仍是红线；手动「开始安装」是用户显式决定。武装后（我方试刷）行为
+             * 不变，仍按候选清单严格校验。 */
+            if(t==4){_captureFiles=[NSMutableDictionary new];_captureSizes=nil;_captureCount=0;_captureBytes=0;return YES;}
+            if(t==5)return YES;
+            if(t==6){
+                if([j isKindOfClass:NSArray.class]){NSMutableArray *sizes=[NSMutableArray new];for(id row in j){NSUInteger rowSize=0;if([row isKindOfClass:NSDictionary.class]&&[row[@"Name"] isKindOfClass:NSString.class]&&Number(row[@"Size"],&rowSize))[sizes addObject:@{@"Name":row[@"Name"],@"Size":row[@"Size"]}];}_captureSizes=[sizes copy];[self captureFlush];}
+                return YES;}
+            if(t==7){
+                NSString *name=dict?j[@"Name"]:nil;NSUInteger start=0,size=0;
+                if(![name isKindOfClass:NSString.class]||!name.length||name.length>128||[name rangeOfString:@"/"].location!=NSNotFound||[name rangeOfString:@".."].location!=NSNotFound||!Number(j[@"Start"],&start)||!Number(j[@"Size"],&size)||!size||size>51200||binary.length!=size)return NO;
+                if(!_captureFiles)_captureFiles=[NSMutableDictionary new];
+                NSMutableData *buf=_captureFiles[name];if(!buf){buf=[NSMutableData data];_captureFiles[name]=buf;}
+                if(buf.length<start)[buf increaseLengthBy:start-buf.length];
+                if(buf.length==start)[buf appendData:binary];
+                else if(start+size<=buf.length)[buf replaceBytesInRange:NSMakeRange(start,size) withBytes:binary.bytes];
+                else return NO;
+                _captureCount++;_captureBytes+=size;[self captureFlush];return YES;}
+            return YES;
+        }
         if(_stage==3||!isfinite(now)||now<0)return NO;
         if(_stage==1&&now>=_deadline){[self cancel];return NO;}
         BOOL ok=[device isEqual:_device];
@@ -106,7 +142,7 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
     }
 }
 - (BOOL)cancel{@synchronized(self){if(_stage>=2)return NO;_stage=0;_files=nil;_manifest=nil;_device=nil;_deadline=0;return YES;}}
-- (NSDictionary *)status{@synchronized(self){if(_stage&&isfinite(_deadline)&&NSProcessInfo.processInfo.systemUptime>=_deadline){if(_stage<2)[self cancel];else{_stage=3;_failure=[_failure length]?_failure:@"会话超时自动收尾";}}return @{@"stage":@(_stage),@"authorized":@(_stage==1||_stage==2),@"started":@(_stage>=2),@"versionMatched":@(_versionSent),@"manifestMatched":@(_manifestSent),@"validatedSlices":@(_slices),@"validatedSliceBytes":@(_bytes),@"lastActivity":@(_lastActivity),@"failure":_failure?:@"",@"runtimeValidated":@NO};}}
+- (NSDictionary *)status{@synchronized(self){if(_stage&&isfinite(_deadline)&&NSProcessInfo.processInfo.systemUptime>=_deadline){if(_stage<2)[self cancel];else{_stage=3;_failure=[_failure length]?_failure:@"会话超时自动收尾";}}return @{@"stage":@(_stage),@"authorized":@(_stage==1||_stage==2),@"started":@(_stage>=2),@"versionMatched":@(_versionSent),@"manifestMatched":@(_manifestSent),@"validatedSlices":@(_slices),@"validatedSliceBytes":@(_bytes),@"lastActivity":@(_lastActivity),@"captureFiles":@(_captureFiles.count),@"captureBytes":@(_captureBytes),@"failure":_failure?:@"",@"runtimeValidated":@NO};}}
 @end
 BOOL TIOOTAFlashBuild(void){
 #if TARGET_OS_IPHONE && TIO_OTA_FLASH_ENABLED

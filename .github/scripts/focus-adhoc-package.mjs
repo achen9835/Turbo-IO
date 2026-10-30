@@ -31,10 +31,14 @@ if (candidateArg) {
 
 // 1. OTA 回环补丁：宿主 Flutter 二进制（补丁模块自带原始哈希自校验，
 //    接受 1.0.5/201、1.0.7/230、1.0.10/258 三种原版快照，路由串按实测宿主区分）
+//    TIO_OFFICIAL_DIRECT=true：官方直连模式——不打补丁，App 直接访问官方升级
+//    API（回环补丁把请求改写到 localhost 后 Dart 不再加签/带鉴权，任何转发都
+//    只会 401）。此模式下本机 Feed 不可用、不能试刷我方候选，仅用于取官方固件。
 const appBin = path.join(app, 'Frameworks/App.framework/App');
-const otaPatch = patchExperimentalOTA(fs.readFileSync(appBin));
-fs.writeFileSync(appBin, otaPatch.output);
-const routing = `${otaPatch.report.edition === '1.0.7/230' ? 'ios107' : otaPatch.report.edition === '1.0.10/258' ? 'ios1010' : 'ios105'}-tfp1-loopback-flash-gated`;
+const officialDirect = process.env.TIO_OFFICIAL_DIRECT === 'true' || process.env.TIO_OFFICIAL_DIRECT === '1';
+const otaPatch = officialDirect ? null : patchExperimentalOTA(fs.readFileSync(appBin));
+if (otaPatch) fs.writeFileSync(appBin, otaPatch.output);
+const routing = officialDirect ? 'official-direct-no-loopback' : `${otaPatch.report.edition === '1.0.7/230' ? 'ios107' : otaPatch.report.edition === '1.0.10/258' ? 'ios1010' : 'ios105'}-tfp1-loopback-flash-gated`;
 
 // 2. FOCUS 美术资源（目标不存在才拷，沿用 errorOnExist 语义）
 fs.cpSync(path.join(root, 'official-addon/focus-edition/TurboIOArt'), path.join(app, 'TurboIOArt'), {recursive: true, errorOnExist: true, force: false});
@@ -62,5 +66,6 @@ i = info();
 if (!i.NSLocationWhenInUseUsageDescription) run(['-insert', 'NSLocationWhenInUseUsageDescription', '-string', '用于用户主动选择的地图定位和前台步行导航。', plist]);
 
 // 5. 路由报告
-fs.writeFileSync(report, JSON.stringify(otaPatch.report, null, 2) + '\n', {flag: 'wx', mode: 0o600});
-console.log(JSON.stringify({ok: true, firmwareBytes: fw.length, routing, edition: otaPatch.report.edition}));
+const patchReport = otaPatch ? otaPatch.report : {edition: 'official-direct', inputSHA256: null, note: 'TIO_OFFICIAL_DIRECT: 回环补丁未应用，App 直连官方升级 API'};
+fs.writeFileSync(report, JSON.stringify(patchReport, null, 2) + '\n', {flag: 'wx', mode: 0o600});
+console.log(JSON.stringify({ok: true, firmwareBytes: fw.length, routing, edition: patchReport.edition}));

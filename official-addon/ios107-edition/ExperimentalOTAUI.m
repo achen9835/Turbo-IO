@@ -53,6 +53,8 @@ static NSUInteger CandMembers(void){NSArray *p=TIOOTACandidate()[@"payloadPins"]
             line=[NSString stringWithFormat:@"\n官方响应：尚未成功（%@）· 问的版本 %@\n各通道：%@",fail[@"error"]?:@"转发失败",a[@"versionCode"]?:@"?",fail[@"probed"]?:@"-"];
         }
         else line=[NSString stringWithFormat:@"\n官方响应：尚未抓到（已转发 %@ 次 · 本机源 %@ 次查询）。去官方页点一次检查更新后回来看；若查询数不涨，重启 App 再试。",f6[@"officialForwards"]?:@0,f6[@"queryCount"]?:@0];
+        NSDictionary *fs=TIOOTAFlashStatus();
+        if([fs[@"captureFiles"] unsignedIntegerValue]>0)line=[line stringByAppendingFormat:@"\n官方截获：%@ 个负载 · %@ 字节 → Documents/official-capture（爱思文件管理可导出）",fs[@"captureFiles"],fs[@"captureBytes"]];
         cell.detailTextLabel.text=[cell.detailTextLabel.text stringByAppendingString:line];
         cell.accessibilityIdentifier=@"experimental-ota-silence-toggle";}
         else if(path.row==3){cell.textLabel.text=[NSString stringWithFormat:@"允许一次 %@ 实验试刷",TIOOTACandidate()[@"codeName"]?:@"固定候选"];cell.detailTextLabel.text=@"重新校验并冻结实际待传文件；限定本次设备、Mode 2、固定清单及每个分片。授权后再点官方“开始安装”。不保证启动或可救砖。";cell.accessibilityIdentifier=@"experimental-ota-authorize-tfp1";}
