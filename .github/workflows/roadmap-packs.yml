@@ -26,8 +26,8 @@ on:
         type: boolean
         required: false
         default: false
-  schedule:
-    - cron: '0 18 2 * *' # 每月 2 日 18:00 UTC 自动刷新（fresh<45d 跳过）
+# 2026-10-30 整改：撤掉月度定时——公共 fork 上的定时重计算触发 GitHub 反滥用
+# 自动锁（Actions 被锁 422），需要刷新路网包时用手动 workflow_dispatch。
 
 permissions:
   contents: write
