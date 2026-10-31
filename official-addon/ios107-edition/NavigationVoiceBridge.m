@@ -5,6 +5,7 @@
 // 引擎状态借道 Addon.m 的 TIOController 回合机制（经 NavBridgeView 视图访问）。
 #import "NavigationVoiceBridge.h"
 #import "NavigationUI.h"
+#import "NavigationCore.h"
 #import "Core.h"
 #import <Foundation/Foundation.h>
 #import <objc/message.h>
@@ -51,10 +52,12 @@ NSString *TIOVoiceNavTraceStatus(void){return VoiceNavTrace;}
 void TIOVoiceCloseAssistantSession(void){
     void (^work)(void)=^{
         Class cls=NSClassFromString(@"rayneo_venus_sdk_plugin.VoiceAssistantHelper");
-        if(!cls)return;
+        if(!cls){TIONavDiagHUDEvent(@"语音会话",@"官方停止入口类缺失");return;}
         id helper=((id(*)(id,SEL))objc_msgSend)(cls,NSSelectorFromString(@"shared"));
-        if(!helper)return;
+        if(!helper){TIONavDiagHUDEvent(@"语音会话",@"官方停止入口实例缺失");return;}
         ((void(*)(id,SEL))objc_msgSend)(helper,NSSelectorFromString(@"stopWorkflow"));
+        // 上镜后释放镜片/对话回合的现场证据（诊断 JSON 与服务状态行会展示，可直接截图）。
+        TIONavDiagHUDEvent(@"语音会话",@"已调用官方停止入口释放镜片");
     };
     if(NSThread.isMainThread)work();else dispatch_async(dispatch_get_main_queue(),work);
 }

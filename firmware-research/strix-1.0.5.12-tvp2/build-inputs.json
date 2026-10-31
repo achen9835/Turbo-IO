@@ -282,15 +282,15 @@
   }
  ],
  "moduleVA": "0x10889b30",
- "moduleBytes": 233296,
- "moduleSHA256": "199c17b10a0fa5566340cf2dc04d6a59c40287ad118ae020c905e1657ddec9a5",
+ "moduleBytes": 233488,
+ "moduleSHA256": "5418b8f6d144cd14f5bb095d4f971739d099e18588c7b01ee796e7af8d0b45f7",
  "stockAP": "af701a6525fbf703854b3d63e757734546c20bdb5d50e246867dc6a0565713ae",
- "APBytes": 7547528,
+ "APBytes": 7547720,
  "archive": {
   "name": "StrixOS-1.0.5.12-TurboIO-TAP3-CANDIDATE-NOT-APPROVED.zip",
-  "sha256": "f68e3edc6d26405ecc89af057813200d44661122f88bc6f66c779c02e2879f9e"
+  "sha256": "c874225fab7b3722b43d5340203233fbdcffef6a8620acf64304b6eaabc5abec"
  },
- "APSHA256": "189ce652c5b78396a8535858ec56a26547ee9e06d3ca9e027fd5f5f978911e3b",
+ "APSHA256": "b0ac2fcf82ca35dc8889987ccd1946b5582e6d2651218e07a739129422e5376e",
  "stockZIP": "b7bfd3cc73528e3e9995ad227dc877c8334d43dc8051436e2d2ccff2ca0b4133",
  "sources": [
   {

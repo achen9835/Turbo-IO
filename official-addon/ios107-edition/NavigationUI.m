@@ -93,8 +93,17 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property NSString *voiceQuery;
 @property UIBackgroundTaskIdentifier navigationBackgroundTask;
 @property NSUInteger backgroundEpoch;
-@property UIBackgroundTaskIdentifier voiceBridgeTask; // hands-free bridge: keeps the HUD retry loop schedulable after exitVoice closes the voice session, until the lens engages
+@property UIBackgroundTaskIdentifier voiceBridgeTask; // 语音链路唯一后台保持：voiceStart 起持有，关键阶段续期，上镜/失败/停止/超时后结束
 @property NSUInteger voiceBridgeEpoch;
+@property NSInteger voicePipelineStage; // TIONavVoiceStage：无头语音链路阶段（挂起自愈按它重试，诊断 JSON/状态行展示）
+@property NSInteger diagVoiceStage; // 已写入诊断环形缓冲的阶段（只在变化时记一条，形成语音链路时间线）
+@property NSTimeInterval voicePipelineStageAt,voicePipelineStarted,voiceLastSelfHealAt;
+@property BOOL voicePipelineExpired,voiceLocationKept;
+@property NSTimeInterval voicePipelineNextArmAt; // 后台额度被系统拒绝后的重试节流，避免 1Hz 刷 trace
+@property BOOL stopRetryArmed; // 退出补发窗口：halt/回前台发现眼镜会话仍在时武装，tick 里每2秒补发
+@property NSUInteger stopRetryAttempts;
+@property NSTimeInterval stopRetryNextAt;
+@property unsigned long long stopRetrySessionId; // 武装时的眼镜会话号：出现新会话就停止补发，绝不打断新导航
 @property NSString *destinationName;
 @property CLLocationCoordinate2D simulationStart;
 @property NSUInteger locationGeneration;
@@ -134,6 +143,29 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property NSArray *roadCoordinates;
 @property NSArray *roadLocation;
 @property double roadLocationAt,roadHeading;
+#endif
+/* 语音链路生命周期/退出补发/自愈方法：实现分布在 NavigationBackground.inc、
+ * NavigationDisplayHUD.inc 与本文件里，但调用点（tick/halt/voiceStart 等）在 include
+ * 之前，先在这里声明，保证 -Wall 下没有未知 self 消息的告警。 */
+- (BOOL)voicePipelineHUDEngaged;
+- (BOOL)voicePipelineShouldHold;
+- (void)enterVoiceStage:(NSInteger)stage title:(NSString *)title;
+- (void)refreshVoicePipelineState;
+- (void)voicePipelineSelfHealIfNeeded;
+- (BOOL)holdVoiceLocationForVoicePipeline;
+- (void)releaseVoiceLocationForVoicePipeline;
+- (void)endVoiceBridgeTask;
+- (void)expireVoiceBridgeTask:(NSUInteger)epoch;
+- (void)beginVoiceBridgeTask;
+- (void)expireNavigationBackgroundTask:(NSUInteger)epoch;
+- (void)endNavigationBackgroundTask;
+- (void)voiceRetryLocating;
+- (void)voiceRetrySearch;
+- (void)voiceRetryPlanning;
+#if TIO_DISPLAY_PHONE
+- (void)armStopRetryWindow:(NSTimeInterval)firstDelay;
+- (void)pumpStopRetries;
+- (void)endStopRetryWindow;
 #endif
 @end
 @implementation TIONavigationPanel
@@ -183,6 +215,9 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     [self button:@"授权本次联网取路网（OpenStreetMap · 限6次/会话）" action:@selector(roadNetworkConsent) identifier:@"navigation-road-network"];
     [self button:@"省际路网包（按省下载 · 离线用）" action:@selector(roadPacksOpen) identifier:@"navigation-road-packs"];
     [self refreshRoadControls];
+    // phone-packs 线的可选一行 patch：省际路网包下载/删除完成（RoadPack.m 在主线程 post）后，
+    // 本页状态行立即刷新，不用等 1Hz tick。零参 selector 与 A2UIProbe/AppUI 的既有用法一致。
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshRoadControls) name:@"TIORoadPackChanged" object:nil];
 }
 - (void)refreshRoadControls{
     if(!self.roadButton||!self.roadMap)return;
@@ -221,6 +256,11 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     @"此构建未链接（仅离线夹具）"
 #endif
     ];NSDictionary *sub=self.subtitleHUD.status;self.statusLabel.text=[NSString stringWithFormat:@"字幕：%@ · 已提交%@帧\n%@\n%@",sub[@"note"],sub[@"frames"],TIOSubtitleNavigationStatus()[@"note"],self.statusLabel.text];
+    // 用户反馈③：现场诊断——“详细诊断”弹窗里直接带语音链路阶段、退出补发计数和最近 HUD 事件，
+    // 用户截图即可；同一份数据也落在 native-navigation-status.json（Library + Documents 双写）。
+    NSDictionary *navDiag=TIONavDiagSnapshot();NSArray *hudEvents=navDiag[@"hudEvents"];NSMutableString *recentHUD=[NSMutableString new];
+    for(NSString *e in [hudEvents reverseObjectEnumerator]){if(recentHUD.length>=200)break;[recentHUD appendFormat:@"\n· %@",e];}
+    self.statusLabel.text=[NSString stringWithFormat:@"语音阶段：%@ · 后台保持%@\n退出补发：%u/%u%@\n最近HUD事件：%@\n%@",navDiag[@"voiceStage"],self.voicePipelineExpired?@"已到期(待自愈)":(self.voiceBridgeTask!=UIBackgroundTaskInvalid?@"持有中":@"未持有"),(unsigned)[navDiag[@"stopRetryAttempts"] unsignedIntegerValue],(unsigned)[navDiag[@"stopRetryMax"] unsignedIntegerValue],[navDiag[@"stopRetryPending"] boolValue]?@"（补发中）":@"（无）",recentHUD.length?recentHUD:@"（无）",self.statusLabel.text];
     if(![sub isEqual:self.lastSubtitleDiagnostic]){self.lastSubtitleDiagnostic=sub;NSString *dir=[NSHomeDirectory() stringByAppendingPathComponent:@"Documents/TurboIOResearch/subtitle-hud"];[NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:@{NSFileProtectionKey:NSFileProtectionCompleteUntilFirstUserAuthentication} error:nil];NSMutableDictionary *report=[sub mutableCopy];report[@"time"]=@(NSDate.date.timeIntervalSince1970);[[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil] writeToFile:[dir stringByAppendingPathComponent:@"navigation.json"] options:NSDataWritingAtomic error:nil];}
     self.hudLabel.text=[NSString stringWithFormat:@"%@\n\n%@  %@\n%@\n%@",self.display[@"mode"]?:@"",self.display[@"turn"]?:@"",self.display[@"distance"]?:@"",self.display[@"road"]?:@"",self.display[@"summary"]?:@""];[self refreshWorkspace];
     if(![tele isEqual:self.lastTeleDiagnostic]){self.lastTeleDiagnostic=tele;NSString *dir=[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/TurboIOPrivateAddon"];[NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@0700} error:nil];NSMutableDictionary *d=[tele mutableCopy];d[@"time"]=@([NSDate.date timeIntervalSince1970]);NSString *p=[dir stringByAppendingPathComponent:@"navigation-tele-diagnostic.json"];[[NSJSONSerialization dataWithJSONObject:d options:0 error:nil] writeToFile:p options:NSDataWritingAtomic error:nil];[NSFileManager.defaultManager setAttributes:@{NSFilePosixPermissions:@0600} ofItemAtPath:p error:nil];}}
@@ -250,6 +290,9 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 #if TIO_DISPLAY_PHONE
     [self refreshRoadControls]; /* 1Hz 同步路网状态行（请求中/已就绪/失败原因） */
 #endif
+    if(self.voicePipelineStage!=self.diagVoiceStage){self.diagVoiceStage=self.voicePipelineStage;TIONavDiagHUDEvent(@"语音阶段",TIONavVoiceStageName(self.voicePipelineStage));}
+    TIONavDiagSetVoiceStage(TIONavVoiceStageName(self.voicePipelineStage)); /* 诊断 JSON/导航页状态行的“当前语音阶段” */
+    [self refreshVoicePipelineState]; // 上镜/失败/停止/超时后释放后台保持与额外定位；额度丢了就补申请
     // Candidate dialog timeout: never leave the user stranded -- default to the
     // nearest candidate and keep navigating.
     if(self.voiceCandidates.count&&NSProcessInfo.processInfo.systemUptime>self.voiceCandidatesExpire){TIOVoiceNavTrace(@"候选30秒未选择：默认最近的，继续导航");[self voicePickCandidate:self.voiceCandidates[0] announced:@"（超时默认最近）"];}
@@ -258,7 +301,9 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     if(self.voiceAwaitingMode&&NSProcessInfo.processInfo.systemUptime>self.voiceModeExpire){TIOVoiceNavTrace([NSString stringWithFormat:@"出行方式15秒未选择：默认%@，继续算路",TIONavigationModeTitle(self.voiceModeFallback)]);[self voicePickMode:self.voiceModeFallback announced:@"（超时默认）"];}
 #if TIO_DISPLAY_PHONE
     if(self.crossPixels&&NSProcessInfo.processInfo.systemUptime-self.crossReceived>12){self.crossPixels=nil;if([self.display[@"phase"] isEqual:@"navigating"])TDPPhoneNavigationOffer([self displayHUDFrame]);}
-    TDPPhoneNavigationPump();[self refreshDisplayHUD];
+    TDPPhoneNavigationPump();
+    [self pumpStopRetries]; // 用户反馈②：退出指令丢失时按 5s 首补、2s/次最多10次补发，镜片不再停在“导航数据已过期”
+    [self refreshDisplayHUD];
 #endif
     TIONavPump();[self.subtitleHUD pumpAt:NSProcessInfo.processInfo.systemUptime];[self.teleHUD pumpAt:NSProcessInfo.processInfo.systemUptime];[self refresh];if(self.fixture&&self.active){self.fixtureStep++;NSArray *icons=@[@9,@2,@3,@29,@15];NSUInteger i=MIN(self.fixtureStep/4,4);[self setFrame:TIONavDisplay(i==4?@"arrived":@"navigating",[icons[i] integerValue],@"模拟测试道路",MAX(0,160-(NSInteger)self.fixtureStep*10),850,720,YES)];if(i==4){self.fixture=NO;self.active=NO;self.note=@"离线夹具结束；手动停止以清理卡片";[self refresh];}}
     if(self.active&&!self.routeReady&&!self.fixture&&!self.planning&&!self.staleShown&&NSProcessInfo.processInfo.systemUptime-self.lastInfo>15){
@@ -323,12 +368,16 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     self.voiceCandidates=nil; // a stopped pipeline never answers a pending choice
     self.voiceAwaitingMode=NO; // ...nor a pending travel-mode question
     self.navigationStarted=NO;self.autoNativeHUD=NO;self.backgroundLocationEnabled=NO;[self endNavigationBackgroundTask];[self endVoiceBridgeTask];
+    self.voicePipelineStage=TIONavVoiceStageIdle;self.voicePipelineStarted=0;self.voicePipelineStageAt=0;self.voiceLastSelfHealAt=0;self.voicePipelineExpired=NO;
 #if TIO_DISPLAY_PHONE
     TDPPhoneNavigationStop();self.hudIconPixels=nil;self.hudIconType=0;self.crossPixels=nil;
+    // 用户反馈②：STOP 在途丢失/被挂起打断时镜片会停在最后画面（“导航数据已过期”）。
+    // 这里只武装重试窗口，由 tick 每 2 秒幂等补发 TDPPhoneNavigationStop（最多10次）。
+    [self armStopRetryWindow:TIONavStopRetryFirstDelay];
 #endif
     [self.subtitleHUD stop:@"导航停止／切换路线"];
     [self.teleHUD stop:@"导航停止／切换路线"];
-    self.generation++;self.locationGeneration++;self.locating=NO;[self.permission stopUpdatingLocation];self.routeReady=NO;self.active=NO;self.planning=NO;self.fixture=NO;self.rerouting=NO;
+    self.generation++;self.locationGeneration++;self.locating=NO;[self.permission stopUpdatingLocation];self.voiceLocationKept=NO;self.routeReady=NO;self.active=NO;self.planning=NO;self.fixture=NO;self.rerouting=NO;
 #if TIO_AMAP_ENABLED
     if(self.manager){BOOL owned=self.manager.delegate==self;[self.manager removeDataRepresentative:self];if(self.nativeHUD)[self.manager removeDataRepresentative:self.nativeHUD];if(owned){self.manager.allowsBackgroundLocationUpdates=NO;self.manager.pausesLocationUpdatesAutomatically=YES;self.manager.delegate=nil;[self.manager stopNavi];self.retiringManagerClass=TIONavigationManagerClass(self.sessionTransport);self.retiringManager=self.manager;}self.manager=nil;if(owned)dispatch_async(dispatch_get_main_queue(),^{[self finishRetiringManager:0];});}
     [self.nativeHUD removeFromSuperview];self.nativeHUD=nil;
@@ -357,6 +406,10 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     [NSUserDefaults.standardUserDefaults setBool:YES forKey:NavConsent];
     [self openMap];
     if(!query.length){self.note=@"语音已打开导航；说出「导航去+地点」即可免手开始。";[self refresh];return;}
+    // 用户反馈①：从这一刻起持有有界后台保持（单一状态机，见 NavigationBackground.inc）。
+    // 定位→搜索→候选/追问→算路全程不再因为锁屏/口袋被挂起而停在半路；上镜成功、失败、
+    // 停止或超过总上限后释放。模拟/手动导航永不走到这里，不会被伪装保活。
+    [self enterVoiceStage:TIONavVoiceStageLocating title:@"语音链路启动：第1步定位"];
     if(!self.voiceSearch){[AMapSearchAPI updatePrivacyShow:AMapPrivacyShowStatusDidShow privacyInfo:AMapPrivacyInfoStatusDidContain];[AMapSearchAPI updatePrivacyAgree:AMapPrivacyAgreeStatusDidAgree];self.voiceSearch=[AMapSearchAPI new];self.voiceSearch.delegate=self;self.voiceSearch.timeout=18;}
     // Step 1: confirm the current position BEFORE anything else -- the route
     // must originate from a fresh fix, not an SDK fallback. Steps then run in
@@ -396,11 +449,13 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 - (void)voiceSearchDestination{
     if(!self.voiceSession||!self.voiceQuery.length)return;
     if(!self.hasVoiceFix){[self voiceSearchKeywordsNationwide];return;}
+    [self enterVoiceStage:TIONavVoiceStageSearching title:@"第2步：本地搜索目的地"];
     AMapPOIAroundSearchRequest *r=[AMapPOIAroundSearchRequest new];r.keywords=self.voiceQuery;r.location=[AMapGeoPoint locationWithLatitude:self.voiceFix.latitude longitude:self.voiceFix.longitude];r.radius=50000;r.offset=10;r.page=1;self.voiceRequest=r;self.voiceSearchAround=YES;
     self.note=[NSString stringWithFormat:@"第2步：已定位。本地搜索「%@」（周边50公里）…",self.voiceQuery];TIOVoiceNavTrace([NSString stringWithFormat:@"第2步：本地搜索「%@」（当前位置周边）",self.voiceQuery]);[self refresh];
     [self.voiceSearch AMapPOIAroundSearch:r];
 }
 - (void)voiceSearchKeywordsNationwide{
+    [self enterVoiceStage:TIONavVoiceStageSearching title:@"第2步：全国搜索目的地"];
     AMapPOIKeywordsSearchRequest *r=[AMapPOIKeywordsSearchRequest new];r.keywords=self.voiceQuery;r.offset=10;r.page=1;self.voiceRequest=r;self.voiceSearchAround=NO;
     self.note=[NSString stringWithFormat:@"第2步：全国搜索目的地“%@”…",self.voiceQuery];TIOVoiceNavTrace([NSString stringWithFormat:@"第2步：全国搜索「%@」",self.voiceQuery]);[self refresh];
     [self.voiceSearch AMapPOIKeywordsSearch:r];
@@ -409,6 +464,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 // location bias keeps corrections local; cityLimit stays off so an explicitly
 // named distant place still surfaces (tier 3 remains as the final net).
 - (void)voiceSearchInputTips{
+    [self enterVoiceStage:TIONavVoiceStageSearching title:@"第2步：模糊纠错搜索目的地"];
     AMapInputTipsSearchRequest *r=[AMapInputTipsSearchRequest new];r.keywords=self.voiceQuery;if(self.hasVoiceFix)r.location=[AMapGeoPoint locationWithLatitude:self.voiceFix.latitude longitude:self.voiceFix.longitude];self.voiceTipsRequest=r;self.voiceSearchAround=NO;
     self.note=[NSString stringWithFormat:@"第2步：本地无精确结果，模糊纠错搜索「%@」…",self.voiceQuery];TIOVoiceNavTrace([NSString stringWithFormat:@"第2步：输入提示模糊纠错「%@」（同音字容错）",self.voiceQuery]);[self refresh];
     [self.voiceSearch AMapInputTipsSearch:r];
@@ -468,6 +524,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 // 都不对 (30s, then the nearest); emit failure → auto-pick the first: never
 // strand the user.
 - (void)voicePresentCandidates:(NSArray *)cands{
+    [self enterVoiceStage:TIONavVoiceStageChoosing title:cands.count>1?@"第2步完成：等待语音选择候选":@"第2步完成：唯一候选，直接选定"];
     if(cands.count>1){
         self.voiceCandidates=cands;self.voiceCandidatesExpire=NSProcessInfo.processInfo.systemUptime+30;
         NSArray *nums=@[@"一",@"二",@"三"];
@@ -537,8 +594,59 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 // a fresh 导航去X (which restarts the search with the corrected destination).
 - (void)voiceRejectCandidates{
     self.voiceCandidates=nil;
+    self.voiceSession=NO; // 管线回到空闲：释放后台保持与额外定位，等下一次「导航去X」重新武装
+    [self enterVoiceStage:TIONavVoiceStageIdle title:@"候选全部排除，等待重新说目的地"];
+    TIONavDiagHUDEvent(@"语音链路",@"候选全部排除，链路空闲");
     TIOVoiceNavTrace(@"用户排除全部候选：等待重新说「导航去+地名」");
     TIOAssistantInjectNext(@"好，这些都不对。请重新说「导航去+地名」。",YES); // done:YES closes the turn cleanly
+}
+#pragma mark 回前台自愈的具体重试（由 NavigationBackground.inc 的自愈策略调用）
+// 语音链路被锁屏挂起后，回到前台按已记录阶段各重试一次；失败必须给明确 note+trace，
+// 绝不让用户对着“没有反应”的手机干等。手动导航/模拟导航不会进入这些入口。
+- (void)voiceRetryLocating{
+#if TIO_AMAP_ENABLED
+    if(!self.voiceSession||self.hasVoiceFix)return;
+    CLAuthorizationStatus auth=self.permission.authorizationStatus;
+    if(auth!=kCLAuthorizationStatusAuthorizedAlways&&auth!=kCLAuthorizationStatusAuthorizedWhenInUse){[self fail:@"回前台自愈失败：定位未授权，请允许定位后重新说「导航去…」"];return;}
+    self.permission.desiredAccuracy=kCLLocationAccuracyBest;
+    id bgModes=[NSBundle.mainBundle objectForInfoDictionaryKey:@"UIBackgroundModes"];
+    if([bgModes isKindOfClass:NSArray.class]&&[bgModes containsObject:@"location"])self.permission.allowsBackgroundLocationUpdates=YES;
+    self.voiceLocating=YES;[self.permission startUpdatingLocation];
+    self.note=@"回前台自愈：正在重新定位当前位置（最多10秒）…";TIOVoiceNavTrace(@"回前台自愈：重新发起定位（最多10秒）");
+    TIONavDiagHUDEvent(@"回前台自愈",@"重新定位");
+    [self refresh];
+    NSUInteger g=self.generation;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,10*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(g==self.generation&&self.voiceLocating){self.voiceLocating=NO;[self fail:@"回前台自愈失败：10秒未获得位置，请到开阔处重新说「导航去…」"];}});
+#else
+    TIOVoiceNavTrace(@"回前台自愈：此构建未链接高德，无法重试定位");
+#endif
+}
+- (void)voiceRetrySearch{
+#if TIO_AMAP_ENABLED
+    if(!self.voiceSession||!self.voiceQuery.length)return;
+    self.voiceRequest=nil;self.voiceTipsRequest=nil; // 丢弃可能永远回不来的旧请求，按记录阶段重发
+    TIOVoiceNavTrace(@"回前台自愈：按已记录阶段重发目的地搜索");
+    TIONavDiagHUDEvent(@"回前台自愈",@"重发搜索");
+    [self voiceSearchDestination];
+#else
+    TIOVoiceNavTrace(@"回前台自愈：此构建未链接高德，无法重试搜索");
+#endif
+}
+- (void)voiceRetryPlanning{
+#if TIO_AMAP_ENABLED
+    if(!self.voiceSession||!self.active||!self.planning||!self.manager)return;
+    AMapNaviPoint *end=[AMapNaviPoint locationWithLatitude:self.destination.latitude longitude:self.destination.longitude];
+    BOOL voiceOrigin=!self.simulated&&self.hasVoiceFix;
+    AMapNaviPoint *start=voiceOrigin?[AMapNaviPoint locationWithLatitude:self.voiceFix.latitude longitude:self.voiceFix.longitude]:nil;
+    BOOL submitted=TIONavigationCalculate(self.manager,self.sessionTransport,self.simulated,start,end);
+    TIOVoiceNavTrace(submitted?@"回前台自愈：已用同一批起终点重新提交算路":@"回前台自愈：重新提交算路失败（引擎忙），请结束导航后重新说");
+    TIONavDiagHUDEvent(@"回前台自愈",submitted?@"重新提交算路":@"重提算路失败");
+    if(!submitted){self.note=@"回前台自愈未能重新提交算路；请结束导航后重新说「导航去…」";[self refresh];return;}
+    NSUInteger g=self.generation;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW,45*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(g==self.generation&&self.planning){[self fail:@"45 秒未收到算路结果；已停止，本次结果未知"];}});
+#else
+    TIOVoiceNavTrace(@"回前台自愈：此构建未链接高德，无法重试算路");
+#endif
 }
 #include "NavigationBackground.inc"
 - (void)startFixture{[self halt];self.active=YES;self.fixture=YES;self.simulated=YES;self.fixtureStep=0;self.note=@"离线夹具：模拟转向顺序，不使用 Key、网络或定位";[self setFrame:TIONavDisplay(@"navigating",9,@"模拟测试道路",160,850,720,YES)];}
@@ -604,13 +712,14 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     BOOL submitted=TIONavigationCalculate(manager,self.sessionTransport,sim,start,end);
     if(!sim)self.map.showsUserLocation=YES;
     if(!submitted){[self fail:@"SDK 未接受算路请求，请核对 Key、网络和定位"];if(self.voiceSession)TIOVoiceNavTrace(@"中止：SDK未接受算路请求");return;}
-    if(self.voiceSession)TIOVoiceNavTrace(voiceOrigin?@"第3步：算路已提交（以第1步定位为起点，后台安全）":@"第3步：算路请求已提交，等待结果");
+    if(self.voiceSession){TIOVoiceNavTrace(voiceOrigin?@"第3步：算路已提交（以第1步定位为起点，后台安全）":@"第3步：算路请求已提交，等待结果");[self enterVoiceStage:TIONavVoiceStagePlanning title:@"第3步：算路中"];}
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW,45*NSEC_PER_SEC),dispatch_get_main_queue(),^{if(self.generation==generation&&self.planning){[self fail:@"45 秒未收到算路结果；已停止，本次结果未知"];if(self.voiceSession)TIOVoiceNavTrace(@"中止：45秒未收到算路结果（引擎内部定位可能被暂停）");}});
 }
-- (void)fail:(NSString *)message{BOOL wasVoice=self.voiceSession;[self halt];self.note=message;[self setFrame:TIONavDisplay(@"error",0,@"",-1,-1,-1,self.simulated)];if(wasVoice){TIOAssistantEmit([NSString stringWithFormat:@"\n%@",message],YES);TIOVoiceCloseAssistantSession();}} // voice pipeline over: free the lens (emit BEFORE close, which cancels the owned turn)
+- (void)fail:(NSString *)message{BOOL wasVoice=self.voiceSession;NSString *stage=TIONavVoiceStageName(self.voicePipelineStage);[self halt];self.note=message;[self setFrame:TIONavDisplay(@"error",0,@"",-1,-1,-1,self.simulated)];if(wasVoice){TIONavDiagHUDEvent(@"语音链路中止",stage);TIOAssistantEmit([NSString stringWithFormat:@"\n%@",message],YES);TIOVoiceCloseAssistantSession();}} // voice pipeline over: free the lens (emit BEFORE close, which cancels the owned turn)
 - (void)navigationRouteSuccess:(id<TIONavigationManager>)manager{dispatch_async(dispatch_get_main_queue(),^{if(manager!=self.manager||!self.active)return;BOOL first=self.planning;self.planning=NO;self.rerouting=NO;self.lastInfo=NSProcessInfo.processInfo.systemUptime;self.staleShown=NO;[self drawRoute:manager.naviRoute];if(first){self.routeReady=YES;self.note=@"路线已准备，核对地图后点击开始。尚未向眼镜发送导航。";self.routeSummary.text=[NSString stringWithFormat:@"%.1f 公里   ·   约 %ld 分钟",manager.naviRoute.routeLength/1000.0,(long)MAX(1,(manager.naviRoute.routeTime+59)/60)];self.display=TIONavDisplay(@"ready",0,@"",-1,manager.naviRoute.routeLength,manager.naviRoute.routeTime,self.simulated);
         if(self.voiceSession){ // Voice flow: no human at the screen; start as soon as the route exists.
             TIOVoiceNavTrace(@"第3步完成：算路成功，1.2秒后自动开始导航");
+            [self enterVoiceStage:TIONavVoiceStageRouteReady title:@"第3步完成：路线就绪"];
             NSUInteger g=self.generation;dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(1.2*NSEC_PER_SEC)),dispatch_get_main_queue(),^{if(g==self.generation&&self.routeReady&&self.voiceSession)[self beginRoute];});
         }}else{self.note=@"已重新规划路线，请以手机指引为准；眼镜显示若已停止需手动开启。";}[self refresh];});}
 - (void)navigationManager:(id<TIONavigationManager>)manager onCalculateRouteFailure:(NSError *)error{dispatch_async(dispatch_get_main_queue(),^{if(manager==self.manager&&self.active){[self fail:[NSString stringWithFormat:@"高德算路失败（code=%ld），检查 Key 服务权限／Bundle 绑定、网络与路线",(long)error.code]];if(self.voiceSession)TIOVoiceNavTrace([NSString stringWithFormat:@"中止：算路失败 code=%ld",(long)error.code]);}});}
@@ -853,6 +962,10 @@ BOOL TIOVoiceNavMaybeStart(NSString *text){
     dispatch_async(dispatch_get_main_queue(),^{
         if(SharedNavPanel.active||SharedNavPanel.planning){TIOVoiceNavTrace(@"忽略：已有导航进行中");return;}
         [SharedNavPanel stopUser];
+#if TIO_DISPLAY_PHONE
+        if([TDPPhoneNavigationStatus()[@"active"] boolValue])TIONavDiagHUDEvent(@"语音触发",@"上一眼镜会话仍在，先等它退出再上镜");
+#endif
+        TIONavDiagHUDEvent(@"语音触发",TIONavigationModeTitle(voiceMode));
         SharedNavPanel=[TIONavigationPanel new];
         SharedNavPanel.selectedTransport=voiceMode; // Voice-specified travel mode; walk placeholder until the follow-up answers.
         SharedNavPanel.voiceModeExplicit=modeExplicit;

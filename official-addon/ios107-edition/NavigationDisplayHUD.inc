@@ -29,14 +29,23 @@
  // 会话死掉（active 翻 NO），武装保住的重试循环就是「冻结后自动重新上镜」
  // 的自愈路径（真机 2026-10-30：模拟不跟帧/停不掉，皆因会话死后无恢复）。
  // 用户手动停止（toggleDisplayHUD）与结束导航（halt）都会解除武装，不会抢。
- if([s[@"active"] boolValue]){self.autoNativeHUDAttempts=0;if(self.voiceBridgeTask!=UIBackgroundTaskInvalid){[self endVoiceBridgeTask];TIOVoiceNavTrace(@"锁屏桥接：HUD已激活，桥接结束");}return;}
+ if([s[@"active"] boolValue]){
+  self.autoNativeHUDAttempts=0;
+  if(self.voiceSession&&self.voicePipelineStage!=TIONavVoiceStageEngaged){
+   [self enterVoiceStage:TIONavVoiceStageEngaged title:@"眼镜已上镜，语音链路收尾"]; // 同时结束后台保持
+   TIONavDiagHUDEvent(@"上镜",s[@"note"]);
+  }else if(self.voiceBridgeTask!=UIBackgroundTaskInvalid)[self endVoiceBridgeTask];
+  [self releaseVoiceLocationForVoicePipeline]; // 上镜后导航定位由高德实时导航接管，释放语音链路的额外定位
+  TIONavDiagSetVoiceStage(TIONavVoiceStageName(self.voicePipelineStage));
+  return;}
  if(![self canStartDisplayHUD])return;
  NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
  if(now<self.autoNativeHUDNextAt)return;
  self.autoNativeHUDNextAt=now+2;self.autoNativeHUDAttempts++;
- if(self.autoNativeHUDAttempts>150){self.autoNativeHUD=NO;TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD：自动开启放弃（150次未激活，最后状态：%@）",s[@"note"]?:@"未知"]);return;}
+ if(self.autoNativeHUDAttempts>150){self.autoNativeHUD=NO;TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD：自动开启放弃（150次未激活，最后状态：%@）",s[@"note"]?:@"未知"]);TIONavDiagHUDEvent(@"上镜放弃",s[@"note"]);[self releaseVoiceLocationForVoicePipeline];return;}
  if(TDPPhoneNavigationStart([self displayHUDFrame])){
   TIOVoiceNavTrace(@"眼镜HUD：START已发送，2秒后核实眼镜是否激活");
+  TIONavDiagHUDEvent(@"START发送",[NSString stringWithFormat:@"第%lu次",(unsigned long)self.autoNativeHUDAttempts]);
   // The verdict lands asynchronously (the session is "active" while in flight
   // and flips off on a glasses rejection), so verify twice: at 2s and 5s.
   // Anything not live re-arms the loop for another push.
@@ -44,7 +53,7 @@
   void(^verify)(void)=^{
    if(g!=self.generation||!self.active)return;
    NSDictionary *v=TDPPhoneNavigationStatus();
-   if(![v[@"active"] boolValue])TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD：未上镜（%@），重新上镜",v[@"note"]?:@"原因未知"]);};
+   if(![v[@"active"] boolValue]){TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD：未上镜（%@），重新上镜",v[@"note"]?:@"原因未知"]);TIONavDiagHUDEvent(@"未上镜",v[@"note"]);}};
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,2*NSEC_PER_SEC),dispatch_get_main_queue(),verify);
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,5*NSEC_PER_SEC),dispatch_get_main_queue(),verify);
   dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(8.5*NSEC_PER_SEC)),dispatch_get_main_queue(),verify); // 8.5s covers the protocol's 8s reply deadline.
@@ -55,6 +64,7 @@
  if(why.length)st=[st stringByAppendingFormat:@"；具体原因：%@",why];
  if(UIApplication.sharedApplication.applicationState!=UIApplicationStateActive)st=[st stringByAppendingString:@"；App在后台（重试循环依赖锁屏桥接存活）"];
  TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD：开启请求被拒（第%lu次，2秒后重试；状态：%@）",(unsigned long)self.autoNativeHUDAttempts,st]);
+ TIONavDiagHUDEvent(@"START被拒",why.length?why:st); // 相邻重复原因由环形缓冲去重，不会刷屏
 }
 - (void)buildDisplayHUD{
  UILabel *title=[self navLabel:@"眼镜原生导航 · TNV1" size:16 weight:UIFontWeightSemibold];[self.lensCard addArrangedSubview:title];
@@ -78,11 +88,19 @@
   if(![self.display[@"phase"] isEqual:@"navigating"]||NSProcessInfo.processInfo.systemUptime-self.lastInfo>15)
    hint=self.autoNativeHUD?@"ⓘ 定位中：手机出现转向指引后，眼镜原生导航将自动开启\n\n":@"ⓘ 等待手机出现转向指引后可开启\n\n";
  }
- self.tdpStatus.text=[hint stringByAppendingFormat:@"%@\n已确认 %@ 个快照 · %@\n路线示意图，不含路口实景或底图",s[@"note"],s[@"snapshots"]?:@0,TNVAlways()?@"常亮":@"60秒无更新息屏"];
+ // 用户反馈③“需要更强现场诊断”：把关键 3-5 项直接放在状态行里，用户一截图就是证据。
+ NSDictionary *diag=TIONavDiagSnapshot();
+ NSMutableString *recent=[NSMutableString new];
+ NSArray *events=diag[@"hudEvents"];
+ for(NSString *e in [events reverseObjectEnumerator]){if(recent.length>=170)break;[recent appendFormat:@"\n· %@",e];}
+ unsigned attempts=[diag[@"stopRetryAttempts"] unsignedIntegerValue],maxAttempts=[diag[@"stopRetryMax"] unsignedIntegerValue];
+ NSString *stopLine=attempts?[NSString stringWithFormat:@"退出补发 %u/%u",attempts,maxAttempts]:@"退出补发 0";
+ if(![diag[@"stopRetryPending"] boolValue]&&attempts)stopLine=[stopLine stringByAppendingString:@" · 已确认"];
+ self.tdpStatus.text=[hint stringByAppendingFormat:@"%@\n已确认 %@ 个快照 · %@\n语音阶段：%@ · %@\n%@%@\n路线示意图，不含路口实景或底图",s[@"note"],s[@"snapshots"]?:@0,TNVAlways()?@"常亮":@"60秒无更新息屏",diag[@"voiceStage"],on?@"已上镜":@"未上镜",stopLine,recent];
  self.tdpPreview.hidden=YES; // Old pixel renderer is not an accurate TNV1 preview.
 }
 - (void)toggleDisplayHUD{
- if([TDPPhoneNavigationStatus()[@"active"] boolValue]){self.autoNativeHUD=NO;TDPPhoneNavigationStop();[self refreshDisplayHUD];return;} // Explicit user stop: the auto-engager must never fight back.
+ if([TDPPhoneNavigationStatus()[@"active"] boolValue]){self.autoNativeHUD=NO;TDPPhoneNavigationStop();[self armStopRetryWindow:0];TIONavDiagHUDEvent(@"手动停止",@"用户点停止并退出眼镜导航");[self refreshDisplayHUD];return;} // Explicit user stop: the auto-engager must never fight back.
  if(![self canStartDisplayHUD]){[self alert:@"先开始高德导航" message:@"等待转向和距离出现，并先结束字幕、提词、录音及其他眼镜任务。"] ;return;}
  NSUInteger g=self.generation;
  // A previous subtitle session (sim or realtime) can leave stopping/uncertain
@@ -112,4 +130,49 @@
  dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager)return;self.crossPixels=nil;TDPPhoneNavigationOffer([self displayHUDFrame]);[self refreshDisplayHUD];});
 }
 #endif
+#pragma mark 退出补发（用户反馈②：手机结束导航后镜片很久才退出，且只停在“导航数据已过期”）
+// NativeNavigation 内部已把 TN_STOP 改成有界重试（10 次/2 秒，TN_NO_SESSION 视为已退出）；
+// 上层只负责“反复、幂等调用 TDPPhoneNavigationStop”，由既有 1Hz tick 驱动，不新开 timer。
+- (void)endStopRetryWindow {
+ unsigned attempts=(unsigned)self.stopRetryAttempts;
+ self.stopRetryArmed=NO;self.stopRetryAttempts=0;self.stopRetryNextAt=0;
+ TIONavDiagSetStopRetry(attempts,(unsigned)TIONavStopRetryMaxAttempts,NO); // 保留最后一次补发计数作为现场证据
+}
+- (void)armStopRetryWindow:(NSTimeInterval)firstDelay {
+ // 只在眼镜会话仍 active 时武装；记录当时的会话号，之后一旦出现新会话就停止补发，
+ // 这样既不会把旧会话留在镜片上，也绝不会打断用户新开的导航。
+ NSDictionary *s=TDPPhoneNavigationStatus();
+ BOOL active=[s[@"active"] boolValue];
+ self.stopRetryArmed=active;
+ self.stopRetryAttempts=0;
+ self.stopRetryNextAt=NSProcessInfo.processInfo.systemUptime+MAX(0,firstDelay);
+ self.stopRetrySessionId=[s[@"session"] unsignedLongLongValue];
+ TIONavDiagSetStopRetry(0,active?(unsigned)TIONavStopRetryMaxAttempts:0,active);
+}
+- (void)pumpStopRetries {
+ if(!self.stopRetryArmed)return;
+ NSDictionary *s=TDPPhoneNavigationStatus();
+ BOOL active=[s[@"active"] boolValue],stopped=[s[@"stopped"] boolValue];
+ unsigned long long sid=[s[@"session"] unsignedLongLongValue];
+ if(sid&&self.stopRetrySessionId&&sid!=self.stopRetrySessionId){
+  [self endStopRetryWindow];TIOVoiceNavTrace(@"退出补发：检测到新的眼镜会话，停止补发（不打断新导航）");return;
+ }
+ if(!TIONavStopRetryShouldSend(active,(unsigned)self.stopRetryAttempts,TIONavStopRetryMaxAttempts)||stopped){
+  unsigned attempts=(unsigned)self.stopRetryAttempts;
+  [self endStopRetryWindow];
+  if(!active){
+   if(attempts){TIOVoiceNavTrace(@"退出补发：眼镜已确认退出");TIONavDiagHUDEvent(@"退出补发",@"眼镜已确认退出");}
+  }else if(stopped){TIOVoiceNavTrace(@"退出补发：眼镜未确认退出，请用眼镜返回键退出导航页");TIONavDiagHUDEvent(@"退出补发",@"会话放弃；需眼镜返回键");}
+  else{TIOVoiceNavTrace(@"退出补发：已达 10 次上限仍未确认，请用眼镜返回键强制退出");TIONavDiagHUDEvent(@"退出补发",@"补发上限；需眼镜返回键");}
+  return;
+ }
+ NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
+ if(now<self.stopRetryNextAt)return;
+ self.stopRetryAttempts++;self.stopRetryNextAt=now+TIONavStopRetryInterval;
+ TDPPhoneNavigationStop(); // 幂等：只保证退出请求一定被再次送达（协议不变）
+ TIONavDiagSetStopRetry((unsigned)self.stopRetryAttempts,(unsigned)TIONavStopRetryMaxAttempts,YES);
+ NSString *line=[NSString stringWithFormat:@"%lu/%lu",(unsigned long)self.stopRetryAttempts,(unsigned long)TIONavStopRetryMaxAttempts];
+ TIOVoiceNavTrace([NSString stringWithFormat:@"退出补发：%@（%@）",line,s[@"note"]?:@"状态未知"]);
+ TIONavDiagHUDEvent(@"退出补发",line);
+}
 #endif

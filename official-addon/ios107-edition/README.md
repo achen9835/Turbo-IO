@@ -1,6 +1,6 @@
 # iOS 1.0.7（230）· APP107 兼容适配
 
-2026-10-19 · [首页更新](../../README.md#ios107-update) · [当前 TAP3 地址修正版刷写说明](OTA.md) · [上一版 NAVS3](../navs3-edition/README.md)
+2026-11-01 · [首页更新](../../README.md#ios107-update) · [当前 TAP3 导航会话自愈版刷写说明](OTA.md) · [上一版 NAVS3](../navs3-edition/README.md)
 
 > 当前 1.0.10 / TAP3 流程见上方新链接；本页其余 1.0.7 / TMG2 内容保留为该历史宿主的适配记录，不与当前候选混用。
 
@@ -38,7 +38,7 @@ TIO_DISPLAY_PHONE=1 TIO_DISPLAY_FLASH=1 TIO_OTA_FLASH_ENABLED=1 \
 TIO_CLASSIC_BINDINGS=1 bash build.sh embedded com.rayneo.venus.pub
 
 node --test package.test.mjs
-python3 test.py --firmware /absolute/path/to/TAP3-2026-11.zip
+python3 test.py --firmware /absolute/path/to/TAP3-2026-11B.zip
 ```
 
 `FLASH` 是保护模块编译开关，**不是授权**；本版打包默认带 TMG2 升级通道，初始仍锁定。不要移除校验或改 Info.plist 冒充其他版本。
@@ -73,11 +73,11 @@ node package.mjs \
 
 ## 刷入当前 TAP3 候选
 
-按[TAP3 地址修正版升级教程](OTA.md)执行：内置校验 → 只下载与目录核对 → 单次授权 → 官方安装 → 自然重启 → 传输覆盖、刷后回读与镜片运行三层验收。高风险实验，非开发者请勿刷；旧 TAP3 不要重刷。
+按[TAP3 导航会话自愈版升级教程](OTA.md)执行：内置校验 → 只下载与目录核对 → 单次授权 → 官方安装 → 自然重启 → 传输覆盖、刷后回读与镜片运行三层验收。11B 在 11 版地址修正基础上补导航会话自愈（8 秒无更新/已失联的陈旧会话可被新 START 接管、失联约 60 秒自动退出导航页、手机会话换代后的 STOP 也能退页）。高风险实验，非开发者请勿刷；11 版与更旧 TAP3 不要重刷。
 
 ## 已知限制
 
-- 手机锁屏后导航停止/卡住仍待闭环，不用于驾驶或安全依赖。
+- 手机锁屏后的语音无头启动与后台保持本次已加后台任务/回前台自愈，仍需真机验收；导航不用于驾驶或安全依赖。
 - 路网首次加载、断网或请求预算耗尽仍可能只显示路线。
 - 本版固定 TMG2，不接受原厂 ZIP 或其他候选；[原厂恢复](../../firmware-research/strix-1.0.5.5/README.md)需要独立匹配的恢复工具链，不能复用本版授权，也不保证救砖。
 - 原厂登录/推送、Apple 登录、长期后台和所有功能均需独立验收。

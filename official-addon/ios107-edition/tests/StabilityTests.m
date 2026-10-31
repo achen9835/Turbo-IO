@@ -42,6 +42,35 @@ int main(void){@autoreleasepool{
  assert([map.coverageStatus[@"regions"] intValue]==2);
  [map installFeatures:@[Road(@"Third",-200,1400,200,1400)] bbox:@[@51.506,@.09,@51.518,@.11]];
  assert([map.coverageStatus[@"regions"] intValue]==2);assert([map.coverageStatus[@"features"] intValue]==2);
+ // Long real-world route (>512 whole-route points): the old decorate gate
+ // returned the frame untouched, so no TNR scene ever reached the lens and it
+ // kept the 32-point START sketch (small map / no road net / no markers).
+ [map installFeatures:roads bbox:@[@51.494,@.09,@51.506,@.11]]; /* 附近路网，供标签/路网断言 */
+ NSMutableArray *longRoute=[NSMutableArray new];
+ for(int i=0;i<1200;i++)[longRoute addObject:TestCoordinate(0,i*0.8)];
+ NSDictionary *lf=[map decorate:Frame(TestCoordinate(0,0),0) coordinates:longRoute];
+ NSData *ls=lf[@"tnrScene"],*l2=lf[@"tnrScene2"],*lp=lf[@"tnrPose"];
+ assert(ls.length&&l2.length&&lp.length);
+ assert(tnr_body_valid(TNR_SCENE,ls.bytes,ls.length)&&tnr_body_valid(TNR_SCENE2,l2.bytes,l2.length));
+ assert(Field(ls,0)==Field(lp,0)&&Field(ls,2)==Field(lp,2)); /* scene/pose share one generation */
+ assert(Field(ls,8)>1&&Field(ls,8)<=768&&Field(l2,10)>0);
+ {const uint8_t *b=ls.bytes;unsigned paths=Field(ls,6),route=0,total=0,first=0,ats=16+paths*8;assert(paths>0&&paths<=96);
+  for(unsigned i=0;i<paths;i++){unsigned count=Field(ls,16+8*i);assert(count>=2);
+   if(b[18+8*i]==6){ /* highlighted route must not be dropped by the shared budget */
+    route++;assert(first+count<=Field(ls,8));
+    for(unsigned j=1;j<count;j++){int dx=(int)(int16_t)Field(ls,ats+4*(first+j))-(int)(int16_t)Field(ls,ats+4*(first+j-1));
+     int dy=(int)(int16_t)Field(ls,ats+4*(first+j)+2)-(int)(int16_t)Field(ls,ats+4*(first+j-1)+2);
+     if(dx<0)dx=-dx;if(dy<0)dy=-dy;assert((unsigned)((dx>dy?dx:dy)+(dx>dy?dy:dx)/2)<=516);} /* firmware int32 projection bound */
+   }
+   total+=count;first+=count;
+  }
+  assert(route>=1&&total==Field(ls,8));}
+ // Contract stays explicit: NavigationUI strides to <=4096 points; larger
+ // arrays are rejected instead of being drawn with an unbounded scene budget.
+ NSMutableArray *tooLong=[NSMutableArray new];
+ for(int i=0;i<4097;i++)[tooLong addObject:TestCoordinate(0,i*0.2)];
+ [map setValue:nil forKey:@"scene"];
+ assert(![map decorate:Frame(TestCoordinate(0,0),0) coordinates:tooLong][@"tnrScene"]);
  [map reset];assert([map.coverageStatus[@"regions"] intValue]==0);assert(!map.allowNetwork);
  printf("PASS cache boundary/delayed refresh/two-region eviction/reset; visible road labels %u/%u moving/rotating samples; no network.\n",visible,total);
 }return 0;}

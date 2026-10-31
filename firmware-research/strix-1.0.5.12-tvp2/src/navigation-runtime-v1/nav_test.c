@@ -60,6 +60,55 @@ static void reject_tests(void){
  s=scene();s.point_count=33;assert(!tn_encode(b,sizeof b,TN_START,1,1,&s));s=scene();s.heading=360;assert(!tn_encode(b,sizeof b,TN_START,1,1,&s));
  s=scene();memset(s.road,'x',sizeof s.road);assert(!tn_encode(b,sizeof b,TN_START,1,1,&s));
 }
+static void takeover_tests(void){
+ Mock m={.available=true};TNUI u=api(&m);TNRuntime r;tn_init(&r);TNScene s=scene();
+ assert(send(&r,&u,TN_START,1,1,&s,0).result==TN_OK);
+ assert(send(&r,&u,TN_START,2,1,&s,7999).result==TN_BUSY); // a live session is never stolen
+ assert(m.enter==1&&m.leave==0&&r.sid==1);
+ assert(send(&r,&u,TN_START,2,2,&s,8000).result==TN_OK); // 8 s without UPDATE: newer sid takes over
+ assert(r.sid==2&&r.active&&m.enter==2&&m.leave==1);
+ assert(send(&r,&u,TN_START,1,3,&s,8100).result==TN_BUSY); // older sid cannot steal it back
+ assert(send(&r,&u,TN_UPDATE,2,3,&s,8100).result==TN_OK); // the takeover session is genuinely live
+ assert(send(&r,&u,TN_START,3,1,&s,9000).result==TN_BUSY); // <8 s after the fresh UPDATE
+ tn_tick(&r,&u,46100);assert(r.active&&!r.connected&&m.enter==2&&m.leave==1); // link silent 30 s
+ assert(send(&r,&u,TN_START,3,2,&s,47000).result==TN_OK); // disconnected session is replaceable at once
+ assert(r.sid==3&&r.active&&m.enter==3&&m.leave==2);
+ assert(send(&r,&u,TN_STOP,2,4,NULL,47100).result==TN_NO_SESSION); // the old sid's STOP cannot close it
+ assert(r.active&&r.sid==3&&m.leave==2);
+}
+static void gone_tests(void){
+ Mock m={.available=true};TNUI u=api(&m);TNRuntime r;tn_init(&r);TNScene s=scene();
+ assert(send(&r,&u,TN_START,10,1,&s,0).result==TN_OK);
+ for(unsigned i=1;i<=5;i++){s.distance_m=100+i;assert(send(&r,&u,TN_UPDATE,10,i+1,&s,i*10000).result==TN_OK);}
+ tn_tick(&r,&u,79999);assert(r.active&&r.connected&&m.leave==0); // 29999 ms of link silence
+ tn_tick(&r,&u,80000);assert(r.active&&!r.connected&&m.leave==0); // TN_LINK_MS elapsed, page retained
+ tn_tick(&r,&u,109999);assert(r.active&&m.leave==0); // <30 s disconnected: no premature close
+ assert(send(&r,&u,TN_UPDATE,10,7,&s,110999).result==TN_OK&&r.connected); // returned link cancels watchdog
+ tn_tick(&r,&u,140998);assert(r.active&&r.connected);
+ tn_tick(&r,&u,140999);assert(r.active&&!r.connected&&m.leave==0);
+ tn_tick(&r,&u,170998);assert(r.active&&m.leave==0); // 29999 ms gone
+ tn_tick(&r,&u,170999);assert(!r.active&&m.leave==1); // 30000 ms gone: page closes itself
+ /* A connected-but-silent phone keeps the 60 s stale/sleep semantics: the gone
+  * watchdog must not fire while heartbeats still arrive. */
+ Mock c={.available=true};TNUI cu=api(&c);TNRuntime cr;tn_init(&cr);TNScene cs=scene();
+ assert(send(&cr,&cu,TN_START,30,1,&cs,0).result==TN_OK);
+ for(unsigned i=1;i<=10;i++)assert(send(&cr,&cu,TN_HEARTBEAT,30,i+1,NULL,i*10000).result==TN_OK);
+ assert(cr.active&&cr.connected&&cr.stale&&c.sleep==1); // 60 s without UPDATE: screen sleeps, page stays
+ tn_tick(&cr,&cu,100001);assert(cr.active&&cr.connected&&c.leave==0);
+ tn_tick(&cr,&cu,111000);assert(cr.active&&cr.stale&&c.leave==0); // still connected, only link quiet
+}
+static void desync_stop_tests(void){
+ Mock m={.available=true};TNUI u=api(&m);TNRuntime r;tn_init(&r);TNScene s=scene();
+ assert(send(&r,&u,TN_START,7,1,&s,0).result==TN_OK);
+ assert(send(&r,&u,TN_STOP,6,2,NULL,1000).result==TN_NO_SESSION); // older sid replay: page stays
+ assert(r.active&&m.leave==0);
+ assert(send(&r,&u,TN_STOP,8,1,NULL,2000).result==TN_OK); // newer sid (desynced phone): closes page
+ assert(!r.active&&m.leave==1);
+ assert(send(&r,&u,TN_STOP,8,1,NULL,3000).result==TN_NO_SESSION); // already closed: nothing to release
+ assert(m.leave==1);
+ assert(send(&r,&u,TN_START,9,2,&s,4000).result==TN_OK); // a later session still opens: last_sid not poisoned
+ assert(r.sid==9&&r.active);
+}
 static uint32_t random_state=7392;
 static uint32_t rnd(void){random_state^=random_state<<13;random_state^=random_state>>17;random_state^=random_state<<5;return random_state;}
 static void fuzz(void){
@@ -86,5 +135,5 @@ static void metrics_tests(void){
  tn_clock_text(guarded.text,INT64_MAX,INT64_MAX,false);assert(strstr(guarded.text,"--:--"));
  tn_clock_text(guarded.text,midnight,midnight+120,true);assert(strstr(guarded.text,"过期"));assert(guarded.canary=='X');
 }
-int main(void){state_tests();power_tests();reject_tests();fuzz();metrics_tests();
- printf("PASS navigation codec, 60s inactivity, always-on/disconnect, button wake, physical exit, retry/sequence, UTF-8/bounds, tick wrap, 50000 malformed + 5000 valid scenes; runtime=%zu visual=%zu bytes. No native hardware.\n",sizeof(TNRuntime),sizeof(TNVisual));return 0;}
+int main(void){state_tests();power_tests();reject_tests();takeover_tests();gone_tests();desync_stop_tests();fuzz();metrics_tests();
+ printf("PASS navigation codec, 60s inactivity, always-on/disconnect, button wake, physical exit, retry/sequence, 8s stale-session takeover, 30s vanished-phone auto-exit, desynced-STOP close, UTF-8/bounds, tick wrap, 50000 malformed + 5000 valid scenes; runtime=%zu visual=%zu bytes. No native hardware.\n",sizeof(TNRuntime),sizeof(TNVisual));return 0;}

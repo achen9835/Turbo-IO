@@ -4,6 +4,7 @@
 #import "ReaderBridge.h"
 #import "NativeNavigation.h"
 #import "NavigationUI.h"
+#import "NavigationCore.h"
 #import "TNVTransport.h"
 #import "ProtocolContext.h"
 #import "ExperimentalOTAFlash.h"
@@ -18,16 +19,34 @@ BOOL TNVPauseForOTA(void){return !Session.active&&!Session.busy;}
 void TNVPump(void){
  if(Peer&&![Peer isEqual:TIOProtocolDevice()])[Session disconnect];
  [Session pump];
- // Fail-transition breadcrumb: a mid-run session death used to be invisible
+ NSDictionary *st=TNVStatus();
+ // Fail/active transition breadcrumbs: a mid-run session death used to be invisible
  // (the lens just froze) until the user read the status note much later.
- static BOOL LastFailed=NO;BOOL failed=[Session.status[@"failed"] boolValue];
- if(failed&&!LastFailed)TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD会话中断：%@（自动重试上镜中）",Session.status[@"note"]?:@"原因未知"]);
- LastFailed=failed;
+ static BOOL LastFailed=NO,LastActive=NO;BOOL failed=[st[@"failed"] boolValue],active=[st[@"active"] boolValue];
+ if(failed&&!LastFailed){TIOVoiceNavTrace([NSString stringWithFormat:@"眼镜HUD会话中断：%@（自动重试上镜中）",st[@"note"]?:@"原因未知"]);TIONavDiagHUDEvent(@"会话中断",st[@"note"]);}
+ if(active!=LastActive)TIONavDiagHUDEvent(active?@"会话激活":@"会话结束",st[@"note"]);
+ LastFailed=failed;LastActive=active;
  NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;if(now-LastSave<1)return;LastSave=now;
- NSString *root=[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/TurboIOPrivateAddon"];
- [NSFileManager.defaultManager createDirectoryAtPath:root withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@0700} error:nil];
- NSMutableDictionary *d=[TNVStatus() mutableCopy];d[@"build"]=@"NAVIGATION-PHONE-02-BG";d[@"physicalVerified"]=@NO;d[@"timestamp"]=@(NSDate.date.timeIntervalSince1970);d[@"appState"]=@(UIApplication.sharedApplication.applicationState);
- NSString *file=[root stringByAppendingPathComponent:@"native-navigation-status.json"];[[NSJSONSerialization dataWithJSONObject:d options:NSJSONWritingSortedKeys error:nil] writeToFile:file options:NSDataWritingAtomic error:nil];[NSFileManager.defaultManager setAttributes:@{NSFilePosixPermissions:@0600} ofItemAtPath:file error:nil];
+ // 诊断：会话状态（active/note/lastEvent/acks/transients/mapDrops/tries/stopTries）+ 最近 HUD
+ // 事件环形缓冲 + 当前语音阶段 + 退出补发计数。只放固定短语与眼镜会话自身 note，
+ // 不含坐标、设备号、Key 或账号。
+ NSDictionary *diag=TIONavDiagSnapshot();
+ NSMutableDictionary *d=[st mutableCopy];
+ d[@"build"]=@"NAVIGATION-PHONE-03-BG";d[@"physicalVerified"]=@NO;d[@"timestamp"]=@(NSDate.date.timeIntervalSince1970);d[@"appState"]=@(UIApplication.sharedApplication.applicationState);
+ d[@"voiceStage"]=diag[@"voiceStage"]?:@"";d[@"hudEvents"]=diag[@"hudEvents"]?:@[];d[@"stopRetryAttempts"]=diag[@"stopRetryAttempts"]?:@0;d[@"stopRetryMax"]=diag[@"stopRetryMax"]?:@0;d[@"stopRetryPending"]=diag[@"stopRetryPending"]?:@NO;
+ NSData *json=[NSJSONSerialization dataWithJSONObject:d options:NSJSONWritingSortedKeys error:nil];if(!json)return;
+ // 双写：Library/Application Support 给扩展自身诊断页读；Documents/TurboIOResearch 走宿主
+ // 已开的 UIFileSharingEnabled，用户可用爱思/文件App直接导出（Library 里的导不出来）。
+ // 两处都 0700 目录 + 0600 文件。
+ NSArray *targets=@[@[[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/TurboIOPrivateAddon"],@0700],
+                    @[[NSHomeDirectory() stringByAppendingPathComponent:@"Documents/TurboIOResearch"],@0700]];
+ for(NSArray *target in targets){
+  NSString *dir=target[0];
+  [NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:target[1],NSFileProtectionKey:NSFileProtectionCompleteUntilFirstUserAuthentication} error:nil];
+  NSString *file=[dir stringByAppendingPathComponent:@"native-navigation-status.json"];
+  [json writeToFile:file options:NSDataWritingAtomic error:nil];
+  [NSFileManager.defaultManager setAttributes:@{NSFilePosixPermissions:@0600} ofItemAtPath:file error:nil];
+ }
 }
 // Last refusal reason from TNVStart's gates, surfaced in HUD breadcrumbs so a
 // background rejection says WHICH door was closed instead of a generic NO.
@@ -59,7 +78,10 @@ BOOL TNVStart(NSDictionary *frame){
   @try{id call=((id(*)(id,SEL,id,id))objc_msgSend)(cls,make,method,args);((void(*)(id,SEL,id,id))objc_msgSend)(plugin,handle,call,[result copy]);return YES;}@catch(NSException *e){return NO;}
  }];TNVTransport *transport=Transport;
  Session=[[TNVSession alloc]initWithDevice:device session:(uint32_t)sid clock:^{return NSProcessInfo.processInfo.systemUptime;} sender:^(NSData *packet,NSString *task,TNVSubmitted done){[transport send:packet task:task submitted:done];} cleanup:^(NSString *task){[transport cleanup:task];}];
- if(!Timer)Timer=[NSTimer scheduledTimerWithTimeInterval:0.1 repeats:YES block:^(NSTimer *t){TNVPump();}];return [Session start:frame always:TNVAlways()];
+ if(!Timer)Timer=[NSTimer scheduledTimerWithTimeInterval:0.1 repeats:YES block:^(NSTimer *t){TNVPump();}];
+ BOOL started=[Session start:frame always:TNVAlways()];
+ TIONavDiagHUDEvent(@"会话",started?@"START 已提交":@"START 未被接受");
+ return started;
 }
 void TNVOffer(NSDictionary *frame){[Session offer:frame];}
-void TNVStop(void){[Session stop];}
+void TNVStop(void){TIONavDiagHUDEvent(@"会话",@"退出指令已发出");[Session stop];}

@@ -11,6 +11,18 @@
 #define TN_TURN_MAX 48u
 #define TN_IDLE_MS 60000u
 #define TN_LINK_MS 30000u
+/* A START is refused while a session is live, but a phone that gave up on a
+ * transient TN_UI_FAILED/TN_BUSY must be able to reclaim a session the HUD
+ * still holds. An active session is stale enough to be replaced by a strictly
+ * newer START once it has delivered no complete UPDATE for TN_TAKEOVER_MS, or
+ * once its link has been silent for TN_LINK_MS (tn_disconnect already fired).
+ * Only a larger sid may take over; live sessions keep returning TN_BUSY. */
+#define TN_TAKEOVER_MS 8000u
+/* Lost-link watchdog: after tn_disconnect sets !connected the frozen page keeps
+ * its last real frame for at most TN_GONE_EXIT_MS, then closes itself. Together
+ * with TN_LINK_MS this bounds a vanished phone to about 60 s; the measure starts
+ * at the first tick that observes the disconnect, so a short drop is harmless. */
+#define TN_GONE_EXIT_MS 30000u
 enum TNOp { TN_START=1,TN_UPDATE=2,TN_HEARTBEAT=3,TN_STOP=4,TN_MODE=5,TN_QUERY=6 };
 enum TNResult { TN_OK=0,TN_BAD_PACKET=1,TN_UNAUTHORIZED=2,TN_BUSY=3,TN_STALE=4,TN_UI_FAILED=5,TN_NO_SESSION=6 };
 enum TNPower { TN_POWER_RELEASE=0,TN_POWER_WAKE_HOLD=1,TN_POWER_SLEEP=2 };
@@ -58,8 +70,9 @@ typedef struct {
 typedef struct {
  TNScene scene;
  uint32_t sid,sequence,digest,last_sid,last_link,last_update,last_button;
- bool active,connected,awake,held,stale,button_valid;
+ bool active,connected,awake,held,stale,button_valid,gone;
  uint8_t last_result;
+ uint32_t gone_since; /* first tick that observed !connected; TN_GONE_EXIT_MS */
 } TNRuntime;
 typedef struct { enum TNResult result;uint32_t sid,sequence;bool active,awake,stale;uint8_t mode; } TNReply;
 void tn_init(TNRuntime *);

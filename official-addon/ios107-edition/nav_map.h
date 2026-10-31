@@ -39,5 +39,14 @@ void tnr_presented(TNRState *,uint32_t now);
 unsigned tnr_labels(const TNRState *,uint32_t now,TNRLabelView out[TNR_MAX_LABELS]);
 /* Horizontal map width in metres -> a bounded 1/2/5 scale bar. */
 bool tnr_scale(unsigned range,unsigned *metres,unsigned *pixels);
+/* Phone-side scene budgeting only (RoadMap.m); the firmware wire format and
+ * renderer are byte-identical and do not use this. Reduce a clipped polyline
+ * in quarter-metre space to at most cap points with Douglas-Peucker, growing
+ * the tolerance 4x per pass until it fits, then densify long straight chords
+ * to <=512 qm so the firmware int32 projection stays in range. Endpoints
+ * always survive, so the first route point stays behind the vehicle for
+ * tnr_route_base_qm(). Returns the kept count in place; the caller's buffer
+ * must hold cap points because densifying can grow the path. */
+unsigned tnr_path_budget(TNRPoint *,unsigned n,unsigned cap);
 size_t tnr_wrap(uint8_t *,size_t,unsigned op,uint32_t sid,uint32_t seq,const uint8_t *,size_t);
 #endif

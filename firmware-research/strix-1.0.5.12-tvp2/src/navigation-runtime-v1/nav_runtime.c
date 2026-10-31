@@ -68,7 +68,7 @@ static bool api(const TNUI *u){return u&&u->available&&u->enter&&u->render&&u->p
 void tn_init(TNRuntime *r){if(r)memset(r,0,sizeof *r);}
 void tn_local_exit(TNRuntime *r,const TNUI *u){
  if(!r||!api(u)||!r->active)return;if(r->held)(void)u->power(u->ctx,TN_POWER_RELEASE);
- r->held=r->awake=r->active=r->connected=false;r->last_sid=r->sid;u->leave(u->ctx);
+ r->held=r->awake=r->active=r->connected=r->gone=false;r->last_sid=r->sid;u->leave(u->ctx);
 }
 static bool wake(TNRuntime *r,const TNUI *u){if(!u->power(u->ctx,TN_POWER_WAKE_HOLD))return false;r->held=r->awake=true;return true;}
 void tn_disconnect(TNRuntime *r,const TNUI *u){
@@ -81,6 +81,13 @@ void tn_tick(TNRuntime *r,const TNUI *u,uint32_t now){
  if(!r||!api(u)||!r->active)return;
  if(r->connected&&(uint32_t)(now-r->last_link)>=TN_LINK_MS)tn_disconnect(r,u);
  if(!r->active)return;
+ /* A physically vanished phone must not leave the page frozen on "navigation
+  * data expired" forever: after TN_GONE_EXIT_MS of observed !connected, release
+  * ownership and close. The 60 s text/backlight stale semantics are untouched. */
+ if(!r->connected){
+  if(!r->gone){r->gone=true;r->gone_since=now;}
+  if((uint32_t)(now-r->gone_since)>=TN_GONE_EXIT_MS){tn_local_exit(r,u);return;}
+ }else r->gone=false;
  if(!r->stale&&(uint32_t)(now-r->last_update)>=TN_IDLE_MS){r->stale=true;if(!u->render(u->ctx,&r->scene,true)){tn_local_exit(r,u);return;}}
  bool manual=r->button_valid&&(uint32_t)(now-r->last_button)<TN_IDLE_MS;
  bool hold=(uint32_t)(now-r->last_update)<TN_IDLE_MS||(r->connected&&r->scene.mode==TN_ALWAYS);
@@ -105,18 +112,30 @@ static TNReply handle(TNRuntime *r,const TNUI *u,const uint8_t *p,size_t n,uint3
  else if(op==TN_MODE){if(n!=33||p[32]>TN_ALWAYS)return reply(r,TN_BAD_PACKET);}
  else if(n!=32)return reply(r,TN_BAD_PACKET);
  if(op==TN_START){
+  /* Break the TN_BUSY dead-lock: once the phone has judged one transient failure
+   * fatal, the HUD may still hold the old session and freeze on its last START
+   * frame. A strictly newer sid may take over a stale/disconnected session. */
+  if(r->active&&sid>r->sid&&((uint32_t)(now-r->last_update)>=TN_TAKEOVER_MS||!r->connected||(uint32_t)(now-r->last_link)>=TN_LINK_MS))tn_local_exit(r,u);
   if(r->active)return reply(r,TN_BUSY);if(sid<=r->last_sid)return reply(r,TN_STALE);
   if(!u->available(u->ctx))return reply(r,TN_BUSY);
   if(!u->enter(u->ctx,&next))return reply(r,TN_UI_FAILED);
   memcpy(&r->scene,&next,sizeof next);r->sid=sid;r->active=r->connected=true;r->stale=r->button_valid=false;
-  r->last_link=r->last_update=now;
+  r->last_link=r->last_update=now;r->gone=false;
   if(!wake(r,u)){tn_local_exit(r,u);return reply(r,TN_UI_FAILED);}
  }else{
-  if(!r->active||sid!=r->sid)return reply(r,TN_NO_SESSION);
+  if(!r->active)return reply(r,TN_NO_SESSION);
+  if(sid!=r->sid){
+   /* Session desync: after judging a transient failure fatal the phone may open
+    * a new session (monotonic sid) and STOP it. A strictly newer sid is a real
+    * STOP and must close the stale page; an older sid is a late replay and stays
+    * TN_NO_SESSION. sid==r->sid keeps the normal path below. */
+   if(op==TN_STOP&&sid>r->sid){tn_local_exit(r,u);return reply(r,TN_OK);}
+   return reply(r,TN_NO_SESSION);
+  }
   if(op==TN_UPDATE){
    /* Authentication/CRC/UTF-8/bounds are checked before any UI or state mutation. */
    if(!u->render(u->ctx,&next,false))return reply(r,TN_UI_FAILED);
-   memcpy(&r->scene,&next,sizeof next);r->stale=false;r->connected=true;r->last_update=now;
+   memcpy(&r->scene,&next,sizeof next);r->stale=false;r->connected=true;r->last_update=now;r->gone=false;
    if(!wake(r,u)){tn_local_exit(r,u);return reply(r,TN_UI_FAILED);}
   }else if(op==TN_STOP)tn_local_exit(r,u);
   else if(op==TN_MODE)r->scene.mode=p[32];

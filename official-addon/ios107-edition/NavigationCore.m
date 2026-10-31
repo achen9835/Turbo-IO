@@ -1,5 +1,6 @@
 #import "NavigationCore.h"
 #import "A2UIProbe.h"
+#import <dispatch/dispatch.h>
 #include <math.h>
 BOOL TIONavCoordinate(double lat,double lon){return isfinite(lat)&&isfinite(lon)&&lat>=-90&&lat<=90&&lon>=-180&&lon<=180;}
 NSString *TIONavClip(NSString *text,NSUInteger limit){
@@ -67,3 +68,63 @@ NSDictionary *TIONavInstall(NSString *identifier,NSDictionary *display){
 - (void)acknowledge:(BOOL)ok{if(!_inflight)return;if(ok)_committed=_inflight;else _blocked=YES;_inflight=nil;}
 - (void)reset{_latest=nil;_inflight=nil;_committed=nil;_blocked=NO;_hasSent=NO;_sentAt=0;}
 @end
+
+// ---- HUD / 语音链路诊断环形缓冲（实现） ----
+// 设计约束：只接受固定短语与眼镜会话自身的 note 文本；每个字段先按字节裁剪，
+// 环形容量 16，相邻重复事件去重（自动重试每 2 秒刷同一条拒绝原因时不淹没证据）。
+#define TIONavDiagRingCapacity 16
+static NSMutableArray *TIONavDiagRing;
+static NSString *TIONavDiagStageText;
+static unsigned TIONavDiagStopAttempts,TIONavDiagStopMax;
+static BOOL TIONavDiagStopPending;
+static NSObject *TIONavDiagLock;
+static NSObject *TIONavDiagGate(void){
+    static dispatch_once_t once;
+    dispatch_once(&once,^{TIONavDiagLock=[NSObject new];TIONavDiagRing=[NSMutableArray new];TIONavDiagStageText=@"";});
+    return TIONavDiagLock;
+}
+static NSString *TIONavDiagClock(void){
+    NSDateFormatter *f=[NSDateFormatter new];f.locale=[NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];f.timeZone=NSTimeZone.localTimeZone;f.dateFormat=@"HH:mm:ss";
+    return [f stringFromDate:NSDate.date];
+}
+void TIONavDiagHUDEvent(NSString *event,NSString *result){
+    if(![event isKindOfClass:NSString.class]||!event.length)return;
+    NSString *line=[NSString stringWithFormat:@"%@ %@ → %@",TIONavDiagClock(),TIONavClip(event,42),TIONavClip([result isKindOfClass:NSString.class]?result:@"",90)];
+    NSObject *gate=TIONavDiagGate();
+    @synchronized(gate){
+        if(TIONavDiagRing.count){NSString *prev=[TIONavDiagRing lastObject];if(prev.length>9&&[[line substringFromIndex:9] isEqualToString:[prev substringFromIndex:9]])return;}
+        [TIONavDiagRing addObject:line];
+        while((NSUInteger)TIONavDiagRing.count>TIONavDiagRingCapacity)[TIONavDiagRing removeObjectAtIndex:0];
+    }
+}
+NSArray<NSString *> *TIONavDiagHUDEvents(NSUInteger limit){
+    NSObject *gate=TIONavDiagGate();
+    @synchronized(gate){
+        NSUInteger count=(NSUInteger)TIONavDiagRing.count;
+        if(!limit||limit>count)limit=count;
+        return [TIONavDiagRing subarrayWithRange:NSMakeRange(count-limit,limit)];
+    }
+}
+void TIONavDiagSetVoiceStage(NSString *stage){
+    NSString *text=[stage isKindOfClass:NSString.class]?TIONavClip(stage,60):@"";
+    NSObject *gate=TIONavDiagGate();
+    @synchronized(gate){TIONavDiagStageText=text;}
+}
+NSString *TIONavDiagVoiceStage(void){
+    NSObject *gate=TIONavDiagGate();
+    @synchronized(gate){return TIONavDiagStageText?:@"";}
+}
+void TIONavDiagSetStopRetry(unsigned attempts,unsigned maxAttempts,BOOL pending){
+    NSObject *gate=TIONavDiagGate();
+    @synchronized(gate){TIONavDiagStopAttempts=attempts;TIONavDiagStopMax=maxAttempts;TIONavDiagStopPending=pending;}
+}
+void TIONavDiagReset(void){
+    NSObject *gate=TIONavDiagGate();
+    @synchronized(gate){[TIONavDiagRing removeAllObjects];TIONavDiagStageText=@"";TIONavDiagStopAttempts=0;TIONavDiagStopMax=0;TIONavDiagStopPending=NO;}
+}
+NSDictionary *TIONavDiagSnapshot(void){
+    NSObject *gate=TIONavDiagGate();
+    @synchronized(gate){
+        return @{@"voiceStage":TIONavDiagStageText?:@"",@"hudEvents":[TIONavDiagRing copy],@"stopRetryAttempts":@(TIONavDiagStopAttempts),@"stopRetryMax":@(TIONavDiagStopMax),@"stopRetryPending":@(TIONavDiagStopPending)};
+    }
+}

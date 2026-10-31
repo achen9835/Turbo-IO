@@ -22,7 +22,12 @@ int main(int argc,char **argv){@autoreleasepool{
  [s stop];assert(sends==5&&((const uint8_t *)wire.bytes)[5]==TN_STOP);[trace addObject:[wire base64EncodedStringWithOptions:0]];submit(YES,@"sdk-native-5");[s consume:Ack(wire,0)];[s consume:File(@"sdk-native-5")];assert(!s.active&&!s.busy&&cleanups==5);
  assert(![s start:Frame(40) always:NO]); // Each START requires a new persisted monotonic SID.
  s=[[TNVSession alloc]initWithDevice:@"test-peer" session:11 clock:^{return now;} sender:^(NSData *b,NSString *t,TNVSubmitted done){wire=b;task=t;submit=done;} cleanup:nil];
- assert([s start:Frame(40) always:NO]);now+=9;[s pump];assert(!s.active&&s.busy);submit(YES,@"late-task");[s consume:File(@"late-task")];[s consume:Ack(wire,0)];assert(!s.active&&!s.busy);assert(![s start:Frame(40) always:NO]);
+ assert([s start:Frame(40) always:NO]);now+=9;[s pump];assert(s.active&&!s.busy); /* a lost reply drops this frame but must NOT kill the session */now+=1;[s offer:Frame(40)];[s pump];assert(((const uint8_t *)wire.bytes)[5]==TN_UPDATE);submit(YES,@"late-task");[s consume:File(@"late-task")];[s consume:Ack(wire,0)];assert(s.active&&!s.busy);
+ [s stop];submit(YES,@"stop-task");[s consume:Ack(wire,0)];assert(!s.active&&!s.busy&&[s.status[@"stopped"] boolValue]);
+ // Transient TN_BUSY must retry the identical packet/sequence instead of killing the session.
+ now+=1;s=[[TNVSession alloc]initWithDevice:@"test-peer" session:12 clock:^{return now;} sender:^(NSData *b,NSString *t,TNVSubmitted done){wire=b;task=t;submit=done;} cleanup:nil];
+ assert([s start:Frame(40) always:NO]);uint32_t retired=((const uint8_t *)wire.bytes)[5];assert(retired==TN_START);assert([s consume:Ack(wire,TN_BUSY)]);assert(s.active&&!s.busy);now+=0.5;[s pump];assert(((const uint8_t *)wire.bytes)[5]==TN_START);submit(YES,@"retry-task");[s consume:File(@"retry-task")];[s consume:Ack(wire,0)];assert(s.active&&!s.busy);
+ [s stop];submit(YES,@"stop2-task");[s consume:Ack(wire,0)];assert(!s.active&&!s.busy&&[s.status[@"stopped"] boolValue]);
  // Sender rejects wrong-peer / malformed data before touching SDK; cleanup is scoped.
  NSURL *root=[NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:NSUUID.UUID.UUIDString] isDirectory:YES];
  __block BOOL called=NO,finished=NO;
@@ -32,5 +37,5 @@ int main(int argc,char **argv){@autoreleasepool{
  NSDate *limit=[NSDate dateWithTimeIntervalSinceNow:2];while(!finished&&[limit timeIntervalSinceNow]>0)[NSRunLoop.currentRunLoop runUntilDate:[NSDate dateWithTimeIntervalSinceNow:.01]];assert(called&&finished);[transport cleanup:tid];assert([[NSFileManager.defaultManager contentsOfDirectoryAtPath:root.path error:nil] count]==0);
  [NSFileManager.defaultManager removeItemAtURL:root error:nil];
  if(argc==2){NSDictionary *record=@{@"syntheticOnly":@YES,@"packets":trace};assert([[NSJSONSerialization dataWithJSONObject:record options:NSJSONWritingPrettyPrinted error:nil] writeToFile:@(argv[1]) atomically:YES]);}
- puts("PASS TNV1 codec, real SDK task binding, early file/ACK ordering, latest-only pacing, heartbeat freshness, STOP, timeout/late ACK, bounded geometry, scoped transport and cleanup");
+ puts("PASS TNV1 codec, real SDK task binding, early file/ACK ordering, latest-only pacing, heartbeat freshness, STOP, timeout-drop-without-kill, transient TN_BUSY retry, late ACK, bounded geometry, scoped transport and cleanup");
 }return 0;}

@@ -88,26 +88,55 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
  NSData *_mapLatest,*_map2Latest,*_mapCommitted,*_mapSending,*_poseLatest,*_poseCommitted;NSTimeInterval _poseAt,_lastPose;NSUInteger _maps,_poses;BOOL _extended,_probed,_mapV2;
  NSString *_source;NSUInteger _wireBytes;
  NSTimeInterval _deadline,_lastOffer,_lastCommit,_lastWire,_next;NSUInteger _count;unsigned _op;
+ /* 2026-11-01: transient recovery. A single TN_BUSY/TN_UI_FAILED used to kill the
+  * whole session while the lens kept its last frame and the firmware kept the
+  * session active -- later STARTs were answered TN_BUSY forever (frozen lens).
+  * Now the same packet (same sequence) is retried; vector-map frames are
+  * best-effort and can never take the navigation session down; the terminal
+  * TN_STOP is retried until the lens confirms or the bounded budget runs out. */
+ NSData *_retryPacket,*_retryScene;unsigned _retryOp;NSTimeInterval _retryAt;
+ NSUInteger _tries,_stopTries,_acks,_transients,_mapSends,_mapDrops;
+ NSTimeInterval _stopNext;NSString *_lastEvent;
 }
 - (instancetype)initWithDevice:(NSString *)device session:(uint32_t)sid clock:(NSTimeInterval(^)(void))clock sender:(void(^)(NSData *,NSString *,TNVSubmitted))sender cleanup:(void(^)(NSString *))cleanup{if(!device.length||!sid||!clock||!sender)return nil;if((self=[super init])){_device=[device copy];_sid=sid;_clock=[clock copy];_sender=[sender copy];_cleanup=[cleanup copy];_note=@"尚未开始";}return self;}
 - (BOOL)active{return _active;}- (BOOL)busy{return _packet||_fileBusy;}
-- (NSDictionary *)status{return @{@"active":@(_active),@"busy":@(self.busy),@"note":_note?:@"",@"snapshots":@(_count),@"session":@(_sid),@"sequence":@(_seq),@"always":@(_always),@"failed":@(_failed),@"maps":@(_maps),@"poses":@(_poses),@"mapBytes":@(_mapV2?_map2Latest.length:_mapLatest.length),@"mapPaths":@(_mapLatest.length>=16?U16((const uint8_t *)_mapLatest.bytes+6):0),@"mapLabels":@(_map2Latest.length>=16?U16((const uint8_t *)_map2Latest.bytes+10):0),@"mapMode":@(_extended),@"roadLabels":@(_mapV2),@"source":_source?:@"unknown",@"wireBytes":@(_wireBytes)};}
-- (void)fail:(NSString *)note{_active=NO;_failed=YES;_packet=nil;_fileBusy=NO;_note=note;/* file ownership at the transport stays with the abandoned transport; unlatching busy lets a fresh TNVStart session retry */}
-- (void)finish{if(!_packet||!_ack||_fileBusy||!_submitted)return;unsigned op=_op;_packet=nil;_nativeTask=nil;_early=nil;if(_cleanup)_cleanup(_task);_task=nil;_next=_clock()+(_extended?0:1);
- if(op==TN_START||op==TN_UPDATE){_committed=_sending;_lastCommit=_clock();_count++;}
- if(op==TNR_SCENE){_mapCommitted=_sending;_poseCommitted=nil;_maps++;}
- if(op==TNR_SCENE2){_mapCommitted=_mapSending;_mapSending=nil;_poseCommitted=[_sending subdataWithRange:NSMakeRange(_sending.length-12,12)];_lastPose=_clock();_maps++;_poses++;}
+- (NSDictionary *)status{return @{@"active":@(_active),@"busy":@(self.busy),@"note":_note?:@"",@"snapshots":@(_count),@"session":@(_sid),@"sequence":@(_seq),@"always":@(_always),@"failed":@(_failed),@"maps":@(_maps),@"poses":@(_poses),@"mapBytes":@(_mapV2?_map2Latest.length:_mapLatest.length),@"mapPaths":@(_mapLatest.length>=16?U16((const uint8_t *)_mapLatest.bytes+6):0),@"mapLabels":@(_map2Latest.length>=16?U16((const uint8_t *)_map2Latest.bytes+10):0),@"mapMode":@(_extended),@"roadLabels":@(_mapV2),@"source":_source?:@"unknown",@"wireBytes":@(_wireBytes),@"acks":@(_acks),@"transients":@(_transients),@"mapSends":@(_mapSends),@"mapDrops":@(_mapDrops),@"tries":@(_tries),@"stopTries":@(_stopTries),@"stopped":@(_stopped),@"lastEvent":_lastEvent?:@""};}
+// Breadcrumb kept in the status JSON so a frozen lens has a readable cause.
+- (void)note:(NSString *)text{_note=text;_lastEvent=[NSString stringWithFormat:@"%.0f %@",_clock(),text?:@""];}
+// Drop the current in-flight file bookkeeping. Ownership of an uncertain native
+// transfer stays with the transport; unlatching busy lets a fresh retry go out.
+- (void)clearWire{NSString *task=_task;_packet=nil;_task=nil;_nativeTask=nil;_early=nil;_sending=nil;_fileBusy=NO;_ack=_submitted=NO;if(task&&_cleanup)_cleanup(task);}
+- (void)fail:(NSString *)note{_active=NO;_failed=YES;_stopping=NO;_retryPacket=nil;_retryScene=nil;_tries=0;[self clearWire];[self note:note];}
+- (void)finish{if(!_packet||!_ack||_fileBusy||!_submitted)return;unsigned op=_op;NSData *sent=_sending;NSString *task=_task;_packet=nil;_nativeTask=nil;_early=nil;_sending=nil;_retryPacket=nil;_retryScene=nil;if(_cleanup)_cleanup(task);_task=nil;_tries=0;_next=_clock()+(_extended?0:1);
+ if(op==TN_START||op==TN_UPDATE){_committed=sent;_lastCommit=_clock();_count++;}
+ if(op==TNR_SCENE){_mapCommitted=sent;_poseCommitted=nil;_maps++;_mapSends++;}
+ if(op==TNR_SCENE2){_mapCommitted=sent;_mapSending=nil;_poseCommitted=[sent subdataWithRange:NSMakeRange(sent.length-12,12)];_lastPose=_clock();_maps++;_poses++;_mapSends++;}
  if(op==TN_QUERY)_probed=YES;
- if(op==TNR_POSE){_poseCommitted=_sending;_lastPose=_clock();_poses++;}
+ if(op==TNR_POSE){_poseCommitted=sent;_lastPose=_clock();_poses++;_mapSends++;}
  if(op==TNR_CLEAR){_mapCommitted=nil;_poseCommitted=nil;}
- _sending=nil;
- if(op==TN_STOP){_active=NO;_stopping=NO;_stopped=YES;_note=@"眼镜已确认退出导航";}else _note=@"原生导航已提交 · 镜片效果待确认";
+ if(op==TN_STOP){_active=NO;_stopping=NO;_stopped=YES;[self note:@"眼镜已确认退出导航"];return;}
+ [self note:@"原生导航已提交 · 镜片效果待确认"];
 }
+// Reply/submit failures that must not kill navigation: BUSY (another task owns
+// the lens), UI_FAILED (renderer was busy for one frame) and any vector-map
+// rejection. Retry the identical packet/sequence after a short pause; vector
+// map frames are simply dropped because the text HUD keeps working without them.
+- (void)transient:(NSString *)reason code:(unsigned)code{
+ unsigned op=_op;NSData *packet=_packet;NSData *scene=_sending;
+ if(op==TN_STOP){[self clearWire];_stopTries++;_stopNext=_clock()+2.0;if(_stopTries>=10){_stopped=YES;_stopping=NO;[self note:@"多次补发退出指令未获确认；请用眼镜返回键退出"];}else [self note:[NSString stringWithFormat:@"退出指令未确认（%@），稍后重试 %lu/10",reason,(unsigned long)_stopTries]];return;}
+ [self clearWire];
+ if(op>=TNR_SCENE){_mapDrops++;[self note:[NSString stringWithFormat:@"镜片未接受矢量图（%@，码 %u），导航继续",reason,code]];_next=_clock()+0.5;return;}
+ _transients++;
+ if(_tries>=4){[self fail:[NSString stringWithFormat:@"眼镜连续拒绝导航包（码 %u）；本轮停止，等待自动恢复",code]];return;}
+ _tries++;_retryPacket=packet;_retryScene=scene;_retryOp=op;_retryAt=_clock()+0.4;
+ [self note:[NSString stringWithFormat:@"眼镜暂忙（码 %u），第 %lu 次重试同一包",code,(unsigned long)_tries]];
+}
+
 - (BOOL)send:(enum TNOp)op scene:(NSData *)scene{
- if(self.busy||_failed||_seq==UINT32_MAX)return NO;uint8_t b[TNR_MAX_BYTES];size_t n=op>=TNR_SCENE?tnr_wrap(b,sizeof b,op,_sid,++_seq,scene.bytes,scene.length):tn_encode(b,sizeof b,op,_sid,++_seq,scene?(const TNScene *)scene.bytes:NULL);if(!n)return NO;
+ if(self.busy||_failed||_seq==UINT32_MAX)return NO;_retryPacket=nil;_retryScene=nil;_tries=0;uint8_t b[TNR_MAX_BYTES];size_t n=op>=TNR_SCENE?tnr_wrap(b,sizeof b,op,_sid,++_seq,scene.bytes,scene.length):tn_encode(b,sizeof b,op,_sid,++_seq,scene?(const TNScene *)scene.bytes:NULL);if(!n)return NO;
  _packet=[NSData dataWithBytes:b length:n];_wireBytes+=n;_task=NSUUID.UUID.UUIDString;_nativeTask=nil;_early=[NSMutableArray new];_ack=_submitted=NO;_fileBusy=YES;_op=op;_sending=scene;_lastWire=_clock();_deadline=_lastWire+(op==TNR_POSE?3:8);NSString *task=_task;
  __weak typeof(self) weak=self;_sender(_packet,task,^(BOOL ok,NSString *native){TNVSession *s=weak;if(!s||![task isEqual:s->_task])return;
-  if(!ok||![native isKindOfClass:NSString.class]||!native.length||native.length>256){s->_fileBusy=NO;[s fail:@"文件提交失败；停止导航发送"];return;}
+  if(!ok||![native isKindOfClass:NSString.class]||!native.length||native.length>256){s->_fileBusy=NO;[s transient:@"文件提交失败" code:0];return;}
   s->_submitted=YES;s->_nativeTask=[native copy];NSArray *early=[s->_early copy];s->_early=nil;for(NSDictionary *e in early)[s consume:e];[s finish];});return YES;
 }
 - (void)mapOffer:(NSDictionary *)frame{
@@ -125,33 +154,55 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
 - (BOOL)start:(NSDictionary *)frame always:(BOOL)always{if(_seq||_active||self.busy||_failed)return NO;TNScene s;if(!TNVScene(frame,always,&s))return NO;[self mapOffer:frame];_source=[frame[@"tnrSource"] isKindOfClass:NSString.class]?frame[@"tnrSource"]:@"unknown";_always=always;_latest=[NSData dataWithBytes:&s length:sizeof s];_lastOffer=_clock();_active=YES;_note=@"正在请求自动打开原生导航";if(![self send:TN_START scene:_latest]){_active=NO;return NO;}return YES;}
 - (void)offer:(NSDictionary *)frame{if(!_active||_stopping)return;[self mapOffer:frame];TNScene s;if(!TNVScene(frame,_always,&s)){/* Only terminal phases stop the session; transient non-navigating frames (planning/reroute transitions) must not kill a live render. */if([frame[@"phase"] isEqual:@"arrived"]||[frame[@"phase"] isEqual:@"stopped"])[self stop];return;}_latest=[NSData dataWithBytes:&s length:sizeof s];_lastOffer=_clock();}
 - (void)setAlways:(BOOL)always{_always=always;if(_latest){NSMutableData *d=[_latest mutableCopy];((TNScene *)d.mutableBytes)->mode=always?TN_ALWAYS:TN_SMART;_latest=d;}}
-// Best-effort terminal stop: bypasses the in-flight/failed guards so a dead or
-// stuck session still delivers TN_STOP. The firmware only leaves the nav page
-// on TN_STOP -- without this, a phone-side exit after any mid-run failure left
-// the lens showing "导航数据已过期" forever (真机 2026-10-30 反馈).
+// Bounded, confirmed terminal stop. A dead or wedged session still has to remove
+// the lens page: the firmware only leaves navigation on TN_STOP, so a lost STOP
+// used to leave "导航数据已过期" on the lens forever (真机 2026-10-30/11-01 反馈).
 - (void)sendStopOnce{
- if(_stopped||!_sid)return;_stopped=YES;_stopping=NO;
+ if(_stopped||!_sid)return;
+ if(self.busy){_stopNext=_clock()+0.3;return;}
+ if(_stopTries>=10){_stopped=YES;_stopping=NO;[self note:@"多次补发退出指令未获确认；请用眼镜返回键退出"];return;}
+ if(_clock()<_stopNext)return;
+ _stopTries++;_retryPacket=nil;_retryScene=nil;
  uint8_t b[TNR_MAX_BYTES];size_t n=tn_encode(b,sizeof b,TN_STOP,_sid,++_seq,NULL);
- if(!n){_note=@"退出指令构造失败；请用眼镜返回键退出";return;}
- NSString *task=NSUUID.UUID.UUIDString;_note=@"已补发退出指令，等待眼镜退出";
- __weak typeof(self) weak=self;_sender([NSData dataWithBytes:b length:n],task,^(BOOL ok,NSString *native){TNVSession *s=weak;if(!s)return;s->_note=ok?@"已补发退出指令，等待眼镜退出":@"补发退出指令提交失败；请用眼镜返回键退出";});
+ if(!n){_stopped=YES;_stopping=NO;[self note:@"退出指令构造失败；请用眼镜返回键退出"];return;}
+ NSString *task=NSUUID.UUID.UUIDString;
+ _packet=[NSData dataWithBytes:b length:n];_task=task;_nativeTask=nil;_early=[NSMutableArray new];_ack=_submitted=NO;_fileBusy=YES;_op=TN_STOP;_sending=nil;_lastWire=_clock();_deadline=_lastWire+8;
+ [self note:[NSString stringWithFormat:@"已补发退出指令（%lu/10），等待眼镜退出",(unsigned long)_stopTries]];
+ __weak typeof(self) weak=self;_sender(_packet,task,^(BOOL ok,NSString *native){TNVSession *s=weak;if(!s||![task isEqual:s->_task])return;
+  if(!ok){s->_fileBusy=NO;s->_packet=nil;s->_task=nil;s->_stopNext=s->_clock()+2.0;if(s->_stopTries>=10){s->_stopped=YES;s->_stopping=NO;[s note:@"退出指令提交失败；请用眼镜返回键退出"];}else [s note:@"退出指令提交失败，稍后重试"];return;}
+  s->_submitted=YES;s->_nativeTask=[native copy];NSArray *early=[s->_early copy];s->_early=nil;for(NSDictionary *e in early)[s consume:e];[s finish];});
 }
 - (void)stop{
  if(_stopping||_stopped)return;
- if(!_active){[self sendStopOnce];return;}
- _stopping=YES;_note=@"等待在途包结束后退出导航";[self pump];
- // The normal TN_STOP goes out as soon as the in-flight packet settles; if the
- // channel is wedged (busy never clears / session already failed), force it.
- __weak typeof(self) weak=self;dispatch_after(dispatch_time(DISPATCH_TIME_NOW,3*NSEC_PER_SEC),dispatch_get_main_queue(),^{TNVSession *s=weak;if(s&&s->_stopping&&!s->_stopped)[s sendStopOnce];});
+ if(!_sid){_stopped=YES;[self note:@"尚未建立导航会话，无需退出"];return;}
+ _stopping=YES;_stopTries=0;_stopNext=_clock();
+ [self note:_active?@"等待在途包结束后退出导航":@"已请求退出眼镜导航"];
+ [self pump];
 }
-- (void)disconnect{[self fail:@"连接中断；已停止。眼镜按60秒策略退出常亮，请查看手机。"];}
+- (void)disconnect{[self fail:@"连接中断；已停止。眼镜会在约60秒失联后自动退出导航，请查看手机。"];}
+// Re-send the byte-identical packet (same session and sequence) after a transient
+// rejection, so the firmware's dedupe/staleness checks stay monotonic.
+- (void)resubmit{
+ NSData *packet=_retryPacket,*scene=_retryScene;unsigned op=_retryOp;if(!packet)return;
+ _retryPacket=nil;_retryScene=nil;
+ NSString *task=NSUUID.UUID.UUIDString;_packet=packet;_task=task;_nativeTask=nil;_early=[NSMutableArray new];_ack=_submitted=NO;_fileBusy=YES;_op=op;_sending=scene;_lastWire=_clock();_deadline=_lastWire+(op==TNR_POSE?3:8);
+ __weak typeof(self) weak=self;_sender(packet,task,^(BOOL ok,NSString *native){TNVSession *s=weak;if(!s||![task isEqual:s->_task])return;
+  if(!ok||![native isKindOfClass:NSString.class]||!native.length||native.length>256){s->_fileBusy=NO;[s transient:@"文件提交失败" code:0];return;}
+  s->_submitted=YES;s->_nativeTask=[native copy];NSArray *early=[s->_early copy];s->_early=nil;for(NSDictionary *e in early)[s consume:e];[s finish];});
+}
 - (void)pump{
- if(_packet&&_clock()>=_deadline){[self fail:@"导航协议超时；停止发送，请确认已刷TNV1固件并用实体键退出旧画面。"];return;}
- if(!_active||self.busy||_clock()<_next)return;
- if(_stopping){[self send:TN_STOP scene:nil];return;}
+ NSTimeInterval now=_clock();
+ if(_packet&&now>=_deadline){
+  if(_op==TN_STOP)[self transient:@"回执超时" code:0];
+  else{[self clearWire];_tries=0;_next=now+0.5;[self note:@"导航包回执超时，本轮跳过"];}
+  return;
+ }
+ if(self.busy)return;
+ if(_stopping){[self sendStopOnce];return;}
+ if(_retryPacket){if(now>=_retryAt)[self resubmit];return;}
+ if(!_active||now<_next)return;
  if(_extended&&!_probed){[self send:TN_QUERY scene:nil];return;}
  // One in-flight file, one latest geometry and one latest pose. Never replay old locations.
- NSTimeInterval now=_clock();
  if(_extended&&_mapV2&&_mapCommitted&&!_mapLatest){[self send:(enum TNOp)TNR_CLEAR scene:nil];return;}
  BOOL fresh=now-_lastOffer<=15;
  BOOL changed=![_latest isEqual:_committed],urgent=NO;
@@ -169,7 +220,7 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
   }
  }
  if(!_extended&&fresh&&changed){[self send:TN_UPDATE scene:_latest];return;}
- if(_clock()-_lastWire>=10)[self send:TN_HEARTBEAT scene:nil];
+ if(now-_lastWire>=10)[self send:TN_HEARTBEAT scene:nil];
 }
 - (BOOL)consume:(NSDictionary *)e{
  if(![e isKindOfClass:NSDictionary.class])return NO;NSString *type=e[@"eventType"];
@@ -179,13 +230,25 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
   if([type isEqual:@"fileShareSuccess"]&&![e[@"fileName"] isEqual:@"turbo-navigation.tnv"])return NO;
   if(!_nativeTask&&_fileBusy){if(_early.count<8)[_early addObject:[e copy]];return NO;}
   if(![tid isEqual:_nativeTask])return NO;_fileBusy=NO;
-  if([type isEqual:@"fileShareFailed"])[self fail:@"导航文件传输失败，未继续发送"];else [self finish];return YES;
+  if([type isEqual:@"fileShareFailed"]){[self transient:@"导航文件传输失败" code:0];}else [self finish];return YES;
  }
  TNReply q;uint32_t caps=0;if(!DecodeReply(e,&q,&caps))return NO;if(![e[@"message"][@"deviceId"] isEqual:_device])return NO;
  if(!_packet||q.sid!=_sid||q.sequence!=_seq)return YES;
- if(_clock()>=_deadline){[self fail:@"收到迟到回执，未恢复发送"];return YES;}
+ if(_clock()>=_deadline&&_op!=TN_STOP){[self transient:@"收到迟到回执" code:q.result];return YES;}
+ if(_op==TN_STOP){
+  if(q.result==TN_OK||q.result==TN_NO_SESSION){_acks++;_active=NO;_stopping=NO;_stopped=YES;_retryPacket=nil;_retryScene=nil;[self clearWire];[self note:q.result==TN_OK?@"眼镜已确认退出导航":@"眼镜已无导航会话（视为已退出）"];}
+  else [self transient:[NSString stringWithFormat:@"眼镜未接受退出（码 %u）",q.result] code:q.result];
+  return YES;
+ }
+ if(_op>=TNR_SCENE){
+  if(q.result==TN_NO_SESSION){[self fail:[NSString stringWithFormat:@"眼镜导航会话已不存在（码 %u）；本轮结束，等待自动恢复",q.result]];return YES;}
+  _mapDrops++;[self clearWire];[self note:[NSString stringWithFormat:@"镜片未接受矢量图（码 %u），导航继续",q.result]];return YES;
+ }
+ if(q.result==TN_STALE){[self clearWire];[self note:@"眼镜回执过期，跳过本帧"];return YES;}
+ if(q.result==TN_BUSY||q.result==TN_UI_FAILED){[self transient:[NSString stringWithFormat:@"眼镜暂忙（码 %u）",q.result] code:q.result];return YES;}
  if(q.result!=TN_OK||(_op!=TN_STOP&&!q.active)){[self fail:[NSString stringWithFormat:@"眼镜拒绝导航（%u）；先退出其他任务后重新开启",q.result]];return YES;}
  if(_op==TN_QUERY)_mapV2=!!(caps&1);
- _ack=YES;[self finish];return YES;
+ _acks++;_ack=YES;[self finish];return YES;
 }
+
 @end

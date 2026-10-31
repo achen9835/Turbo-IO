@@ -20,11 +20,17 @@ groups=[]
 def test(name,files,argv=(),extra=()):
     run(name+'-build',flags+list(extra)+[P/f for f in files]+['-o',out/name]);run(name,[out/name,*argv]);groups.append(name);print(name+': PASS')
 test('host',['HostCompatibilityTests.m'])
-test('stability',['RoadMap.m','nav_runtime.c','tests/StabilityTests.m'])
-test('coordinates',['RoadMap.m','nav_runtime.c','tests/CoordinateTests.m'])
-test('replay',['RoadMap.m','NativeNavigation.m','nav_runtime.c','tests/RoadMapTests.m'],[P/'tests/maps',out,'v2'])
-test('session',['NativeNavigationTests.m','NativeNavigation.m','TNVTransport.m','nav_runtime.c','tests/diagnostic_stub.m'])
+test('stability',['RoadMap.m','RoadPack.m','nav_map.c','nav_runtime.c','tests/StabilityTests.m'],[],['-lz'])
+test('coordinates',['RoadMap.m','RoadPack.m','nav_map.c','nav_runtime.c','tests/CoordinateTests.m'],[],['-lz'])
+test('replay',['RoadMap.m','RoadPack.m','NativeNavigation.m','nav_map.c','nav_runtime.c','tests/RoadMapTests.m'],[P/'tests/maps',out,'v2'],['-lz'])
+test('session',['NativeNavigationTests.m','NativeNavigation.m','TNVTransport.m','nav_map.c','nav_runtime.c','tests/diagnostic_stub.m'])
 test('menu-layout',['MenuLayoutTests.m','MenuLayout.m','menu_config.c'])
+test('background',['NavigationBackgroundTests.m'])
+# Pure C scene-budget regressions (no Objective-C runtime needed).
+cflags=['xcrun','clang','-O1','-g','-fsanitize=address,undefined','-I',P]
+def ctest(name,files):
+    run(name+'-build',cflags+[P/f for f in files]+['-o',out/name]);run(name,[out/name]);groups.append(name);print(name+': PASS')
+ctest('map-budget',['nav_map.c','nav_runtime.c','tests/MapBudgetTests.c'])
 with tempfile.TemporaryDirectory(prefix='turbo-navs3-test-') as tmp:
     root=Path(tmp)
     for name,archive in [('stock',stock),('candidate',args.firmware)]:

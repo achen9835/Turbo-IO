@@ -2,6 +2,7 @@
  * same strict validation locally so malformed scenes never reach the wire. */
 #include "nav_map.h"
 #include "nav_runtime.h"
+#include <stdlib.h>
 #include <string.h>
 static unsigned nm_u16(const uint8_t *p){return p[0]|(unsigned)p[1]<<8;}
 static uint32_t nm_u32(const uint8_t *p){return p[0]|(uint32_t)p[1]<<8|(uint32_t)p[2]<<16|(uint32_t)p[3]<<24;}
@@ -195,6 +196,95 @@ void tnr_draw(const TNRState *s,uint32_t now,uint8_t out[TNR_W*TNR_H]){
  line(out,tip,left,stale?85:255,2,false,false,&marker_budget);line(out,left,right,stale?85:255,2,false,false,&marker_budget);line(out,right,tip,stale?85:255,2,false,false,&marker_budget);dot(out,148,100,stale?60:180,255,false);
  scale_draw(out,d->range,stale?85:200);
  if(stale)line(out,(TNRPoint){0,146},(TNRPoint){295,146},75,1,true,false,&marker_budget);
+}
+/* Phone-side scene budgeting only (see nav_map.h): the firmware wire format
+ * and renderer never call this. Iterative Douglas-Peucker in integer quarter-
+ * metre space -- the same metric the scene carries -- grown 4x per pass until
+ * the clipped polyline fits, then long straight chords are densified again.
+ * Endpoints are always kept. */
+typedef struct {unsigned a,b;} nm_span;
+/* 128 m. The firmware projects the pose onto this path with int32 math
+ * (tnr_route_base_qm: dx*num/den); beyond ~255 m per chord that can overflow,
+ * return base 0 and drop the route-ahead marker behind the car. Densifying a
+ * decimated straight keeps the shape (the inserted points sit on the chord)
+ * while keeping that arithmetic bounded. */
+#define NM_SPAN_QM 512u
+static unsigned nm_densify(const TNRPoint *in,unsigned n,unsigned cap,TNRPoint *out){
+ if(n<2||cap<2)return n;
+ uint64_t total=0;for(unsigned i=1;i<n;i++)total+=length_qm(in[i-1],in[i]);
+ unsigned span=NM_SPAN_QM;
+ uint64_t need=0;
+ for(unsigned attempt=0;attempt<8;attempt++){
+  need=1;for(unsigned i=1;i<n;i++){uint32_t len=length_qm(in[i-1],in[i]);need+=((uint64_t)len+span-1u)/span;}
+  if(need<=cap)break;
+  uint64_t wider=total?(total+(cap-2))/(cap-1):NM_SPAN_QM;
+  if(wider<span)wider=span;
+  span=(unsigned)(wider>UINT32_MAX?UINT32_MAX:wider);
+  if(span>64u*1024u*1024u)return n; /* cannot bound; caller keeps reduced path */
+ }
+ if(need>cap)return n;
+ unsigned at=0;out[at++]=in[0];
+ for(unsigned i=1;i<n;i++){
+  TNRPoint a=in[i-1],b=in[i];uint32_t len=length_qm(a,b),parts=len/span+(len%span?1:0);
+  if(!parts)parts=1;
+  for(uint32_t k=1;k<=parts;k++){
+   int x=a.x+(int)((int64_t)(b.x-a.x)*k/(int)parts),y=a.y+(int)((int64_t)(b.y-a.y)*k/(int)parts);
+   out[at++]=(TNRPoint){(int16_t)x,(int16_t)y};
+  }
+ }
+ return at;
+}
+unsigned tnr_path_budget(TNRPoint *p,unsigned n,unsigned cap){
+ if(!p||n<2)return n;
+ if(cap<2)cap=2;
+ unsigned kept=n;
+ if(n>cap){
+  uint8_t *keep=malloc(n);
+  nm_span *stack=malloc((size_t)n*sizeof *stack);
+  if(!keep||!stack){free(keep);free(stack);return n;}
+  for(unsigned pass=0;pass<8&&kept>cap;pass++){
+   int64_t tol=8;for(unsigned k=0;k<pass;k++)tol*=4;
+   int64_t tol2=tol*tol;
+   memset(keep,0,n);keep[0]=1;keep[n-1]=1;kept=2;
+   unsigned top=0;stack[top++]=(nm_span){0,n-1};
+   while(top){
+    nm_span s=stack[--top];
+    int64_t ax=p[s.a].x,ay=p[s.a].y,dx=(int64_t)p[s.b].x-ax,dy=(int64_t)p[s.b].y-ay,den=dx*dx+dy*dy;
+    int64_t best=tol2;unsigned at=0;
+    for(unsigned i=s.a+1;i<s.b;i++){
+     int64_t ex=(int64_t)p[i].x-ax,ey=(int64_t)p[i].y-ay,num=ex*dx+ey*dy,cross=ex*dy-ey*dx,d;
+     if(num<=0)d=ex*ex+ey*ey; /* behind the first endpoint */
+     else if(num>=den){int64_t qx=(int64_t)p[i].x-p[s.b].x,qy=(int64_t)p[i].y-p[s.b].y;d=qx*qx+qy*qy;} /* beyond the last */
+     else d=cross*cross/den; /* squared perpendicular distance, no division by zero */
+     if(d>best){best=d;at=i;}
+    }
+    if(at&&top+2<=n){keep[at]=1;kept++;stack[top++]=(nm_span){s.a,at};stack[top++]=(nm_span){at,s.b};}
+   }
+  }
+  unsigned out=0;
+  if(kept<=cap){for(unsigned i=0;i<n;i++)if(keep[i])p[out++]=p[i];}
+  else{ /* adversarial fallback: even arc-length resample, endpoints kept, always bounded */
+   uint64_t total=0;for(unsigned i=1;i<n;i++)total+=length_qm(p[i-1],p[i]);
+   if(!total)total=1;
+   uint64_t acc=0,next=1;out=1;
+   for(unsigned i=1;i<n-1&&out<cap-1;i++){
+    acc+=length_qm(p[i-1],p[i]);
+    if(acc*(cap-1)>=next*total){p[out++]=p[i];next++;}
+   }
+   p[out++]=p[n-1];
+  }
+  free(keep);free(stack);
+  kept=out;
+ }
+ if(kept>=2&&kept<cap){
+  TNRPoint *dense=malloc((size_t)cap*sizeof *dense);
+  if(dense){
+   unsigned grown=nm_densify(p,kept,cap,dense);
+   if(grown>=2&&grown<=cap){memcpy(p,dense,(size_t)grown*sizeof *p);kept=grown;}
+   free(dense);
+  }
+ }
+ return kept;
 }
 size_t tnr_wrap(uint8_t *out,size_t cap,unsigned op,uint32_t sid,uint32_t seq,const uint8_t *body,size_t n){
  if(!out||!sid||!seq||cap<n+32||n+32>TNR_MAX_BYTES||!tnr_body_valid(op,body,n))return 0;memset(out,0,n+32);memcpy(out,"TNV1",4);out[4]=1;out[5]=(uint8_t)op;nm_p32(out+8,sid);nm_p32(out+12,seq);nm_p32(out+16,(uint32_t)n);if(n)memcpy(out+32,body,n);nm_p32(out+20,tn_crc(out,n+32));return n+32;

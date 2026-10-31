@@ -3,6 +3,7 @@
 #include "nav_map.h"
 #include <math.h>
 #include <float.h>
+#include <stdlib.h>
 static BOOL N(id v,double lo,double hi){return [v isKindOfClass:NSNumber.class]&&isfinite([v doubleValue])&&[v doubleValue]>=lo&&[v doubleValue]<=hi;}
 static BOOL LL(id p){return [p isKindOfClass:NSArray.class]&&[p count]==2&&N(p[0],-85,85)&&N(p[1],-180,180);}
 static void W16(uint8_t *p,unsigned x){p[0]=x;p[1]=x>>8;}static void W32(uint8_t *p,uint32_t x){W16(p,x);W16(p+2,x>>16);}
@@ -29,6 +30,28 @@ static NSArray *Simplify(NSArray *p){
  }
  NSMutableArray *out=[NSMutableArray new];[keep enumerateIndexesUsingBlock:^(NSUInteger i,BOOL *stop){[out addObject:p[i]];}];return out;
 }
+/* Highlighted-route budget: TNR_MAX_POINTS (768) is shared with the background
+ * roads, and a dense clipped route could still exceed it after the fixed 2 m
+ * Simplify above. The old selection then dropped the whole style==6 path, so
+ * the lens kept the START sketch. Reduce shape-preservingly down to a reserved
+ * slice instead; the C helper keeps both endpoints, so the first point stays
+ * behind the vehicle and tnr_route_base_qm()'s negative projection offset does
+ * not flip the marker behind the car. */
+static NSArray *Budget(NSArray *pts,NSUInteger cap){
+ if(pts.count<2)return pts;
+ NSUInteger room=MAX(pts.count,cap);TNRPoint *route=malloc(room*sizeof *route);if(!route)return pts;
+ for(NSUInteger i=0;i<pts.count;i++){route[i].x=(int16_t)[pts[i][0] intValue];route[i].y=(int16_t)[pts[i][1] intValue];}
+ unsigned kept=tnr_path_budget(route,(unsigned)pts.count,(unsigned)(cap<2?2:cap));
+ NSMutableArray *out=[NSMutableArray arrayWithCapacity:kept];
+ for(unsigned i=0;i<kept;i++)[out addObject:@[@(route[i].x),@(route[i].y)]];
+ free(route);return kept>=2?out:pts;
+}
+/* Same bounded Overpass query is retried on public mirrors in order; the
+ * session budget (_requests<=6, 60 s apart) still counts logical requests, not
+ * mirrors, so a dead primary cannot multiply user traffic (bounded 3 attempts
+ * per logical request, and the working mirror is remembered). */
+static NSArray<NSString *> *OverpassMirrors(void){return @[@"https://overpass-api.de/api/interpreter",@"https://overpass.kumi.systems/api/interpreter",@"https://overpass.private.coffee/api/interpreter"];}
+static NSString *Brief(NSString *text){return !text.length?@"网络或服务失败":text.length>72?[[text substringToIndex:72] stringByAppendingString:@"…"]:text;}
 static NSData *NameData(id value){
  NSString *name=Text(value);NSMutableString *s=[NSMutableString new];__block unsigned width=0;
  [name enumerateSubstringsInRange:NSMakeRange(0,name.length) options:NSStringEnumerationByComposedCharacterSequences usingBlock:^(NSString *c,NSRange r,NSRange all,BOOL *stop){
@@ -56,10 +79,11 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  NSArray *(^_convert)(double,double);NSArray *_features,*_bbox,*_origin,*_regions;double _labelHeading,_sceneAt;NSData *_scene,*_scene2;uint32_t _generation;id _segment;NSString *_note;
  unsigned _sceneRange,_labelRange;
  NSURLSession *_session;NSURLSessionDataTask *_task;NSMutableData *_received;NSTimeInterval _lastRequest;NSUInteger _requests,_epoch;BOOL _httpOK;
+ NSString *_query,*_bboxB64;NSUInteger _endpoint,_attempt;BOOL _sourceFailed;NSString *_sourceReason;
 }
-- (instancetype)initWithWGS84ToMap:(NSArray *(^)(double,double))convert{if((self=[super init])){_convert=[convert copy];_note=@"路网关闭 · 保留原路线示意图";}return self;}
+- (instancetype)initWithWGS84ToMap:(NSArray *(^)(double,double))convert{if((self=[super init])){_convert=[convert copy];_note=@"矢量小地图未开启 · 仅显示路线示意图";}return self;}
 - (NSString *)note{return _note?:@"";}
-- (void)reset{_epoch++;[_task cancel];[_session invalidateAndCancel];_task=nil;_session=nil;_received=nil;_regions=nil;_features=nil;_bbox=nil;_scene=nil;_scene2=nil;_origin=nil;_segment=nil;_requests=0;_lastRequest=0;self.allowNetwork=NO;_note=@"路网缓存已清理";}
+- (void)reset{_epoch++;[_task cancel];[_session invalidateAndCancel];_task=nil;_session=nil;_received=nil;_regions=nil;_features=nil;_bbox=nil;_scene=nil;_scene2=nil;_origin=nil;_segment=nil;_requests=0;_lastRequest=0;_query=nil;_bboxB64=nil;_endpoint=0;_attempt=0;_sourceFailed=NO;_sourceReason=nil;self.allowNetwork=NO;_note=@"路网缓存已清理";}
 - (void)dealloc{[_session invalidateAndCancel];}
 - (NSArray *)wgs:(NSArray *)map{
  if(!LL(map))return nil;if(!_convert)return map;
@@ -83,7 +107,8 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  return NO;
 }
 - (void)installFeatures:(NSArray *)features bbox:(NSArray *)bbox {
- if(!features.count||features.count>5000||bbox.count!=4)return;
+ /* 省级路网包 3×3 窗口可达数千路段（旧上限 5000 会让密集城区整包被判无效）。 */
+ if(!features.count||features.count>8000||bbox.count!=4)return;
  NSMutableArray *regions=[NSMutableArray arrayWithArray:_regions?:@[]];
  NSIndexSet *same=[regions indexesOfObjectsPassingTest:^BOOL(NSDictionary *r,NSUInteger i,BOOL *stop){return [r[@"bbox"] isEqual:bbox];}];[regions removeObjectsAtIndexes:same];
  [regions addObject:@{@"bbox":bbox,@"features":features}];while(regions.count>2)[regions removeObjectAtIndex:0];_regions=regions;
@@ -100,7 +125,7 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  if(![ll isKindOfClass:NSArray.class]||[ll count]!=2)return NO;
  NSArray *bbox=nil;NSString *province=nil;
  NSArray *features=[[TIORoadPackManager shared] featuresAtLat:[ll[0] doubleValue] lon:[ll[1] doubleValue] bbox:&bbox province:&province];
- if(!features||features.count>5000||![bbox isKindOfClass:NSArray.class]||bbox.count!=4)return NO; /* 单窗 >5000 路段视为异常包，不装 */
+ if(!features||features.count>8000||![bbox isKindOfClass:NSArray.class]||bbox.count!=4)return NO; /* 单窗 >8000 路段视为异常包，不装 */
  [self installFeatures:features bbox:bbox];
  _note=[NSString stringWithFormat:@"省际离线路网 · %@ · © OpenStreetMap",province.length?province:@"已下载省份"];
  return YES;
@@ -149,13 +174,21 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
   id j=[NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
   if(![j isKindOfClass:[NSDictionary class]])continue;
   NSArray *bbox=j[@"bbox"],*features=j[@"features"];
-  if(![bbox isKindOfClass:NSArray.class]||bbox.count!=4||![features isKindOfClass:NSArray.class]||!features.count||features.count>5000)continue;
+  if(![bbox isKindOfClass:NSArray.class]||bbox.count!=4||![features isKindOfClass:NSArray.class]||!features.count||features.count>8000)continue;
   if([self bbox:bbox contains:ll margin:0]){[self installFeatures:features bbox:bbox];_note=@"离线路网缓存 · © OpenStreetMap";return YES;}
  }
  return NO;
 }
 - (NSDictionary *)coverageStatus {
- return @{@"regions":@(_regions.count),@"features":@(_features.count),@"requests":@(_requests),@"networkAllowed":@(self.allowNetwork),@"requestInFlight":@(_task!=nil),@"requestLimit":@6};
+ /* state 把“为什么没有路网”分成四类，配合 note 给用户看的文案：
+  * unauthorized-no-pack / unauthorized-pack-uncovered（未授权联网）、
+  * no-pack（无省级包且图源没返回）、source-unavailable（图源不可用）、
+  * pack-uncovered（已下载包与离线缓存均未覆盖当前点）。 */
+ NSUInteger packs=[[TIORoadPackManager shared] downloadedCount];
+ NSString *state=!self.enabled?@"disabled":_task?@"loading":_features.count?@"ready":
+  self.allowNetwork?(_sourceFailed?@"source-unavailable":(packs?@"pack-uncovered":@"no-pack")):
+  (packs?@"unauthorized-pack-uncovered":@"unauthorized-no-pack");
+ return @{@"regions":@(_regions.count),@"features":@(_features.count),@"requests":@(_requests),@"networkAllowed":@(self.allowNetwork),@"requestInFlight":@(_task!=nil),@"requestLimit":@6,@"state":state,@"reason":self.note?:@"",@"packs":@(packs),@"sourceFailed":@(_sourceFailed)};
 }
 - (BOOL)hasVisibleLabelsAt:(NSArray *)position heading:(unsigned)heading {
  if(!_scene2||!_origin)return NO;
@@ -170,25 +203,46 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
 - (NSString *)fixturePath:(NSString *)name{return [NSBundle.mainBundle pathForResource:name ofType:@"json" inDirectory:@"TurboHUDMaps"];}
 - (BOOL)loadFixture:(NSArray *)ll{for(NSString *name in @[@"shenzhen",@"hongkong"]){NSString *p=[self fixturePath:name];NSData *d=p?[NSData dataWithContentsOfFile:p]:nil;if(!d||d.length>2*1024*1024)continue;NSDictionary *j=[NSJSONSerialization JSONObjectWithData:d options:0 error:nil];if(![j isKindOfClass:NSDictionary.class]||![j[@"meta"] isKindOfClass:NSDictionary.class]||![j[@"geojson"] isKindOfClass:NSDictionary.class])continue;NSArray *b=j[@"meta"][@"bbox"],*features=j[@"geojson"][@"features"];if(![b isKindOfClass:NSArray.class]||b.count!=4||![features isKindOfClass:NSArray.class]||features.count>5000)continue;BOOL valid=YES;for(id n in b)valid&=N(n,-180,180);if(!valid)continue;double lat=[ll[0] doubleValue],lon=[ll[1] doubleValue];if(lat<[b[0] doubleValue]||lat>[b[2] doubleValue]||lon<[b[1] doubleValue]||lon>[b[3] doubleValue])continue;[self installFeatures:features bbox:b];_note=@"公开区域离线路网 · © OpenStreetMap";return YES;}return NO;}
 - (void)request:(NSArray *)ll{
- NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;if(!self.allowNetwork||_task||_requests>=6||(_lastRequest&&now-_lastRequest<60))return;
+ NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;if(!self.allowNetwork||_task||_requests>=6||(_lastRequest&&now-_lastRequest<60)||![ll isKindOfClass:NSArray.class]||ll.count!=2)return;
  double lat=[ll[0] doubleValue],lon=[ll[1] doubleValue],dlat=.006,dlon=.006/MAX(.2,cos(lat*M_PI/180));
  NSArray *bbox=@[@(lat-dlat),@(lon-dlon),@(lat+dlat),@(lon+dlon)];
- NSString *query=[NSString stringWithFormat:@"[out:json][timeout:15][maxsize:16777216];way[highway](%.6f,%.6f,%.6f,%.6f);out tags geom;",lat-dlat,lon-dlon,lat+dlat,lon+dlon];
- NSString *encoded=[query stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLQueryAllowedCharacterSet];NSURL *url=[NSURL URLWithString:[@"https://overpass-api.de/api/interpreter?data=" stringByAppendingString:encoded]];
+ _query=[NSString stringWithFormat:@"[out:json][timeout:15][maxsize:16777216];way[highway](%.6f,%.6f,%.6f,%.6f);out tags geom;",lat-dlat,lon-dlon,lat+dlat,lon+dlon];
+ _bboxB64=[[NSJSONSerialization dataWithJSONObject:bbox options:0 error:nil] base64EncodedStringWithOptions:0];
+ _lastRequest=now;_requests++;_attempt=0;_sourceFailed=NO;_sourceReason=nil;[self attemptRequest];
+}
+/* One logical request: try the remembered mirror first, then the rest in order.
+ * A failed attempt does not consume the 6-request/60 s budget; the query text
+ * and rate limits are unchanged (<=3 bounded attempts, same UA/timeout/size). */
+- (void)attemptRequest{
+ NSArray<NSString *> *mirrors=OverpassMirrors();if(!_query.length||!_bboxB64.length||_attempt>=mirrors.count)return;
+ NSUInteger index=(_endpoint+_attempt)%mirrors.count;
+ NSString *encoded=[_query stringByAddingPercentEncodingWithAllowedCharacters:NSCharacterSet.URLQueryAllowedCharacterSet];
+ NSURL *url=[NSURL URLWithString:[mirrors[index] stringByAppendingFormat:@"?data=%@",encoded]];
+ if(!url||[url.scheme caseInsensitiveCompare:@"https"]!=NSOrderedSame){_attempt++;[self attemptRequest];return;}
  NSMutableURLRequest *r=[NSMutableURLRequest requestWithURL:url cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:22];[r setValue:@"TurboIO-TNR1-private-pilot/1.0" forHTTPHeaderField:@"User-Agent"];
  NSURLSessionConfiguration *c=NSURLSessionConfiguration.ephemeralSessionConfiguration;c.requestCachePolicy=NSURLRequestReloadIgnoringLocalCacheData;c.URLCache=nil;c.HTTPCookieStorage=nil;c.timeoutIntervalForResource=25;c.HTTPMaximumConnectionsPerHost=1;
- _session=[NSURLSession sessionWithConfiguration:c delegate:self delegateQueue:NSOperationQueue.mainQueue];_received=[NSMutableData new];_httpOK=NO;_task=[_session dataTaskWithRequest:r];_task.taskDescription=[[NSJSONSerialization dataWithJSONObject:bbox options:0 error:nil] base64EncodedStringWithOptions:0];
- _lastRequest=now;_requests++;_note=@"试验图源请求中（最多6次/会话，间隔60秒）";[_task resume];
+ _session=[NSURLSession sessionWithConfiguration:c delegate:self delegateQueue:NSOperationQueue.mainQueue];_received=[NSMutableData new];_httpOK=NO;
+ _task=[_session dataTaskWithRequest:r];_task.taskDescription=_bboxB64;
+ _note=[NSString stringWithFormat:@"试验图源请求中（镜像 %lu/%lu，最多6次/会话，间隔60秒）",(unsigned long)(_attempt+1),(unsigned long)mirrors.count];[_task resume];
 }
 - (void)URLSession:(NSURLSession *)s task:(NSURLSessionTask *)t willPerformHTTPRedirection:(NSHTTPURLResponse *)r newRequest:(NSURLRequest *)q completionHandler:(void(^)(NSURLRequest *))done{done(nil);}
 - (void)URLSession:(NSURLSession *)s dataTask:(NSURLSessionDataTask *)t didReceiveResponse:(NSURLResponse *)r completionHandler:(void(^)(NSURLSessionResponseDisposition))done{_httpOK=s==_session&&t==_task&&[(NSHTTPURLResponse *)r statusCode]==200&&r.expectedContentLength<=2*1024*1024;done(_httpOK?NSURLSessionResponseAllow:NSURLSessionResponseCancel);}
 - (void)URLSession:(NSURLSession *)s dataTask:(NSURLSessionDataTask *)t didReceiveData:(NSData *)d{if(s!=_session||t!=_task)return;if(d.length>2*1024*1024-_received.length){_httpOK=NO;[t cancel];return;}[_received appendData:d];}
 - (void)URLSession:(NSURLSession *)s task:(NSURLSessionTask *)t didCompleteWithError:(NSError *)error{
  if(s!=_session||t!=_task)return;NSData *data=_received;NSString *b64=t.taskDescription;BOOL ok=_httpOK&&!error;NSUInteger epoch=_epoch;_task=nil;_received=nil;_session=nil;[s finishTasksAndInvalidate];
- if(!ok){_note=@"图源不可用 · 不伪造道路，保留路线示意图";return;}
+ if(!ok){
+  if(_attempt+1<OverpassMirrors().count){_attempt++;[self attemptRequest];return;} /* next mirror, same logical query */
+  _sourceFailed=YES;_sourceReason=Brief(error?error.localizedDescription:(_httpOK?@"响应超限":@"未获得有效响应"));
+  _lastRequest=NSProcessInfo.processInfo.systemUptime; /* 冷却从失败结束算起，避免镜像轮询放大请求量 */
+  _endpoint=(_endpoint+1)%OverpassMirrors().count; /* next request starts at another mirror */
+  _note=[NSString stringWithFormat:@"图源不可用（%@）· 已试 %lu 个公开镜像 · 不伪造道路，保留路线示意图",_sourceReason,(unsigned long)OverpassMirrors().count];
+  return;
+ }
+ _endpoint=(_endpoint+_attempt)%OverpassMirrors().count; /* remember the working mirror */
+ _sourceFailed=NO;_sourceReason=nil;
  dispatch_async(dispatch_get_global_queue(QOS_CLASS_UTILITY,0),^{NSDictionary *j=[NSJSONSerialization JSONObjectWithData:data options:0 error:nil];NSMutableArray *features=[NSMutableArray new];NSUInteger points=0;
   if([j isKindOfClass:NSDictionary.class]&&[j[@"elements"] isKindOfClass:NSArray.class]&&[j[@"elements"] count]<=5000&&!j[@"remark"])for(NSDictionary *way in j[@"elements"]){if(![way isKindOfClass:NSDictionary.class]||![way[@"type"] isEqual:@"way"]||![way[@"geometry"] isKindOfClass:NSArray.class])continue;NSMutableArray *coords=[NSMutableArray new];for(id point in way[@"geometry"]){if(![point isKindOfClass:NSDictionary.class]||!N(point[@"lat"],-85,85)||!N(point[@"lon"],-180,180)){[coords removeAllObjects];break;}[coords addObject:@[point[@"lon"],point[@"lat"]]];if(++points>40000)break;}if(points>40000){[features removeAllObjects];break;}if(coords.count>=2){NSMutableDictionary *p=[way[@"tags"] isKindOfClass:NSDictionary.class]?[way[@"tags"] mutableCopy]:[NSMutableDictionary new];p[@"kind"]=@"road";[features addObject:@{@"properties":p,@"geometry":@{@"coordinates":coords,@"type":@"LineString"}}];}}
-  NSArray *bbox=[NSJSONSerialization JSONObjectWithData:[[NSData alloc]initWithBase64EncodedString:b64 options:0] options:0 error:nil];dispatch_async(dispatch_get_main_queue(),^{if(epoch!=self->_epoch)return;if(features.count&&bbox.count==4){[self installFeatures:features bbox:bbox];[self persistRegion:bbox features:features];self->_note=@"联网路网就绪 · 已缓存到本机 · © OpenStreetMap · 非高德底图";}else self->_note=@"图源格式或容量不合格 · 已拒绝";});
+  NSArray *bbox=[NSJSONSerialization JSONObjectWithData:[[NSData alloc]initWithBase64EncodedString:b64 options:0] options:0 error:nil];dispatch_async(dispatch_get_main_queue(),^{if(epoch!=self->_epoch)return;if(features.count&&bbox.count==4){self->_sourceFailed=NO;self->_sourceReason=nil;[self installFeatures:features bbox:bbox];[self persistRegion:bbox features:features];self->_note=@"联网路网就绪 · 已缓存到本机 · © OpenStreetMap · 非高德底图";}else{self->_sourceFailed=YES;self->_sourceReason=@"图源返回格式或容量不合格";self->_note=@"图源不可用（返回格式或容量不合格）· 不伪造道路，保留路线示意图";}});
  });
 }
 - (NSData *)scene:(NSArray *)coords origin:(NSArray *)origin range:(unsigned)range{
@@ -199,7 +253,24 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  }
  [items sortUsingComparator:^NSComparisonResult(id a,id b){return [a[@"rank"] compare:b[@"rank"]];}];
  NSMutableArray *route=[NSMutableArray new];for(NSArray *part in Pieces(coords,origin,nil,NO))if(part.count>=2)[route addObject:@{@"points":part,@"style":@6,@"flags":@0,@"layer":@8,@"rank":@0}];
- NSMutableArray *selected=[NSMutableArray new];NSUInteger points=0;for(NSDictionary *item in [route arrayByAddingObjectsFromArray:items]){NSArray *part=Simplify(item[@"points"]);if(selected.count>=TNR_MAX_PATHS||points+part.count>TNR_MAX_POINTS||16+8*(selected.count+1)+4*(points+part.count)+40*TNR_MAX_LABELS+12>TNR_MAX_BYTES-32)continue;points+=part.count;NSMutableDictionary *simple=[item mutableCopy];simple[@"points"]=part;[selected addObject:simple];}
+ NSMutableArray *selected=[NSMutableArray new];NSUInteger points=0;
+ /* The highlighted route must never be dropped by the shared point budget:
+  * reserve two thirds of TNR_MAX_POINTS for it and reduce a dense clipped
+  * polyline into that slice (endpoints preserved). Background roads then fill
+  * the remainder in rank order, so a long AMap route cannot starve the map. */
+ NSUInteger routeLeft=TNR_MAX_POINTS*2/3;
+ for(NSDictionary *item in route){
+  if(selected.count>=TNR_MAX_PATHS)break;
+  NSArray *part=Simplify(item[@"points"]);if(part.count<2||routeLeft<2)continue;
+  part=Budget(part,routeLeft); /* also re-densifies long chords for the firmware int32 projection */
+  if(part.count<2||part.count>routeLeft)continue;
+  routeLeft-=part.count;points+=part.count;NSMutableDictionary *simple=[item mutableCopy];simple[@"points"]=part;[selected addObject:simple];
+ }
+ for(NSDictionary *item in items){
+  NSArray *part=Simplify(item[@"points"]);if(part.count<2)continue;
+  if(selected.count>=TNR_MAX_PATHS||points+part.count>TNR_MAX_POINTS||16+8*(selected.count+1)+4*(points+part.count)+40*TNR_MAX_LABELS+12>TNR_MAX_BYTES-32)continue;
+  points+=part.count;NSMutableDictionary *simple=[item mutableCopy];simple[@"points"]=part;[selected addObject:simple];
+ }
  [selected sortUsingComparator:^NSComparisonResult(id a,id b){if([a[@"style"] intValue]==6||[b[@"style"] intValue]==6)return [a[@"style"] intValue]==[b[@"style"] intValue]?NSOrderedSame:[a[@"style"] intValue]==6?NSOrderedDescending:NSOrderedAscending;return [a[@"layer"] compare:b[@"layer"]];}];
  if(!selected.count||!points||_generation==UINT32_MAX)return nil;NSMutableData *out=[NSMutableData dataWithLength:16+8*selected.count+4*points];uint8_t *b=out.mutableBytes;W32(b,++_generation);W16(b+4,range);W16(b+6,(unsigned)selected.count);W16(b+8,(unsigned)points);NSUInteger at=16+8*selected.count;
  for(NSUInteger i=0;i<selected.count;i++){NSDictionary *r=selected[i];NSArray *part=r[@"points"];W16(b+16+8*i,(unsigned)part.count);b[18+8*i]=[r[@"style"] intValue];b[19+8*i]=[r[@"flags"] intValue];b[20+8*i]=(uint8_t)[r[@"layer"] intValue];for(NSArray *p in part){W16(b+at,[p[0] intValue]);W16(b+at+2,[p[1] intValue]);at+=4;}}
@@ -227,7 +298,11 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  return tnr_body_valid(TNR_SCENE,out.bytes,out.length)?out:nil;
 }
 - (NSDictionary *)decorate:(NSDictionary *)frame coordinates:(NSArray *)coords{
- if(!self.enabled||![frame[@"phase"] isEqual:@"navigating"]||coords.count<2||coords.count>512||!LL(frame[@"tnrLocation"])||!N(frame[@"tnrLocationAt"],0,DBL_MAX)||NSProcessInfo.processInfo.systemUptime-[frame[@"tnrLocationAt"] doubleValue]>4)return frame;
+ /* NavigationUI.drawRoute() hands over the whole AMap route (strided to <=4096
+  * points); scene: clips it to the +/-500 m render window with Pieces() and
+  * budgets the highlighted path there. Rejecting >512 whole-route points here
+  * used to skip every real route, leaving the lens on the START sketch. */
+ if(!self.enabled||![frame[@"phase"] isEqual:@"navigating"]||![coords isKindOfClass:NSArray.class]||coords.count<2||coords.count>4096||!LL(frame[@"tnrLocation"])||!N(frame[@"tnrLocationAt"],0,DBL_MAX)||NSProcessInfo.processInfo.systemUptime-[frame[@"tnrLocationAt"] doubleValue]>4)return frame;
  NSArray *position=frame[@"tnrLocation"];NSArray *wgs=[self wgs:position];if(!LL(wgs)){_note=@"坐标转换未收敛 · 不显示错位路网";return frame;}
  BOOL covered=[self covers:wgs];
  if(!covered)covered=[self loadPack:wgs];   /* 已下载省份：纯离线，优先级最高 */
@@ -237,8 +312,18 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  // region while a new request is queued, rate-limited, fails, or is parsing.
  // 已有省份包覆盖时不再向 Overpass 发请求（省流量也省图源限额）。
  if(![self hasCoverage:wgs margin:300]&&![[TIORoadPackManager shared] coversLat:[wgs[0] doubleValue] lon:[wgs[1] doubleValue]])[self request:wgs];
+ /* 用户可见的“为什么没路网”只有四种可执行原因；文案必须能区分，否则用户
+  * 只会看到“暂缺”而不知道该开授权、下省包还是换网络。 */
  if(covered)_note=_task?@"周边路网已显示 · 正在预取下一段":@"周边路网已就绪 · © OpenStreetMap";
- else _note=_task?@"正在加载周边道路 · 保留已知路网":self.allowNetwork?(_requests>=6?@"本次图源请求已达上限 · 仅显示已有道路":@"当前区域路网暂缺 · 保留已有道路"):@"未授权周边道路 · 仅显示已有道路";
+ else if(_task)_note=@"正在加载周边道路 · 保留已知路网";
+ else if(_requests>=6)_note=@"本次会话联网取路网已达 6 次上限 · 仅显示已有道路（重新进入导航可重置）";
+ else if(!self.allowNetwork){
+  NSUInteger packs=[[TIORoadPackManager shared] downloadedCount];
+  _note=packs?@"未授权联网取路网，且已下载省级包/离线缓存未覆盖当前点 · 仅显示已知道路"
+   :@"未授权联网取路网，且尚未下载任何省级路网包 · 仅显示路线示意图（可先在“省际路网包”下载）";
+ }else if(_sourceFailed)_note=[NSString stringWithFormat:@"图源不可用（%@）· 已试 %lu 个公开镜像 · 不伪造道路，保留路线示意图",_sourceReason?:@"网络或服务失败",(unsigned long)OverpassMirrors().count];
+ else if(![[TIORoadPackManager shared] downloadedCount])_note=@"无省级路网包，联网图源暂未返回可用数据 · 可先在“省际路网包”逐个下载";
+ else _note=@"已下载省级包与离线缓存均未覆盖当前点 · 仅显示已知道路";
  double now=NSProcessInfo.processInfo.systemUptime,heading=[frame[@"navHeading"] doubleValue],turn=fabs(fmod(heading-_labelHeading+540,360)-180);
  /* Adaptive zoom (2026-10-28 真机反馈): near an upcoming turn the map zooms
   * in for junction detail; on long straights it zooms out for context. Base
@@ -250,7 +335,11 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  if(turnM>0){if(turnM<=120)range=range*6/10;else if(turnM<=250)range=range*8/10;else if(turnM>=600)range=range*13/10;}
  if(range<180)range=180;if(range>700)range=700;
  BOOL zoom=_sceneRange&&(range>_sceneRange+60||_sceneRange>range+60);
- BOOL refreshNames=_features.count&&now-_sceneAt>=3&&(turn>=30||Distance(position,_origin?:position)>50||![self hasVisibleLabelsAt:position heading:(unsigned)heading]);
+ /* 无名路段区域 label 数恒为 0：不要因此每 3 秒重建整张 scene（长路线 + 8000
+  * 路段时这就是周期性卡顿）。只有确实存在 label 时才因不可见而重排。 */
+ const uint8_t *s2=_scene2.length>=16?(const uint8_t *)_scene2.bytes:NULL;
+ BOOL haveLabels=s2&&((unsigned)s2[10]+((unsigned)s2[11]<<8))>0;
+ BOOL refreshNames=_features.count&&now-_sceneAt>=3&&(turn>=30||Distance(position,_origin?:position)>50||(haveLabels&&![self hasVisibleLabelsAt:position heading:(unsigned)heading]));
  if(!_scene||!_origin||Distance(position,_origin)>100||![_segment isEqual:frame[@"segment"]]||zoom||refreshNames){
   _origin=position;_segment=frame[@"segment"];_labelHeading=heading;_sceneAt=now;_sceneRange=range;_scene=[self scene:coords origin:_origin range:range];
  }
