@@ -96,26 +96,29 @@ static NSUInteger CandMembers(void){NSArray *p=TIOOTACandidate()[@"payloadPins"]
         });
     });
 }
-// 官方直连路线：官方固件下载后即解压在 Library/Application Support/ota/<宿主目录>；
-// 把它逐个复制到 Documents/official-capture（house_arrest/爱思可导出），
-// TAP3 新基座原料不需要等「开始安装」。
+// 官方直连路线：官方固件下载后即解压在 Library/Application Support/ota/<版本目录>。
+// 目录名随固件版本变（Strix_OS_<版本>）——写死候选名会导出空目录（2026-10-31
+// 真机「导出是空的」实证），改为全量扫描 ota 树并保留相对路径。
 - (void)exportOfficialDirectory{
-    self.busy=YES;self.directoryStatus=@"正在导出官方解压目录到 Documents/official-capture…";[self.tableView reloadData];
-    NSURL *directory=[NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Library/Application Support/ota/%@",TIOOTAOfficialDirectoryName()]] isDirectory:YES];
+    self.busy=YES;self.directoryStatus=@"正在导出官方固件到 Documents/official-capture…";[self.tableView reloadData];
+    NSString *otaRoot=[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/ota"];
     dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED,0),^{
         NSString *dest=[NSHomeDirectory() stringByAppendingPathComponent:@"Documents/official-capture"];
         [NSFileManager.defaultManager createDirectoryAtPath:dest withIntermediateDirectories:YES attributes:nil error:nil];
-        NSArray *names=[[NSFileManager.defaultManager contentsOfDirectoryAtPath:directory.path error:nil] sortedArrayUsingSelector:@selector(compare:)];
-        NSUInteger copied=0,bytes=0;
-        for(NSString *name in names){
-            if(!name.length||[name hasPrefix:@"."])continue;
-            NSString *src=[directory.path stringByAppendingPathComponent:name],*dst=[dest stringByAppendingPathComponent:name];
+        NSMutableArray *found=[NSMutableArray new];NSUInteger copied=0,bytes=0;
+        NSDirectoryEnumerator *it=[NSFileManager.defaultManager enumeratorAtPath:otaRoot];
+        for(NSString *rel in it){
+            NSString *src=[otaRoot stringByAppendingPathComponent:rel];
             NSDictionary *attr=[NSFileManager.defaultManager attributesOfItemAtPath:src error:nil];
             if(![attr[NSFileType] isEqual:NSFileTypeRegular])continue;
+            unsigned long long size=[attr[NSFileSize] unsignedLongLongValue];if(size>512*1024*1024)continue;
+            NSString *dst=[dest stringByAppendingPathComponent:rel];
+            [NSFileManager.defaultManager createDirectoryAtPath:[dst stringByDeletingLastPathComponent] withIntermediateDirectories:YES attributes:nil error:nil];
             [NSFileManager.defaultManager removeItemAtPath:dst error:nil];
-            if([NSFileManager.defaultManager copyItemAtPath:src toPath:dst error:nil]){copied++;bytes+=(NSUInteger)[attr[NSFileSize] unsignedLongLongValue];}
+            if([NSFileManager.defaultManager copyItemAtPath:src toPath:dst error:nil]){copied++;bytes+=(NSUInteger)size;if(found.count<24)[found addObject:rel];}
         }
-        dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;self.directoryStatus=copied?[NSString stringWithFormat:@"已导出 %lu 个文件 · %lu 字节 → Documents/official-capture\n用爱思「文件管理」打开本 App 的 Documents，把 official-capture 整个导出到电脑后发给 AI。",(unsigned long)copied,(unsigned long)bytes]:@"未导出任何文件：官方解压目录为空（先在官方页完成下载）。";[self.tableView reloadData];});
+        NSString *seen=found.count?[NSString stringWithFormat:@"\n找到：%@",[found componentsJoinedByString:@"、"]]:@"";
+        dispatch_async(dispatch_get_main_queue(),^{self.busy=NO;self.directoryStatus=copied?[NSString stringWithFormat:@"已导出 %lu 个文件 · %lu 字节 → Documents/official-capture%@\n在「文件」App 里长按 official-capture → 压缩 → 分享到微信/飞书，发到电脑。",(unsigned long)copied,(unsigned long)bytes,seen]:[NSString stringWithFormat:@"ota 目录下没有找到任何文件%@——先在官方页完成「下载」再试；若仍为空，把这行截图发给 AI。",seen];[self.tableView reloadData];});
     });
 }
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)path{
