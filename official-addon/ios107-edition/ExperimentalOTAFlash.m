@@ -38,6 +38,16 @@ static BOOL Number(id n,NSUInteger *out){
     if(![n isKindOfClass:NSNumber.class]||CFGetTypeID((__bridge CFTypeRef)n)==CFBooleanGetTypeID()||CFNumberIsFloatType((__bridge CFNumberRef)n)||[n longLongValue]<0)return NO;
     uint64_t v=[n unsignedLongLongValue];if(v>UINT32_MAX)return NO;*out=(NSUInteger)v;return YES;
 }
+/* 僵死会话判定（2026-10-31 真机三连败教训）：安装中断后 stage 停在 2/3 且无
+ * 回落，同一 App 会话内重新授权被拒、新安装首帧被拒——只能重启 App。判据：
+ * stage==3（毒化）永远可复位；授权窗（900 秒）已过可复位；stage==2 且 120 秒
+ * 无任何帧（健康传输的分片间隔远小于此）可复位。复位入口只有显式重新授权
+ * （用户动作），安装帧自身永不自动复活会话。 */
+static BOOL DeadSession(NSUInteger stage,NSTimeInterval last,NSTimeInterval deadline,NSTimeInterval now){
+    if(stage==3)return YES;
+    if(isfinite(deadline)&&isfinite(now)&&now>=deadline)return YES;
+    return stage==2&&isfinite(last)&&isfinite(now)&&now-last>120;
+}
 static BOOL Var(const uint8_t *b,NSUInteger n,NSUInteger *at,uint64_t *v){*v=0;for(unsigned i=0;i<5;i++){if(*at>=n)return NO;uint8_t x=b[(*at)++];if(i==4&&(x&0xf0))return NO;*v|=(uint64_t)(x&127)<<(i*7);if(!(x&128))return i==0||x!=0;}return NO;}
 NSDictionary *TIOOTAFrame(NSData *data){
     if(![data isKindOfClass:NSData.class]||data.length<4||data.length>65536)return nil;
@@ -63,7 +73,10 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
 }
 - (BOOL)prepareDirectory:(NSURL *)directory device:(NSString *)device uptime:(NSTimeInterval)now error:(NSError **)error{
     @synchronized(self){
-        if(_stage||![device isKindOfClass:NSString.class]||!device.length||device.length>200||!isfinite(now)||now<0){Error(error,@"当前不是可授权状态或没有有效设备；未开放。");return NO;}
+        if((_stage&&!DeadSession(_stage,_lastActivity,_deadline,now))||![device isKindOfClass:NSString.class]||!device.length||device.length>200||!isfinite(now)||now<0){Error(error,@"当前不是可授权状态或没有有效设备；未开放。");return NO;}
+        /* 僵死会话（stage 粘 2/3、授权窗已过、或 120 秒无帧）随重新授权复位并
+         * 重冻结——不重启 App 也能再战；活跃会话仍不可覆盖。 */
+        if(_stage){_stage=0;_files=nil;_manifest=nil;_device=nil;_deadline=0;_versionSent=NO;_manifestSent=NO;_failure=nil;_slices=0;_bytes=0;}
         NSDictionary *files=TIOCopyExperimentalOTAPayloads(directory,error);if(!files)return NO;
         /* 清单负载数随候选底座走（TAP1/1.0.4.12=14，TAP2/1.0.5.5=15 含新增
          * bt_controller.bin），从 payloadPins 派生而非写死。2026-10-27 真机：
@@ -142,7 +155,13 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
     }
 }
 - (BOOL)cancel{@synchronized(self){if(_stage>=2)return NO;_stage=0;_files=nil;_manifest=nil;_device=nil;_deadline=0;return YES;}}
-- (NSDictionary *)status{@synchronized(self){if(_stage&&isfinite(_deadline)&&NSProcessInfo.processInfo.systemUptime>=_deadline){if(_stage<2)[self cancel];else{_stage=3;_failure=[_failure length]?_failure:@"会话超时自动收尾";}}return @{@"stage":@(_stage),@"authorized":@(_stage==1||_stage==2),@"started":@(_stage>=2),@"versionMatched":@(_versionSent),@"manifestMatched":@(_manifestSent),@"validatedSlices":@(_slices),@"validatedSliceBytes":@(_bytes),@"lastActivity":@(_lastActivity),@"captureFiles":@(_captureFiles.count),@"captureBytes":@(_captureBytes),@"failure":_failure?:@"",@"runtimeValidated":@NO};}}
+- (NSDictionary *)status{@synchronized(self){NSTimeInterval realNow=NSProcessInfo.processInfo.systemUptime;
+        if(_stage==1&&isfinite(_deadline)&&realNow>=_deadline)[self cancel];
+        /* stage 2 到期收尾必须同时要求 120 秒无帧：17MB 全量在低速链路上可超
+         * 900 秒，仅凭到期就毒化会杀死仍在健康传输中的安装（2026-10-31）。 */
+        else if(_stage==2&&isfinite(_deadline)&&realNow>=_deadline&&isfinite(_lastActivity)&&realNow-_lastActivity>120){_stage=3;_failure=[_failure length]?_failure:@"会话超时自动收尾";}
+        BOOL dead=_stage>=2&&DeadSession(_stage,_lastActivity,_deadline,realNow);
+        return @{@"stage":@(_stage),@"authorized":@(_stage==1||_stage==2),@"started":@(_stage>=2),@"versionMatched":@(_versionSent),@"manifestMatched":@(_manifestSent),@"validatedSlices":@(_slices),@"validatedSliceBytes":@(_bytes),@"lastActivity":@(_lastActivity),@"captureFiles":@(_captureFiles.count),@"captureBytes":@(_captureBytes),@"failure":_failure?:@"",@"dead":@(dead),@"runtimeValidated":@NO};}}
 @end
 BOOL TIOOTAFlashBuild(void){
 #if TARGET_OS_IPHONE && TIO_OTA_FLASH_ENABLED

@@ -13,18 +13,31 @@ int main(int argc,const char **argv){@autoreleasepool{
     NSDictionary *files=TIOCopyExperimentalOTAPayloads(dir,nil);assert(files.count==16);NSArray *manifest=[NSJSONSerialization JSONObjectWithData:files[@"OtaFileInfo.json"] options:0 error:nil];
     for(NSDictionary *row in manifest)if([row[@"Name"] isEqual:@"nuttx_ap.bin"]){assert([row[@"Md5"] isEqual:@"d7e88db2e1ad22651c775ec8f4740d0e"]);assert([row[@"Size"] unsignedIntegerValue]==7408584);}
     NSData *start=F(4,@{@"Mode":@2},nil),*version=F(5,@{@"OtaVersion":@"Strix OS 1.0.5.5"},nil),*info=F(6,manifest,nil);
-    TIOOTAFlashGate *g=[TIOOTAFlashGate new];assert(![g allows:start device:@"TEST_DEVICE" uptime:10]);assert(![g allows:info device:@"TEST_DEVICE" uptime:10]);
+    /* 2026-10-30 官方直连路线：未武装会话放行并逐片截获官方安装流量
+     * （captureFiles 计数可见）；只有畸形分片（路径穿越/长度不符）仍拒。
+     * 旧「未授权全拒」断言随之改写。 */
+    TIOOTAFlashGate *g=[TIOOTAFlashGate new];assert([g allows:start device:@"TEST_DEVICE" uptime:10]);assert([g allows:F(6,nil,nil) device:@"TEST_DEVICE" uptime:10]);
     assert([g allows:F(1,nil,nil) device:@"TEST_DEVICE" uptime:10]);assert([g allows:F(2,nil,nil) device:@"TEST_DEVICE" uptime:10]);assert([g allows:F(3,@{@"OtaSize":@8842896},nil) device:@"TEST_DEVICE" uptime:10]);
-    // Regression: the real official failure recovery asks idle with type 11.
-    // A blocked Mode 2 start must not prevent this harmless recovery query.
-    assert([g.status[@"failure"] length]>0);
-    assert([g allows:F(11,nil,nil) device:@"TEST_DEVICE" uptime:10]);
-    assert(![g allows:F(11,@{@"Mode":@2},nil) device:@"TEST_DEVICE" uptime:10]);
-    assert(![g allows:F(11,nil,[NSData dataWithBytes:"x" length:1]) device:@"TEST_DEVICE" uptime:10]);
-    for(NSUInteger t=4;t<256;t++)if(t!=11)assert(![g allows:F(t,nil,nil) device:@"TEST_DEVICE" uptime:10]);
-    g=Ready(dir);assert(![g allows:start device:@"OTHER_DEVICE" uptime:11]);assert(![g allows:F(4,@{@"Mode":@1},nil) device:@"TEST_DEVICE" uptime:11]);assert([g cancel]);assert(![g allows:start device:@"TEST_DEVICE" uptime:11]);
+    assert([g allows:F(11,@{@"Mode":@2},nil) device:@"TEST_DEVICE" uptime:10]);
+    assert([g allows:F(11,nil,[NSData dataWithBytes:"x" length:1]) device:@"TEST_DEVICE" uptime:10]);
+    for(NSUInteger t=4;t<256;t++)if(t!=7)assert([g allows:F(t,nil,nil) device:@"TEST_DEVICE" uptime:10]);
+    assert(![g allows:F(7,@{@"Name":@"../nuttx_ap.bin",@"Start":@0,@"Size":@1},[NSData dataWithBytes:"x" length:1]) device:@"TEST_DEVICE" uptime:10]);
+    assert(![g allows:F(7,@{@"Name":@"nuttx_ap.bin",@"Start":@0,@"Size":@2},[NSData dataWithBytes:"x" length:1]) device:@"TEST_DEVICE" uptime:10]);
+    assert([g allows:F(7,@{@"Name":@"nuttx_ap.bin",@"Start":@0,@"Size":@1},[NSData dataWithBytes:"x" length:1]) device:@"TEST_DEVICE" uptime:10]);
+    assert([g.status[@"captureFiles"] unsignedIntegerValue]==1);assert([g.status[@"failure"] length]==0);
+    g=Ready(dir);assert(![g allows:start device:@"OTHER_DEVICE" uptime:11]);assert(![g allows:F(4,@{@"Mode":@1},nil) device:@"TEST_DEVICE" uptime:11]);assert([g cancel]);/* 撤销后未武装：官方重试 Mode 帧按 2026-10-30 截获路线放行 */assert([g allows:start device:@"TEST_DEVICE" uptime:11]);
     g=Ready(dir);assert(![g allows:start device:@"TEST_DEVICE" uptime:910]);assert(![g.status[@"authorized"] boolValue]);
     g=Ready(dir);assert([g allows:start device:@"TEST_DEVICE" uptime:11]);assert(![g cancel]);assert(![g allows:info device:@"TEST_DEVICE" uptime:12]);assert([g.status[@"stage"] intValue]==3);
+    /* 2026-10-31 僵死会话复位：安装中断后 stage 粘 2/3 且无回落，同一 App 会话
+     * 内重新授权必须能复位（活跃会话——120 秒内有帧——仍不可覆盖）。 */
+    g=Ready(dir);assert([g allows:start device:@"TEST_DEVICE" uptime:11]);assert([g allows:version device:@"TEST_DEVICE" uptime:12]);
+    assert(![g prepareDirectory:dir device:@"TEST_DEVICE" uptime:13 error:nil]);
+    assert([g prepareDirectory:dir device:@"TEST_DEVICE" uptime:200 error:nil]);
+    assert([g allows:start device:@"TEST_DEVICE" uptime:201]);assert([g allows:version device:@"TEST_DEVICE" uptime:202]);
+    g=Ready(dir);assert([g allows:start device:@"TEST_DEVICE" uptime:11]);assert(![g allows:info device:@"TEST_DEVICE" uptime:12]);assert([g.status[@"stage"] intValue]==3);
+    assert([g.status[@"dead"] boolValue]);assert([g prepareDirectory:dir device:@"TEST_DEVICE" uptime:13 error:nil]);
+    assert([g allows:start device:@"TEST_DEVICE" uptime:14]);
+    g=Ready(dir);assert([g prepareDirectory:dir device:@"TEST_DEVICE" uptime:1000 error:nil]);assert([g allows:start device:@"TEST_DEVICE" uptime:1001]);
     g=Ready(dir);assert([g allows:start device:@"TEST_DEVICE" uptime:11]);assert([g allows:version device:@"TEST_DEVICE" uptime:12]);assert([g allows:info device:@"TEST_DEVICE" uptime:13]);
     NSUInteger slices=0,total=0;
     for(NSDictionary *row in manifest){NSString *name=row[@"Name"];NSData *file=files[name];for(NSUInteger at=0;at<file.length;at+=51200){NSUInteger size=MIN((NSUInteger)51200,file.length-at);NSData *part=[file subdataWithRange:NSMakeRange(at,size)];assert([g allows:F(7,@{@"Name":name,@"Start":@(at),@"Size":@(size)},part) device:@"TEST_DEVICE" uptime:20]);slices++;total+=size;}}
@@ -46,5 +59,5 @@ int main(int argc,const char **argv){@autoreleasepool{
     }
     NSMutableData *dup=[start mutableCopy];V(dup,16);V(dup,4);assert(!TIOOTAFrame(dup));assert(!TIOOTAFrame([NSData dataWithBytes:"\x08\x81\x00\x10\x04" length:5]));
     assert(!TIOOTAFlashBuild());assert(!TIOOTAFlashProtected());assert(!TIOOTAFlashAuthorize(nil));
-    NSLog(@"PASS: closed by default, 900s grant, device binding, Mode 2 only, version/manifest ordering, all %lu slices (%lu bytes) match frozen TMG2, old AP MD5 and changed chunks rejected; no device IO",(unsigned long)slices,(unsigned long)total);
+    NSLog(@"PASS: unarmed captures official frames (2026-10-30) with malformed slices rejected, 900s grant, device binding, Mode 2 only, version/manifest ordering, all %lu slices (%lu bytes) match frozen TMG2, old AP MD5 and changed chunks rejected, dead stage-2/3 sessions reset by re-authorize; no device IO",(unsigned long)slices,(unsigned long)total);
 }return 0;}
