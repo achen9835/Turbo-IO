@@ -72,8 +72,8 @@ void stream_canvas_set_buffer(void *p,void *b,int32_t w,int32_t h,uint8_t color)
 uint32_t stream_stride(uint32_t w,uint8_t color){assert(color==6);return w;}
 void *stream_display_next(void *p){return p?NULL:(void *)(uintptr_t)0x18002000;}
 bool tdp_test_read_word(uint32_t a,uint32_t *v){
- if(a==0x184d4440+0x124){*v=0x18001000;return true;}
- if(a==0x18001000+12){*v=0x10428d89;return true;}
+ if(a==0x184ec384+0x124){*v=0x18001000;return true;}
+ if(a==0x18001000+12){*v=0x10440cf1;return true;}
  if(a==0x18001000+24){*v=busy?1:0;return true;}
  if(a==0x18001000||a==0x18002000+0x2a0){*v=0;return true;}
  assert(0);return false;

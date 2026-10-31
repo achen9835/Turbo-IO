@@ -21,7 +21,7 @@ ti_rpmsg_entry:
  sub sp,#0x40
  ldr.w pc,1f
  .balign 4
-1: .word 0x104e7e81
+1: .word 0x104e9241
 .size ti_rpmsg_entry,.-ti_rpmsg_entry
 .macro body name,literal,resume
 .section .text.\name,"ax",%progbits
@@ -37,5 +37,5 @@ ti_rpmsg_entry:
 .size \name,.-\name
 .endm
 /* Literal values are checked against the sealed stock image in build.py. */
-body ti_stock_start,0x196988bc,0x104e8ee1
-body ti_stock_stop,0x19698884,0x104e8f4d
+body ti_stock_start,0x1959a7b4,0x104ea2a1
+body ti_stock_stop,0x1959a77c,0x104ea30d

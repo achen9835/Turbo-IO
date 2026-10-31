@@ -131,7 +131,7 @@ void m8_hook_message(void *handler,const TIONativeMessage *message) {
   if(!tio_native_message_is_ours(message)){stock_message(handler,message);return;}
   /* Only called by native Launcher handler on its LVGL timer. Obtain the
    * CURRENT owner on this executor; no pointer was captured by the RX thread. */
-  void *launcher=*(void **)(uintptr_t)0x19971594;
+  void *launcher=*(void **)(uintptr_t)0x19989694;
   void *manager=launcher?ptr(launcher,0x3c):NULL;
   void *app=manager?ptr(manager,0x10):NULL;
   TIONativePage *page=app?tail(app)->page:NULL;

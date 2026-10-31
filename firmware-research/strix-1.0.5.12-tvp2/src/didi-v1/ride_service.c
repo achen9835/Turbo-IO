@@ -27,7 +27,7 @@ extern void nav_release_always_on(const char *,uint32_t),nav_screen_on(bool),nav
 extern unsigned native_event_code(void *),native_event_key(void *);
 extern const M8RenderAPI m8_native_api;
 static void *ptr(void *p,unsigned o){return p?*(void **)((uint8_t *)p+o):NULL;}
-static void *manager(void){return ptr(*(void **)(uintptr_t)0x19971594,0x3c);}
+static void *manager(void){return ptr(*(void **)(uintptr_t)0x19989694,0x3c);}
 static TNNavSlot *navslot(void *a){return a?((M8NativeTail *)((uint8_t *)a+TIO_STOCK_MENU_BYTES))->navigation:NULL;}
 static bool home(void){const char *s=nav_top_app();static const char name[]="com.rayneo.liteos.launcher";if(!s)return false;for(unsigned i=0;i<sizeof name;i++)if(s[i]!=name[i])return false;void *m=nav_monitors(),*i=m?nav_input(m):NULL;return i&&!nav_folded(i)&&dots_business_idle();}
 static bool paired(void){void *m=nav_monitors(),*l=m?nav_link(m):NULL;return l&&nav_bonded(l)&&nav_connection(0x80)!=0;}

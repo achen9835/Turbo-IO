@@ -38,7 +38,7 @@ extern int dots_getrandom(void *,unsigned,unsigned);
 extern void dots_stock_notify(void *,unsigned);
 static void tick(void *);
 static void *ptr(void *p,unsigned offset){return p?*(void **)((uint8_t *)p+offset):NULL;}
-static void *manager(void){return ptr(*(void **)(uintptr_t)0x19971594,0x3c);}
+static void *manager(void){return ptr(*(void **)(uintptr_t)0x19989694,0x3c);}
 static TNNavSlot *slot(void *p){return p?((M8NativeTail *)((uint8_t *)p+TIO_STOCK_MENU_BYTES))->navigation:NULL;}
 static bool paired(void){void *m=nav_monitors(),*l=m?nav_link(m):NULL;return l&&nav_bonded(l)&&nav_connection(0x80)!=0;}
 static bool home(void){const char *name=nav_top_app();void *m=nav_monitors(),*i=m?nav_input(m):NULL;return name&&!strcmp(name,"com.rayneo.liteos.launcher")&&i&&!nav_folded(i)&&ce_extension_idle();}

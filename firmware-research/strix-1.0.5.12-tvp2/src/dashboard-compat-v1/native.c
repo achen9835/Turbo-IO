@@ -1,4 +1,4 @@
-/* 1.0.5.5 compatibility adapter. All entry points and timer run on launcher UI.
+/* 1.0.5.12 compatibility adapter. All entry points and timer run on launcher UI.
  * A2UI worker completion writes only atomic flags; it never calls LVGL, RNLink
  * or file operations. Stock owns its content store and all native widgets. */
 #include "compat.h"

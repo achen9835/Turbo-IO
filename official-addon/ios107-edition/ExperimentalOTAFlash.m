@@ -95,16 +95,17 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
     return [@[@1,@2,@11] containsObject:@(type)]&&[frame[@"json"] isEqual:@{}]&&[frame[@"binary"] length]==0;
 }
 @implementation TIOOTAFlashGate{
-    NSDictionary<NSString *,NSData *> *_files;NSArray *_manifest;NSString *_device,*_failure;
-    NSTimeInterval _deadline,_lastActivity;NSUInteger _stage,_slices,_bytes,_captureCount,_captureBytes;BOOL _versionSent,_manifestSent;
+    NSDictionary<NSString *,NSData *> *_files;NSArray *_manifest;NSString *_device,*_failure,*_readbackDevice;
+    NSTimeInterval _deadline,_lastActivity,_versionReadAt,_idleReadAt,_runtimeAt;NSUInteger _stage,_slices,_bytes,_captureCount,_captureBytes;BOOL _versionSent,_manifestSent,_runtimeValidated;
     NSMutableDictionary<NSString *,NSMutableData *> *_captureFiles;NSArray *_captureSizes;
+    NSMutableDictionary<NSString *,NSMutableArray<NSValue *> *> *_coverage;
 }
 - (BOOL)prepareDirectory:(NSURL *)directory device:(NSString *)device uptime:(NSTimeInterval)now error:(NSError **)error{
     @synchronized(self){
         if((_stage&&!DeadSession(_stage,_lastActivity,_deadline,now))||![device isKindOfClass:NSString.class]||!device.length||device.length>200||!isfinite(now)||now<0){Error(error,@"当前不是可授权状态或没有有效设备；未开放。");return NO;}
         /* 僵死会话（stage 粘 2/3、授权窗已过、或 120 秒无帧）随重新授权复位并
          * 重冻结——不重启 App 也能再战；活跃会话仍不可覆盖。 */
-        if(_stage){_stage=0;_files=nil;_manifest=nil;_device=nil;_deadline=0;_versionSent=NO;_manifestSent=NO;_failure=nil;_slices=0;_bytes=0;}
+        if(_stage){_stage=0;_files=nil;_manifest=nil;_device=nil;_deadline=0;_versionSent=NO;_manifestSent=NO;_failure=nil;_slices=0;_bytes=0;_coverage=nil;_readbackDevice=nil;_versionReadAt=_idleReadAt=_runtimeAt=0;_runtimeValidated=NO;}
         NSDictionary *files=TIOCopyExperimentalOTAPayloads(directory,error);if(!files)return NO;
         /* 清单负载数随候选底座走（TAP1/1.0.4.12=14，TAP2/1.0.5.5=15 含新增
          * bt_controller.bin），从 payloadPins 派生而非写死。2026-10-27 真机：
@@ -116,7 +117,7 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
             NSString *actual=@"非清单结构";
             if([manifest isKindOfClass:NSArray.class])actual=[NSString stringWithFormat:@"%lu 项",(unsigned long)[manifest count]];
             Error(error,[NSString stringWithFormat:@"官方解压目录清单负载数不符：候选要求 %lu 项，实际 %@。未授权。",(unsigned long)expected,actual]);return NO;}
-        _files=files;_manifest=manifest;_device=[device copy];_deadline=now+900;_stage=1;_failure=nil;return YES;
+        _files=files;_manifest=manifest;_device=[device copy];_readbackDevice=[device copy];_coverage=[NSMutableDictionary new];_versionReadAt=_idleReadAt=_runtimeAt=0;_runtimeValidated=NO;_deadline=now+900;_stage=1;_failure=nil;return YES;
     }
 }
 // 官方直连路线的逐片截获：收齐一个负载（按清单 Size 判定）即写入
@@ -132,6 +133,53 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
         [buf writeToFile:[dir stringByAppendingPathComponent:name] options:NSDataWritingAtomic error:nil];
     }
     if(_captureSizes){NSData *manifest=[NSJSONSerialization dataWithJSONObject:_captureSizes options:NSJSONWritingPrettyPrinted error:nil];if(manifest.length)[manifest writeToFile:[dir stringByAppendingPathComponent:@"OtaFileInfo.json"] options:NSDataWritingAtomic error:nil];}
+}
+- (void)recordCoverage:(NSString *)name start:(NSUInteger)start size:(NSUInteger)size{
+    if(!_coverage)_coverage=[NSMutableDictionary new];
+    if(!_coverage[name])_coverage[name]=[NSMutableArray new];
+    [_coverage[name] addObject:[NSValue valueWithRange:NSMakeRange(start,size)]];
+}
+- (NSArray *)coverageStatus{
+    NSMutableArray *report=[NSMutableArray new];
+    for(NSString *name in [_coverage.allKeys sortedArrayUsingSelector:@selector(compare:)]){
+        NSArray *ranges=[_coverage[name] sortedArrayUsingComparator:^NSComparisonResult(NSValue *a,NSValue *b){
+            NSRange x=a.rangeValue,y=b.rangeValue;return x.location<y.location?NSOrderedAscending:x.location>y.location?NSOrderedDescending:NSOrderedSame;}];
+        NSMutableArray *merged=[NSMutableArray new];NSUInteger covered=0;
+        for(NSValue *value in ranges){
+            NSRange range=value.rangeValue;
+            if(!merged.count){[merged addObject:[NSValue valueWithRange:range]];continue;}
+            NSRange last=[merged.lastObject rangeValue];NSUInteger end=NSMaxRange(last);
+            if(range.location<=end){merged[merged.count-1]=[NSValue valueWithRange:NSMakeRange(last.location,MAX(end,NSMaxRange(range))-last.location)];}
+            else{[merged addObject:[NSValue valueWithRange:range]];}
+        }
+        NSMutableArray *spans=[NSMutableArray new];
+        for(NSValue *value in merged){NSRange range=value.rangeValue;covered+=range.length;[spans addObject:@{@"Start":@(range.location),@"Size":@(range.length)}];}
+        NSUInteger total=_files[name].length;
+        BOOL complete=total>0&&covered==total&&merged.count==1&&[merged.firstObject rangeValue].location==0&&NSMaxRange([merged.firstObject rangeValue])==total;
+        [report addObject:@{@"Name":name,@"coveredBytes":@(covered),@"totalBytes":@(total),@"complete":@(complete),@"ranges":spans}];
+    }
+    return report;
+}
+- (BOOL)freshReadback:(NSTimeInterval)now{
+    return isfinite(now)&&now>=0&&[_readbackDevice isEqual:_device]&&_versionReadAt>0&&_idleReadAt>0&&now>=_versionReadAt&&now>=_idleReadAt&&now-_versionReadAt<=120&&now-_idleReadAt<=120;
+}
+- (void)observe:(NSData *)payload device:(NSString *)device uptime:(NSTimeInterval)now{
+    @synchronized(self){
+        if(!_stage||![device isEqual:_device]||!isfinite(now)||now<0)return;
+        NSDictionary *f=TIOOTAFrame(payload);id j=f[@"json"];NSUInteger type=[f[@"type"] unsignedIntegerValue];
+        if(![j isKindOfClass:NSDictionary.class]||[f[@"binary"] length])return;
+        if(type==1){
+            _versionReadAt=0;
+            if(TIOOTAAcceptsReadback(j[@"OsVersion"])&&[j[@"OtaValidationConfirmed"] isEqual:@YES]){_readbackDevice=[device copy];_versionReadAt=now;}
+        }else if(type==11){_idleReadAt=[j[@"Result"] isEqual:@YES]?now:0;}
+    }
+}
+- (BOOL)confirmRuntimeAt:(NSTimeInterval)now error:(NSError **)error{
+    @synchronized(self){
+        if(_stage<2){Error(error,@"尚未开始安装，不能记录刷后运行验收。");return NO;}
+        if(![self freshReadback:now]){Error(error,@"需要同一眼镜两分钟内的版本与空闲回执；请先回官方固件页重新检查。");return NO;}
+        _runtimeValidated=YES;_runtimeAt=now;return YES;
+    }
 }
 - (BOOL)allows:(NSData *)payload device:(NSString *)device uptime:(NSTimeInterval)now{
     @synchronized(self){
@@ -176,13 +224,13 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
             NSUInteger start=0,size=0;NSString *name=dict?j[@"Name"]:nil;NSData *file=[name isKindOfClass:NSString.class]?_files[name]:nil;
             ok=ok&&_stage==2&&_manifestSent&&dict&&[j count]==3&&file&&![name isEqual:@"OtaFileInfo.json"]&&Number(j[@"Start"],&start)&&Number(j[@"Size"],&size)&&size>0&&size<=51200&&start<file.length&&size<=file.length-start&&binary.length==size;
             if(ok)ok=memcmp(binary.bytes,(const uint8_t *)file.bytes+start,size)==0;
-            if(ok){_slices++;_bytes+=size;}
+            if(ok){_slices++;_bytes+=size;[self recordCoverage:name start:start size:size];}
         }else ok=NO;
         if(!ok){_failure=@"非预期设备、会话、清单或分片，发送被拒绝";if(_stage==2)_stage=3;return NO;}
         if(t==4)_stage=2;if(t==5)_versionSent=YES;if(t==6)_manifestSent=YES;_lastActivity=now;return YES;
     }
 }
-- (BOOL)cancel{@synchronized(self){if(_stage>=2)return NO;_stage=0;_files=nil;_manifest=nil;_device=nil;_deadline=0;return YES;}}
+- (BOOL)cancel{@synchronized(self){if(_stage>=2){_versionReadAt=_idleReadAt=_runtimeAt=0;_runtimeValidated=NO;return NO;}_stage=0;_files=nil;_manifest=nil;_device=nil;_readbackDevice=nil;_coverage=nil;_versionReadAt=_idleReadAt=_runtimeAt=0;_runtimeValidated=NO;_deadline=0;return YES;}}
 - (NSDictionary *)status{@synchronized(self){NSTimeInterval realNow=NSProcessInfo.processInfo.systemUptime;
         if(_stage==1&&isfinite(_deadline)&&realNow>=_deadline)[self cancel];
         /* stage 2 到期收尾必须同时要求 120 秒无帧：17MB 全量在低速链路上可超
@@ -190,7 +238,12 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
         else if(_stage==2&&isfinite(_deadline)&&realNow>=_deadline&&isfinite(_lastActivity)&&realNow-_lastActivity>120){_stage=3;_failure=[_failure length]?_failure:@"会话超时自动收尾";}
         BOOL dead=_stage>=2&&DeadSession(_stage,_lastActivity,_deadline,realNow);
         NSDictionary *calls;@synchronized(NSProcessInfo.processInfo){calls=InstallCalls?[InstallCalls copy]:@{};}
-        return @{@"stage":@(_stage),@"authorized":@(_stage==1||_stage==2),@"started":@(_stage>=2),@"versionMatched":@(_versionSent),@"manifestMatched":@(_manifestSent),@"validatedSlices":@(_slices),@"validatedSliceBytes":@(_bytes),@"lastActivity":@(_lastActivity),@"captureFiles":@(_captureFiles.count),@"captureBytes":@(_captureBytes),@"failure":_failure?:@"",@"dead":@(dead),@"installCalls":calls,@"runtimeValidated":@NO};}}
+        NSArray *coverage=[self coverageStatus];BOOL transferComplete=coverage.count>0,apComplete=NO;
+        for(NSDictionary *row in coverage){if([row[@"Name"] isEqual:@"nuttx_ap.bin"])apComplete=[row[@"complete"] boolValue];if(![row[@"complete"] boolValue])transferComplete=NO;}
+        transferComplete=transferComplete&&apComplete;
+        BOOL readback=[self freshReadback:realNow],validated=_runtimeValidated&&transferComplete&&readback;
+        NSString *phase=validated?@"validated":_stage==0?@"locked":_stage==1?@"armed":_stage==3?@"unknown":!transferComplete?(dead?@"unknown":@"transferring"):!readback?@"awaitingReadback":@"awaitingLens";
+        return @{@"stage":@(_stage),@"authorized":@(_stage==1||_stage==2),@"started":@(_stage>=2),@"versionMatched":@(_versionSent),@"manifestMatched":@(_manifestSent),@"validatedSlices":@(_slices),@"validatedSliceBytes":@(_bytes),@"lastActivity":@(_lastActivity),@"captureFiles":@(_captureFiles.count),@"captureBytes":@(_captureBytes),@"failure":_failure?:@"",@"dead":@(dead),@"installCalls":calls,@"coverage":coverage,@"transferComplete":@(transferComplete),@"readbackFresh":@(readback),@"runtimeValidated":@(_runtimeValidated),@"runtimeAt":@(_runtimeAt),@"installationValidated":@(validated),@"phase":phase};}}
 @end
 BOOL TIOOTAFlashBuild(void){
 #if TARGET_OS_IPHONE && TIO_OTA_FLASH_ENABLED
@@ -287,10 +340,17 @@ void TIOOTAFlashObserveEvent(NSDictionary *event){
     if(!TIOOTAFlashBuild()||![event[@"eventType"] isEqual:@"messageReceived"])return;
     NSDictionary *m=event[@"message"];if([m isKindOfClass:NSDictionary.class]&&[[Current() status][@"stage"] unsignedIntegerValue]>=1)RecordInstallCall([NSString stringWithFormat:@"in:%@",m[@"businessId"]?:@"?"]);
     NSUInteger business=0;if(![m isKindOfClass:NSDictionary.class]||!Number(m[@"businessId"],&business)||business!=9)return;
+    NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
+    [Current() observe:m[@"payload"] device:m[@"deviceId"] uptime:now];
     NSDictionary *f=TIOOTAFrame(m[@"payload"]);id j=f[@"json"];
+    if([[Current() status][@"stage"] unsignedIntegerValue]>=1){
+        id result=[j isKindOfClass:NSDictionary.class]?j[@"Result"]:nil;NSString *shape=@"-";
+        if([result isKindOfClass:NSNumber.class])shape=CFGetTypeID((__bridge CFTypeRef)result)==CFBooleanGetTypeID()?([result boolValue]?@"true":@"false"):[result stringValue];
+        RecordInstallCall([NSString stringWithFormat:@"in:9:type=%@:result=%@",f[@"type"]?:@"?",shape]);
+    }
     if([f[@"type"] isEqual:@1]){@synchronized(NSProcessInfo.processInfo){ObservedDevice=nil;ObservedAt=0;}}
     if([f[@"type"] isEqual:@1]&&[j isKindOfClass:NSDictionary.class]&&TIOOTAAcceptsReadback(j[@"OsVersion"])&&[j[@"OtaValidationConfirmed"] isEqual:@YES]&&[m[@"deviceId"] isKindOfClass:NSString.class]){
-        @synchronized(NSProcessInfo.processInfo){ObservedDevice=[m[@"deviceId"] copy];ObservedAt=NSProcessInfo.processInfo.systemUptime;}
+        @synchronized(NSProcessInfo.processInfo){ObservedDevice=[m[@"deviceId"] copy];ObservedAt=now;}
     }
 }
 BOOL TIOOTAFlashAuthorize(NSError **error){
@@ -304,6 +364,13 @@ BOOL TIOOTAFlashAuthorize(NSError **error){
     if(!device.length||now-at>120){Error(error,[NSString stringWithFormat:@"请先从官方固件页重新检查版本；需要两分钟内对 %@ 的有效回读。",TIOOTACandidate()[@"baseVersion"]?:@"候选底座版本"]);return NO;}
     NSURL *dir=[NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Library/Application Support/ota/%@",TIOOTAOfficialDirectoryName()]] isDirectory:YES];
     return [Current() prepareDirectory:dir device:device uptime:now error:error];
+}
+BOOL TIOOTAFlashConfirmRuntime(NSError **error){
+    if(!TIOOTAFlashProtected()){Error(error,@"当前没有升级保护，不能记录运行验收。");return NO;}
+    NSString *device;NSTimeInterval at;@synchronized(NSProcessInfo.processInfo){device=ObservedDevice;at=ObservedAt;}
+    NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
+    if(!device.length||now-at>120){Error(error,@"连接或版本回读已失效，请先确认同一眼镜在线并重新检查版本。");return NO;}
+    return [Current() confirmRuntimeAt:now error:error];
 }
 BOOL TIOOTAFlashCancel(void){return [Current() cancel];}
 NSDictionary *TIOOTAFlashStatus(void){NSMutableDictionary *s=[[Current() status] mutableCopy];s[@"flashBuild"]=@(TIOOTAFlashBuild());s[@"automaticUpdateDisabled"]=@(TIOOTAAutoUpdateDisabled(NSUserDefaults.standardUserDefaults.dictionaryRepresentation));@synchronized(NSProcessInfo.processInfo){s[@"recentTargetVersionRead"]=@(ObservedDevice.length&&NSProcessInfo.processInfo.systemUptime-ObservedAt<=120);s[@"stageTwoFileCalls"]=@(StageTwoFileCalls);s[@"lastStageTwoFileCall"]=LastStageTwoFileCall;}return s;}

@@ -19,5 +19,5 @@ int main(int argc,const char **argv){@autoreleasepool{
     assert([bad writeToURL:saved atomically:NO]);assert(!TIOImportExperimentalOTA(source,store,&error));assert([[NSData dataWithContentsOfURL:saved] isEqual:bad]);
     // Deletes only this test's UUID-named temporary directory.
     assert([fm removeItemAtURL:root error:nil]);
-    NSLog(@"PASS: pinned TNR1, invalid rejection, isolated copy, idempotence, corrupt existing copy preserved; no device IO");
+    NSLog(@"PASS: pinned candidate, invalid rejection, isolated copy, idempotence, corrupt existing copy preserved; no device IO");
 }return 0;}

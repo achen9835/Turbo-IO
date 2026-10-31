@@ -6,7 +6,7 @@ int main(int argc,const char **argv){@autoreleasepool{
     assert(argc==3);NSFileManager *fm=NSFileManager.defaultManager;
     NSURL *candidate=[NSURL fileURLWithPath:[NSString stringWithUTF8String:argv[1]] isDirectory:YES];
     NSURL *original=[NSURL fileURLWithPath:[NSString stringWithUTF8String:argv[2]] isDirectory:YES];NSError *error=nil;
-    NSDictionary *good=TIOCheckExperimentalOTADirectory(candidate,&error);assert(good&&!error);assert([good[@"checkedMembers"] intValue]==16);assert(![good[@"transferSessionBound"] boolValue]);assert(![good[@"flashAuthorized"] boolValue]);
+    NSDictionary *good=TIOCheckExperimentalOTADirectory(candidate,&error);assert(good&&!error);assert([good[@"checkedMembers"] unsignedIntegerValue]==[TIOOTACandidate()[@"payloadPins"] count]);assert(![good[@"transferSessionBound"] boolValue]);assert(![good[@"flashAuthorized"] boolValue]);
     assert([fm fileExistsAtPath:original.path]);assert(!TIOCheckExperimentalOTADirectory(original,&error));
     NSURL *root=[NSURL fileURLWithPath:[NSTemporaryDirectory() stringByAppendingPathComponent:[@"tio-ota-directory-" stringByAppendingString:NSUUID.UUID.UUIDString]] isDirectory:YES];
     assert([fm createDirectoryAtURL:root withIntermediateDirectories:NO attributes:@{NSFilePosixPermissions:@0700} error:nil]);
@@ -25,5 +25,5 @@ int main(int argc,const char **argv){@autoreleasepool{
     NSURL *linkURL=[root URLByAppendingPathComponent:@"linked-directory"];assert([fm createSymbolicLinkAtURL:linkURL withDestinationURL:candidate error:nil]);assert(!TIOCheckExperimentalOTADirectory(linkURL,&error));
     // Only this test-owned UUID directory is removed; original/candidate untouched.
     assert([fm removeItemAtURL:root error:nil]);
-    NSLog(@"PASS: exact 16-member TNR1 snapshot; original cache, mutation, missing/extra file, symlink, FIFO, directory and hardlink rejected; no writes to official cache, no transfer authorization");
+    NSLog(@"PASS: exact candidate snapshot; original cache, mutation, missing/extra file, symlink, FIFO, directory and hardlink rejected; no writes to official cache, no transfer authorization");
 }return 0;}

@@ -94,7 +94,7 @@ static void status(void *v,uint32_t frame){
 }
 static void invalidate(void *v){stream_invalidate(((TIONativePage *)v)->canvas);}
 static void tick(void *timer){
- /* lv_timer_create at 0x105f6170 stores user_data at +0xc. */
+ /* The verified lv_timer_create implementation stores user_data at +0xc. */
  TIONativePage *p=*(TIONativePage **)((uint8_t *)timer+12);
  if(!p)return;
  if(p->retired){

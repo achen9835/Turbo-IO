@@ -1,6 +1,6 @@
 #include "../video-player-v1/player.c"
 #define VP_MODE 0x31505654u
-/* Pinned 1.0.5.5 AP bindings, Launcher UI executor only. No driver or BTH patch. */
+/* Pinned 1.0.5.12 AP bindings, Launcher UI executor only. No driver or BTH patch. */
 #include "camera_native.h"
 #include "camera.h"
 #include "../transport-bench-v1/bench_session.h"
@@ -43,7 +43,7 @@ extern unsigned native_event_code(void *),native_event_key(void *);
 extern uint32_t nav_always_on(const char *);
 extern void nav_release_always_on(const char *,uint32_t),native_label_text(void *,const char *),dc_text_mode(void *,int);
 static void *ptr(void *p,unsigned off){return p?*(void **)((uint8_t *)p+off):NULL;}
-static void *manager(void){return ptr(*(void **)(uintptr_t)0x19971594,0x3c);}
+static void *manager(void){return ptr(*(void **)(uintptr_t)0x19989694,0x3c);}
 static TNNavSlot *navslot(void *app){return app?((M8NativeTail *)((uint8_t *)app+TIO_STOCK_MENU_BYTES))->navigation:NULL;}
 static TCSlot *slot(void *app){TNNavSlot *n=navslot(app);return n?n->camera:NULL;}
 static bool paired(void){void *m=nav_monitors(),*l=m?nav_link(m):NULL;return l&&nav_bonded(l)&&nav_connection(0x80)!=0;}
@@ -161,7 +161,7 @@ static void tb_emit(const TBPacket *q){
  if(n)(void)tdp_rnlink_send(15,raw,(unsigned)n,NULL);
 }
 static bool tb_native_message(const TIONativeMessage *m){
- /* Stock LinkMonitor::onRecvCallback (1.0.5.5 0x10569ba4) queues mode=1.
+ /* The verified stock LinkMonitor receive callback queues mode=1.
   * Both modes are borrowed here; stock_message retains sole disposal duty.
   * Reject unsupported modes, not the stock-owned mode used on real devices. */
  if(!m||m->id!=1||!m->data||m->bytes>TB_WIRE_MAX||m->mode>1||m->context||m->reserved||m->padding[0]||m->padding[1]||m->padding[2]||!paired())return false;

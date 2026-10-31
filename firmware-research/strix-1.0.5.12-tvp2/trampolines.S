@@ -107,10 +107,10 @@ b.w resume_vm_event
 .thumb_func
 stream_register_shim:
  movs r4,#0
- ldr r0,=0x196aea48
+ ldr r0,=0x196c6988
  ldr r3,=tio_hook_file
  str r3,[r0,#0x18]
- ldr r3,=0x10569ba5
+ ldr r3,=0x10583605
  str r3,[r0]
  bx lr
 .ltorg

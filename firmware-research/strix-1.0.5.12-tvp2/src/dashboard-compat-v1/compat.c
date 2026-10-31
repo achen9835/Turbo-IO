@@ -37,7 +37,7 @@ bool tdc_load(TDCRegistry *s,TDCIO io){
 int tdc_find(const TDCRegistry *s,const char *id){if(!s||!id)return -1;for(unsigned i=0;i<s->count;i++)if(!strcmp(s->rows[i].id,id))return (int)i;return -1;}
 static bool row_ok(const TDCRow *r,bool custom){
  if(!terminated(r->id)||!terminated(r->name))return false;
- /* Stock 1.0.5.5 intentionally leaves the native name string empty. */
+ /* Stock 1.0.5.12 intentionally leaves the native name string empty. */
  if(custom)return r->name[0]&&r->kind==1&&r->component==1000&&tdc_owned(r->id);
  return r->kind==0&&r->component>=1&&r->component<=6&&r->id[0]=='0'+r->component&&!r->id[1];
 }

@@ -12,7 +12,7 @@ extern uint32_t stream_tick(void);
 extern int ti_stock_start(void),ti_stock_stop(void);
 static uint32_t enter(void){uint32_t x;__asm volatile("mrs %0, primask\n cpsid i":"=r"(x)::"memory");return x;}
 static void leave(uint32_t x){__asm volatile("dmb\n msr primask, %0"::"r"(x):"memory");}
-static CEHeadLifetime *tail(void){void *p=*(void *volatile *)(uintptr_t)0x196aead4;CEHeadLifetime *t=p?(void *)((uint8_t *)p+CE_HEAD_STOCK_BYTES):NULL;return t&&t->magic==CE_HEAD_TAIL_MAGIC?t:NULL;}
+static CEHeadLifetime *tail(void){void *p=*(void *volatile *)(uintptr_t)0x196c6a14;CEHeadLifetime *t=p?(void *)((uint8_t *)p+CE_HEAD_STOCK_BYTES):NULL;return t&&t->magic==CE_HEAD_TAIL_MAGIC?t:NULL;}
 static bool attached(TIAcquire *a){uint32_t k=enter();CEHeadLifetime *t=tail();bool yes=t&&t->trace==(uint32_t)(uintptr_t)a;leave(k);return yes;}
 static void detach(TIAcquire *a){uint32_t k=enter();CEHeadLifetime *t=tail();if(t&&t->trace==(uint32_t)(uintptr_t)a)t->trace=0;leave(k);}
 static void *lock(void){
@@ -31,7 +31,7 @@ static void *worker(void *raw){
  a->result=ti_stock_start();
  if(a->result){safe=known(a->result);a->phase=a->result==-4?TI_BUSY:TI_ERROR;goto finish;}
  a->owned=1;a->phase=TI_RUNNING;a->started=stream_tick();
- while(!a->stop&&attached(a)&&(uint32_t)(stream_tick()-a->started)<60000){((int (*)(unsigned))(uintptr_t)0x104814cd)(25000);}
+ while(!a->stop&&attached(a)&&(uint32_t)(stream_tick()-a->started)<60000){((int (*)(unsigned))(uintptr_t)0x10499435)(25000);}
  a->phase=TI_STOPPING;a->owned=0;detach(a);
  a->result=ti_stock_stop();safe=a->result==0||a->result==-5;a->phase=safe?TI_DONE:TI_ERROR;
 finish:unlock(p,safe);
@@ -39,12 +39,12 @@ done:detach(a);__asm volatile("dmb":::"memory");a->done=1;return NULL;
 }
 bool ti_acquire_start(TIAcquire *a){
  if(!a)return false;memset(a,0,sizeof *a);uint32_t k=enter();CEHeadLifetime *t=tail();bool ok=t&&!t->trace;if(ok)t->trace=(uint32_t)(uintptr_t)a;leave(k);if(!ok){a->done=1;a->phase=TI_BUSY;return false;}
- int r=((int (*)(uint32_t *,const void *,void *(*)(void *),void *))(uintptr_t)0x1047a931)(&a->thread,NULL,worker,a);
+ int r=((int (*)(uint32_t *,const void *,void *(*)(void *),void *))(uintptr_t)0x10492899)(&a->thread,NULL,worker,a);
  if(r){detach(a);a->result=r;a->phase=TI_ERROR;a->done=1;return false;}return true;
 }
 void ti_acquire_stop(TIAcquire *a){if(a){a->stop=1;detach(a);}}
 bool ti_acquire_join(TIAcquire *a){if(!a||!a->done)return false;
- if(a->thread){int r=((int (*)(uint32_t,void **))(uintptr_t)0x1046eb39)(a->thread,NULL);if(r)return false;a->thread=0;}return true;
+ if(a->thread){int r=((int (*)(uint32_t,void **))(uintptr_t)0x10486aa1)(a->thread,NULL);if(r)return false;a->thread=0;}return true;
 }
 unsigned ti_acquire_read(TIAcquire *a,TISample *out,unsigned cap){
  if(!a||!out)return 0;if(cap>8)cap=8;unsigned n=0;

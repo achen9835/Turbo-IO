@@ -1,5 +1,5 @@
-/* Pinned Strix 1.0.4.12 notifyHeadGestureOnUi entry trampoline.
- * Candidate builder must verify stock bytes at 0x106dd16c before a B.W patch.
+/* Pinned Strix 1.0.5.12 notifyHeadGestureOnUi entry trampoline.
+ * Candidate builder verifies the stock bytes before the B.W patch.
  * Observe only: observer MUST NOT allocate, alter LVGL, dispatch an answer,
  * start/stop detection, or consume the original notification here. Capture a
  * bounded event with a generation, then let a later UI tick process it.
@@ -58,5 +58,5 @@ ce_head_notify_entry:
     b.w \resume
 .size \name,.-\name
 .endm
-command_entry ce_head_start_entry,1,0x181b5ce4,ce_stock_head_start_resume
-command_entry ce_head_stop_entry,2,0x181b5cbf,ce_stock_head_stop_resume
+command_entry ce_head_start_entry,1,0x181ca732,ce_stock_head_start_resume
+command_entry ce_head_stop_entry,2,0x181ca70d,ce_stock_head_stop_resume

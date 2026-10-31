@@ -90,7 +90,7 @@ static void Reply(int fd,NSInteger status,NSData *body,NSString *mime,NSDictiona
     for(NSString *key in extra)[h appendFormat:@"%@: %@\r\n",key,extra[key]];
     [h appendString:@"\r\n"];if(SendAll(fd,[h dataUsingEncoding:NSUTF8StringEncoding])&&!head)SendAll(fd,body);
 }
-// 候选元数据从内嵌候选描述派生（TAP1: Strix OS 1.0.4.12 / TAP2: Strix OS 1.0.5.5），
+// 候选元数据从内嵌候选描述派生（TAP1/TAP2/TAP3 及后续固定候选），
 // 不再硬编码——官方 App 按这些字段判定「可升级」并命名下载/解压目录。
 static NSString *OTAZipName(void){
     NSString *base=[TIOOTACandidate()[@"baseVersion"] stringByReplacingOccurrencesOfString:@"Strix OS " withString:@""];
@@ -258,7 +258,7 @@ void TIORefreshExperimentalOTAReport(void){
         NSFileManager *fm=NSFileManager.defaultManager;NSError *error=nil;
         if([fm createDirectoryAtURL:directory withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@0700} error:&error]&&[directory setResourceValue:@YES forKey:NSURLIsExcludedFromBackupKey error:&error]){
             NSMutableDictionary *report=[@{@"build":@"OTA-PREPARE-02",@"timestamp":@(NSDate.date.timeIntervalSince1970),@"feed":TIOExperimentalOTAFeedStatus(),@"guard":TIOOTAGuardStatus(),@"flashAuthorized":@NO,@"transferSessionBound":@NO} mutableCopy];
-            if(TIOOTAFlashBuild()){report[@"build"]=@"DIAGNOSTICS-OTA-01";report[@"flashGate"]=TIOOTAFlashStatus();report[@"flashAuthorized"]=report[@"flashGate"][@"authorized"];}
+            if(TIOOTAFlashBuild()){report[@"build"]=@"DIAGNOSTICS-OTA-02";report[@"flashGate"]=TIOOTAFlashStatus();report[@"flashAuthorized"]=report[@"flashGate"][@"authorized"];}
             NSURL *zip=[directory URLByAppendingPathComponent:[TIOExperimentalOTASHA() stringByAppendingString:@".zip"]];error=nil;
             report[@"archive"]=TIOReadExperimentalOTA(zip,&error)?:@{@"integrityPassed":@NO};
             NSURL *official=[NSURL fileURLWithPath:[NSHomeDirectory() stringByAppendingPathComponent:[NSString stringWithFormat:@"Library/Application Support/ota/%@",TIOOTAOfficialDirectoryName()]] isDirectory:YES];error=nil;

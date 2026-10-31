@@ -14,7 +14,7 @@ extern int nav_connection(unsigned),td_gettid(void),tdp_rnlink_send(unsigned,con
 extern void *nav_ensure_menu(void *);
 extern const char *nav_top_app(void);
 static void *ptr(void *p,unsigned off){return p?*(void **)((uint8_t *)p+off):NULL;}
-static void *manager(void){return ptr(*(void **)(uintptr_t)0x19971594,0x3c);}
+static void *manager(void){return ptr(*(void **)(uintptr_t)0x19989694,0x3c);}
 static bool paired(void){void *m=nav_monitors(),*l=m?nav_link(m):NULL;return l&&nav_bonded(l)&&nav_connection(0x80)!=0;}
 static bool launcher(void){const char *s=nav_top_app();const char *n="com.rayneo.liteos.launcher";if(!s)return false;for(unsigned i=0;i<32;i++){if(s[i]!=n[i])return false;if(!n[i])return true;}return false;}
 static void emit(const TDSample *sample){

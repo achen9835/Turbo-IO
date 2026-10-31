@@ -1,5 +1,6 @@
 #import "camera-v1/CameraUI.h"
 #import "ResearchCatalog.h"
+#import "ExperimentalOTA.h"
 static NSDictionary *Row(NSString *key,NSString *title,NSString *icon,NSInteger section,NSInteger row){return @{@"key":key,@"title":title,@"icon":icon,@"section":@(section),@"row":@(row)};}
 NSArray<NSDictionary *> *LegacySections(NSString *page){
     if([page isEqual:@"model"])return @[
@@ -33,7 +34,7 @@ NSArray<NSDictionary *> *LegacySections(NSString *page){
         Row(@"imageRXLab",@"N8W 单张传图 · FIX 01",@"photo",-2,7),
 #endif
 #if TIO_DISPLAY_FLASH
-        Row(@"experimentalOTA",@"TMG2 · 可选排数菜单 · 默认锁定",@"shippingbox",-2,6)]}];
+        Row(@"experimentalOTA",[NSString stringWithFormat:@"%@ · 默认锁定",TIOOTACandidate()[@"displayName"]?:@"实验固件"],@"shippingbox",-2,6)]}];
 #else
         Row(@"experimentalOTA",@"实验固件 · 仅校验",@"shippingbox",-2,6)]}];
 #endif

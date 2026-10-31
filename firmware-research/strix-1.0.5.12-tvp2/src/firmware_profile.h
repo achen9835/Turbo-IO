@@ -1,5 +1,5 @@
-#ifndef TIO_FIRMWARE_1055_PROFILE_H
-#define TIO_FIRMWARE_1055_PROFILE_H
+#ifndef TIO_FIRMWARE_10512_PROFILE_H
+#define TIO_FIRMWARE_10512_PROFILE_H
 /* Confirmed from stock allocation callsites and constructors. This header
  * describes source layout only; it does not approve function bindings. */
 #define TIO_STOCK_MENU_BYTES 0xfcu

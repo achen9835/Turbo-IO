@@ -4,11 +4,11 @@ static bool ram(uint32_t p,uint32_t extent){
 }
 bool tio_render_graph_idle(TIOReadWord read,TIONextDisplay next){
  uint32_t unit=0;unsigned count=0;
- if(!read||!next||!read(0x184d4440+0x124,&unit)||!unit)return false;
+ if(!read||!next||!read(0x184ec384+0x124,&unit)||!unit)return false;
  while(unit){
   uint32_t dispatch=0,active=0,n=0;
   if(++count>8||!ram(unit,32)||!read(unit+12,&dispatch)||
-     (dispatch!=0x10428d89&&dispatch!=0x105335ff)||
+     (dispatch!=0x10440cf1&&dispatch!=0x1054c447)||
      !read(unit+24,&active)||active||!read(unit,&n))return false;
   unit=n;
  }

@@ -35,7 +35,7 @@ static void *reader_root(void *surface,void *parent){
  if(!m8_native_api.configure_root(o,surface)){m8_native_api.delete_root(o);return NULL;}return o;
 }
 static void *ptr(void *p,unsigned n){return p?*(void **)((uint8_t *)p+n):NULL;}
-static void *manager(void){return ptr(*(void **)(uintptr_t)0x19971594,0x3c);}
+static void *manager(void){return ptr(*(void **)(uintptr_t)0x19989694,0x3c);}
 static TNNavSlot *navslot(void *app){return app?((M8NativeTail *)((uint8_t *)app+TIO_STOCK_MENU_BYTES))->navigation:NULL;}
 static WRSlot *slot_of(void *app){TNNavSlot *n=navslot(app);return n?n->reader:NULL;}
 static bool same(const char *a,const char *b){if(!a)return false;for(unsigned i=0;i<96;i++){if(a[i]!=b[i])return false;if(!b[i])return true;}return false;}

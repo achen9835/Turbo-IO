@@ -6,6 +6,7 @@ from pathlib import Path
 import struct
 import subprocess
 import zipfile
+from port_audit import audit as audit_addresses
 
 HERE = Path(__file__).resolve().parent
 FLASH = 0x10190000
@@ -42,12 +43,31 @@ def safe_zip(path, expected):
     return files, rows
 
 
+def audit_patch_branches(spec, ap, module_bytes):
+    module_start = int(spec['moduleVA'], 16)
+    for row in spec['edits']:
+        code = bytes.fromhex(row['after'])
+        if len(code) < 4:
+            continue
+        h1, h2 = struct.unpack_from('<HH', code)
+        if h1 & 0xF800 != 0xF000 or h2 & 0xD000 not in (0x9000, 0xD000):
+            continue
+        s, i1, i2 = (h1 >> 10) & 1, (h2 >> 13) & 1, (h2 >> 11) & 1
+        value = (s << 24) | ((0 if s ^ i1 else 1) << 23) | ((0 if s ^ i2 else 1) << 22)
+        value |= ((h1 & 0x3FF) << 12) | ((h2 & 0x7FF) << 1)
+        if value & (1 << 24):
+            value -= 1 << 25
+        target = int(row['address'], 16) + 4 + value
+        assert module_start <= target < module_start + module_bytes, ('Patch branch outside module', row['role'], hex(target))
+
+
 def audit(stock_path, candidate_path):
     spec = json.loads((HERE / 'build-inputs.json').read_text())
     stock, before = safe_zip(stock_path, spec['stockZIP'])
     files, after = safe_zip(candidate_path, spec['archive'].get('sha256'))
     ap = files['nuttx_ap.bin']
     base = stock['nuttx_ap.bin']
+    address_result = audit_addresses(base)
     if spec.get('APSHA256'):assert len(ap) == spec['APBytes'] and sha(ap) == spec['APSHA256']
     assert len(ap) < 9_600_000
     assert [r['Name'] for r in before] == [r['Name'] for r in after]
@@ -70,22 +90,25 @@ def audit(stock_path, candidate_path):
     assert all(x == y or i in allowed for i, (x,y) in enumerate(zip(base[:-8],ap)))
     at = int(spec['moduleVA'], 16) - FLASH
     assert not any(ap[len(base)-8:at])
+    module_bytes = len(ap) - 8 - at
+    audit_patch_branches(spec, ap, module_bytes)
     # 上游原样复现钉值；本地改动构建（钉值为空）跳过模块区逐字节断言——
     # 模块由 build() 刚写入，安全关键项（未改负载、白名单、启动描述符）不受影响。
     if spec.get('moduleSHA256'):
         assert sha(ap[at:at+spec['moduleBytes']]) == spec['moduleSHA256']
         assert not any(ap[at+spec['moduleBytes']:-8])
-    return {'passed':True, 'baseline':'1.0.5.5','customChangedPayloads':['nuttx_ap.bin'],
+    return {'passed':True, 'baseline':'1.0.5.12','customChangedPayloads':['nuttx_ap.bin'],
         'unchangedNewStockPayloads':14,'manifestPayloads':15,'archiveEntries':16,
         'APBytes':len(ap),'APSHA256':sha(ap),'APMD5':sha(ap,'md5'),
         'archiveSHA256':sha(candidate_path.read_bytes()),'archiveMD5':sha(candidate_path.read_bytes(),'md5'),
-        'whitelistedPatches':40,'startupDescriptorsPreserved':7,'deviceIO':False}
+        'whitelistedPatches':40,'startupDescriptorsPreserved':7,'deviceIO':False,**address_result}
 
 
 def build(stock_path, llvm, out):
     spec = json.loads((HERE / 'build-inputs.json').read_text())
     stock, rows = safe_zip(stock_path, spec['stockZIP'])
     assert sha(stock['nuttx_ap.bin']) == spec['stockAP']
+    audit_addresses(stock['nuttx_ap.bin'])
     assert not out.exists(), 'Choose a fresh output directory'
     out.mkdir(parents=True)
     src = HERE / 'src'
@@ -96,7 +119,7 @@ def build(stock_path, llvm, out):
         '-include',str(src/'firmware_profile.h'),'-DTIO_IMAGE_RX_WIDE=1',
         '-DTIO_DISPLAY_RUNTIME=1','-DTDP_FREESTANDING','-DTIO_ANIMATION_EXPERIMENT=1',
         '-DTIO_MUSIC_RUNTIME=1','-DTD_DIAGNOSTICS_RUNTIME=1','-DTD_FREESTANDING=1',
-        '-DTD_STOCK_10412=0','-DTD_STOCK_1055=1']
+        '-DTD_STOCK_10412=0','-DTD_STOCK_10512=1']
     objects = []
     animation = HERE/'assets/animation-frames.l8'
     assert sha(animation.read_bytes()) == 'f758dd6e3cdf5fc6550238df26e46111e9d45d098b9d95f649626ea58210ee1d'

@@ -27,8 +27,8 @@ command ce_serial_stop_entry,2
     b.w \resume
 .size \name,.-\name
 .endm
-body ce_stock_head_start_body,0x181b5ce4,ce_stock_head_start_resume
-body ce_stock_head_stop_body,0x181b5cbf,ce_stock_head_stop_resume
+body ce_stock_head_start_body,0x181ca732,ce_stock_head_start_resume
+body ce_stock_head_stop_body,0x181ca70d,ce_stock_head_stop_resume
 .macro save
     push.w {r0-r3,r12,lr}
     mrs r3,apsr
@@ -77,6 +77,6 @@ ce_serial_destroy_entry:
     bl ce_serial_before_destroy
     restore
     push {r3,r4,r7,lr}
-    ldr r3,=0x181cf300
+    ldr r3,=0x181e6e8c
     b.w ce_stock_sys_destroy_resume
 .size ce_serial_destroy_entry,.-ce_serial_destroy_entry

@@ -41,7 +41,7 @@ static int64_t local_time(void){void *m=nav_monitors(),*s=m?fm_system(m):NULL;re
 static void *ptr(void *p,unsigned off){return p?*(void **)((uint8_t *)p+off):NULL;}
 static uint32_t word(void *p,unsigned off){return p?*(uint32_t *)((uint8_t *)p+off):0;}
 static bool same(const char *a,const char *b){if(!a)return false;for(unsigned i=0;i<96;i++){if(a[i]!=b[i])return false;if(!b[i])return true;}return false;}
-static void *manager(void){void *launcher=*(void **)(uintptr_t)0x19971594;return ptr(launcher,0x3c);}
+static void *manager(void){void *launcher=*(void **)(uintptr_t)0x19989694;return ptr(launcher,0x3c);}
 static TNNavSlot *slot_of(void *app){return app?((M8NativeTail *)((uint8_t *)app+TIO_STOCK_MENU_BYTES))->navigation:NULL;}
 static bool paired(void){void *m=nav_monitors(),*l=m?nav_link(m):NULL;return l&&nav_bonded(l)&&nav_connection(0x80)!=0;}
 static bool safe_home(void){

@@ -1,7 +1,7 @@
 #include "head_lifetime.h"
 #include <stddef.h>
 
-/* Strix 1.0.4.12 only. The test/build manifest pins the stock SHA and callsite.
+/* Strix 1.0.5.12 only. The test/build manifest pins the stock SHA and callsite.
  * Keep the pointer load AND every tail access inside the critical section;
  * no monitor pointer escapes it. Original constructor runs before publication.
  * Stock replacement publishes the new pointer before deleting the old object.
@@ -20,14 +20,14 @@ static inline uint32_t enter(void) {
 static inline void leave(uint32_t old) {
     __asm volatile("dmb\n\tmsr primask, %0"::"r"(old):"memory");
 }
-static void *volatile *published(void) {return (void *volatile *)(uintptr_t)0x196aead4;}
+static void *volatile *published(void) {return (void *volatile *)(uintptr_t)0x196c6a14;}
 static CEHeadLifetime *tail(void *monitor) {
     return (CEHeadLifetime *)((uint8_t *)monitor+CE_HEAD_STOCK_BYTES);
 }
 void *ce_native_sys_construct(void *monitor) {
     if(!monitor)return NULL;
-    /* Called ONLY from expanded allocation at 0x106e8230/0x106e823a. */
-    ((void (*)(void *))(uintptr_t)0x1056d191)(monitor);
+    /* Called only from the verified expanded-allocation constructor hook. */
+    ((void (*)(void *))(uintptr_t)0x10586bf1)(monitor);
     ce_head_lifetime_init(tail(monitor));
     __asm volatile("dmb":::"memory");
     return monitor;

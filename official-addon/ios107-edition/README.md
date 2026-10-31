@@ -1,6 +1,8 @@
 # iOS 1.0.7（230）· APP107 兼容适配
 
-2026-10-19 · [首页更新](../../README.md#ios107-update) · [OTA 预发布](https://github.com/Turbo1123/Turbo-IO/releases/tag/ios107-app107-ota-20261019) · [上一版 NAVS3](../navs3-edition/README.md)
+2026-10-19 · [首页更新](../../README.md#ios107-update) · [当前 TAP3 地址修正版刷写说明](OTA.md) · [上一版 NAVS3](../navs3-edition/README.md)
+
+> 当前 1.0.10 / TAP3 流程见上方新链接；本页其余 1.0.7 / TMG2 内容保留为该历史宿主的适配记录，不与当前候选混用。
 
 **用户已在 iPhone 17 Pro Max 覆盖安装 1.0.7（230）私用适配包，测试后反馈“没啥问题”。** 回读确认 APP107-PHONE-01、宿主 1.0.7/230、hooks/版本门槛通过。不是所有功能、账号、机型与后台场景的全量验收；公开脱敏版单独编译与离线检查，不冒充与私用包逐字节相同。
 
@@ -36,7 +38,7 @@ TIO_DISPLAY_PHONE=1 TIO_DISPLAY_FLASH=1 TIO_OTA_FLASH_ENABLED=1 \
 TIO_CLASSIC_BINDINGS=1 bash build.sh embedded com.rayneo.venus.pub
 
 node --test package.test.mjs
-python3 test.py --firmware /absolute/path/to/exact-TMG2-release.zip
+python3 test.py --firmware /absolute/path/to/TAP3-2026-11.zip
 ```
 
 `FLASH` 是保护模块编译开关，**不是授权**；本版打包默认带 TMG2 升级通道，初始仍锁定。不要移除校验或改 Info.plist 冒充其他版本。
@@ -69,9 +71,9 @@ node package.mjs \
 
 先备份，再使用同一有效签名覆盖安装；签名冲突时不要盲目卸载。启动确认版本、插件入口、眼镜连接并逐项测试，编译成功不等于你的设备验收通过。
 
-## 刷入 TMG2
+## 刷入当前 TAP3 候选
 
-按[1.0.7 升级教程](OTA.md)执行：内置校验 → 15 分钟只下载 → 官方软件就绪 → 目录校验 → 单次授权 → 官方安装 → 成功回首页后重启手机 App，确认授权归零。高风险实验，非开发者请勿刷。
+按[TAP3 地址修正版升级教程](OTA.md)执行：内置校验 → 只下载与目录核对 → 单次授权 → 官方安装 → 自然重启 → 传输覆盖、刷后回读与镜片运行三层验收。高风险实验，非开发者请勿刷；旧 TAP3 不要重刷。
 
 ## 已知限制
 

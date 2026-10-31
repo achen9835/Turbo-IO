@@ -3,16 +3,16 @@
  * blocks, takes locks, allocates, reads arbitrary memory, or writes NAND. */
 #include "native_light.h"
 #include "stock_abi.h"
-#if !defined(TD_STOCK_1055) || !TD_STOCK_1055
-#error Native provider requires the hash-pinned Strix 1.0.5.5 profile
+#if !defined(TD_STOCK_10512) || !TD_STOCK_10512
+#error Native provider requires the hash-pinned Strix 1.0.5.12 profile
 #endif
 extern int td_gettid(void); /* Native gettid, hash-pinned by candidate builder. */
 void td_stock_light(void *context,TDDiagnostics *d){
  TDLightOwner *owner=context;
  td_metric(d,TD_LV_TOTAL,0,false);td_metric(d,TD_LV_USED,0,false);td_metric(d,TD_LV_PEAK,0,false);
  if(!owner||owner->owner_tid<0||td_gettid()!=owner->owner_tid)return;
- const volatile uint32_t *current=(const volatile uint32_t *)(uintptr_t)0x184d45fc;
- const volatile uint32_t *peak=(const volatile uint32_t *)(uintptr_t)0x184d4600;
+ const volatile uint32_t *current=(const volatile uint32_t *)(uintptr_t)0x184ec540;
+ const volatile uint32_t *peak=(const volatile uint32_t *)(uintptr_t)0x184ec544;
  uint32_t a=*current,b=*peak;
  if(a>b||b>0x1000000u)return; /* fail closed; no capacity guesses */
  td_metric(d,TD_LV_TOTAL,0x1000000u,true); /* configured capacity, not free */

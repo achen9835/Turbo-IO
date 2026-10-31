@@ -48,7 +48,7 @@ extern void native_log(unsigned,unsigned,unsigned,unsigned,const char *,...);
 static void entry_log(unsigned reason,unsigned flags,unsigned mode){native_log(1,0,0,0,"[TurboEnglish] enter reason=%u flags=%u head_mode=%u",reason,flags,mode);}
 static void tick(void *);
 static void *ptr(void *p,unsigned n){return p?*(void **)((uint8_t *)p+n):NULL;}
-static void *manager(void){return ptr(*(void **)(uintptr_t)0x19971594,0x3c);}
+static void *manager(void){return ptr(*(void **)(uintptr_t)0x19989694,0x3c);}
 static TNNavSlot *slot(void *p){return p?((M8NativeTail *)((uint8_t *)p+TIO_STOCK_MENU_BYTES))->navigation:NULL;}
 static bool paired(void){void *m=nav_monitors(),*l=m?nav_link(m):NULL;return l&&nav_bonded(l)&&nav_connection(0x80)!=0;}
 static bool home(void){const char *s=nav_top_app();void *m=nav_monitors(),*i=m?nav_input(m):NULL;

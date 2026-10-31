@@ -34,7 +34,7 @@ extern unsigned native_event_code(void *),native_event_key(void *);
 extern void nav_stop_event(void *),native_text_color(void *,uint32_t,uint32_t),menu_opa(void *,uint8_t,uint32_t);
 static void *ptr(void *p,unsigned off){return p?*(void **)((uint8_t *)p+off):NULL;}
 static bool same(const char *a,const char *b){if(!a)return false;for(unsigned i=0;i<96;i++){if(a[i]!=b[i])return false;if(!b[i])return true;}return false;}
-static void *manager(void){return ptr(*(void **)(uintptr_t)0x19971594,0x3c);}
+static void *manager(void){return ptr(*(void **)(uintptr_t)0x19989694,0x3c);}
 static TNNavSlot *navslot(void *app){return app?((M8NativeTail *)((uint8_t *)app+TIO_STOCK_MENU_BYTES))->navigation:NULL;}
 static TMMusicSlot *slot_of(void *app){TNNavSlot *n=navslot(app);return n?n->music:NULL;}
 static bool paired(void){void *m=nav_monitors(),*l=m?nav_link(m):NULL;return l&&nav_bonded(l)&&nav_connection(0x80)!=0;}

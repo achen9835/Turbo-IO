@@ -32,10 +32,11 @@ test('unknown original image bytes and private markers rejected',()=>{
 });
 test('phone gates require exact host, healthy source and inspected new offsets',()=>{
  const s=fs.readFileSync(new URL('./ExperimentalOTAFlash.m',import.meta.url),'utf8');
- assert.match(s,/if\(!TIOOTA107HostMatches\(NSBundle.mainBundle.infoDictionary\)\)\s*return !TIOOTAIsEmptyVersionQuery\(data\)/);
- assert.match(s,/BOOL TIOOTAFlashAuthorize[\s\S]*?TIOOTA107HostMatches[\s\S]*?return NO;/);
- assert.match(s,/bootstrapEligible[\s\S]*?healthPassed/);
- assert.match(fs.readFileSync(new URL('./ExperimentalOTAFeed.m',import.meta.url),'utf8'),/TIOHostImageMatches/);
+ assert.match(s,/ios1010-tfp1-loopback-flash-gated/);
+ assert.match(s,/BOOL TIOOTAFlashAuthorize[\s\S]*?TIOOTAAutoUpdateDisabled[\s\S]*?return NO;/);
+ assert.match(s,/prepareDirectory[\s\S]*?TIOCopyExperimentalOTAPayloads/);
+ assert.match(s,/installationValidated/);
+ assert.match(fs.readFileSync(new URL('./ExperimentalOTAFeed.m',import.meta.url),'utf8'),/TIOOTACandidate\(\)/);
  assert.equal(fs.existsSync(new URL('./patch-ios106-route.mjs',import.meta.url)),false);
 });
 test('exact firmware resource, not a flash authorization',t=>{

@@ -16,7 +16,7 @@ static int make_dir(void *c,const char *p){(void)c;return tap_fs_mkdir(p,0700);}
 static int error(void *c){(void)c;return *tap_fs_errno();}
 static bool available(void *c,const char *p,uint64_t *out){
  (void)c;
- // Verified stock recorder helper at 0x10721750: 64-byte statfs buffer,
+ // Verified stock recorder helper: 64-byte statfs buffer,
  // f_bsize at +8, f_bavail uint64 at +32. Do not use get_available_space:
  // that symbol reports a ring buffer, not this filesystem's free space.
  uint32_t s[16]={0};if(tap_fs_statfs(p,s))return false;

@@ -2,11 +2,14 @@
 from pathlib import Path
 import argparse, json, subprocess, tempfile, zipfile
 P=Path(__file__).resolve().parent
+ROOT=P.parents[1]
+DEFAULT_FW=ROOT/'firmware-research/strix-1.0.5.12-tvp2'
 parser=argparse.ArgumentParser();parser.add_argument('--firmware',type=Path,required=True)
+parser.add_argument('--stock',type=Path,default=DEFAULT_FW/'stock/Strix-OS-1.0.5.12-original.zip')
+parser.add_argument('--builder',type=Path,default=DEFAULT_FW/'build.py')
 args=parser.parse_args()
-ROOT=P.parents[1];FW=ROOT/'firmware-research/strix-1.0.5.5-tmg2'
-stock=ROOT/'firmware-research/strix-1.0.5.5/stock/Strix-OS-1.0.5.5-original.zip'
-subprocess.run(['python3',FW/'build.py','--stock',stock,'--audit',args.firmware],check=True)
+stock=args.stock
+subprocess.run(['python3',args.builder,'--stock',stock,'--audit',args.firmware],check=True)
 out=P/'build/tests';out.mkdir(parents=True,exist_ok=True)
 def run(name,cmd):
     r=subprocess.run(list(map(str,cmd)),capture_output=True,text=True,timeout=180)

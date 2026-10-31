@@ -13,7 +13,7 @@ enum {OWN_RUNNING=1,UNCERTAIN=2};
 extern int ce_stock_head_start_body(void),ce_stock_head_stop_body(void);
 static inline uint32_t critical(void){uint32_t old;__asm volatile("mrs %0, primask\n cpsid i":"=r"(old)::"memory");return old;}
 static inline void restore(uint32_t old){__asm volatile("dmb\n msr primask, %0"::"r"(old):"memory");}
-static void *volatile *slot(void){return (void *volatile *)(uintptr_t)0x196aead4;}
+static void *volatile *slot(void){return (void *volatile *)(uintptr_t)0x196c6a14;}
 static CEHeadLifetime *state(void *p){return p?(CEHeadLifetime *)((uint8_t *)p+CE_HEAD_STOCK_BYTES):NULL;}
 static bool valid(const CEHeadLifetime *s){return s&&s->magic==CE_HEAD_TAIL_MAGIC;}
 static bool thread_context(void){uint32_t irq,mask,priority;__asm volatile("mrs %0, ipsr\n mrs %1, primask\n mrs %2, basepri":"=r"(irq),"=r"(mask),"=r"(priority));return !irq&&!mask&&!priority;}
@@ -111,7 +111,7 @@ int ce_serial_foreign(unsigned op,uint32_t caller){
     }restore(key);unlock(sem);return result;
 }
 void *ce_serial_publish(void *manager,void *replacement){
-    if((uintptr_t)manager!=0x196aeabc)return NULL;
+    if((uintptr_t)manager!=0x196c69fc)return NULL;
     void *sem=lock(true);if(sem)(void)drain();
     uint32_t key=critical();void *old=*slot();CEHeadLifetime *before=state(old),*after=state(replacement);
     if(valid(after)&&valid(before)){

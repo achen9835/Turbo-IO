@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "codeName": "TAP3-2026-10",
-  "displayName": "TAP3 · Strix 1.0.5.12 基座 + TVP2/导航 HUD · 2026-10",
+  "codeName": "TAP3-2026-11",
+  "displayName": "TAP3 · Strix 1.0.5.12 地址修正版 · 2026-11",
   "confirmToken": "TAP3",
   "baseVersion": "Strix OS 1.0.5.12",
   "upgradeFrom": [
@@ -9,28 +9,28 @@
     "Strix OS 1.0.5.12"
   ],
   "zip": {
-    "size": 8893638,
-    "sha256": "05170b9b4eed38edbf562affaeab21f248394a44702d812440226d5e27a524eb"
+    "size": 8893617,
+    "sha256": "f68e3edc6d26405ecc89af057813200d44661122f88bc6f66c779c02e2879f9e"
   },
-  "otaSize": 8893638,
+  "otaSize": 8893617,
   "ap": {
     "name": "nuttx_ap.bin",
     "size": 7547528,
-    "sha256": "77a047fc5250cafccaef869559cc0c84f4e8f952576935fb23ae9f8911709a50",
-    "md5": "7e4193cfcb2af44168490a2b2c45e4ed"
+    "sha256": "189ce652c5b78396a8535858ec56a26547ee9e06d3ca9e027fd5f5f978911e3b",
+    "md5": "3a2484cce3bf1a950fbad326209d8e64"
   },
   "apBudgetBytes": 9600000,
   "manifest": {
     "name": "OtaFileInfo.json",
     "size": 2700,
-    "sha256": "9a582a1e6b4fa6e1d79fa749e854e82056c7ee29779412b93378ffd15e404dcc"
+    "sha256": "6a1222eac2cbf01f70793a6957f2f731c65620ebab870e1c7ed190ca333a8631"
   },
   "stockAPSHA256": "af701a6525fbf703854b3d63e757734546c20bdb5d50e246867dc6a0565713ae",
   "payloadPins": [
     {
       "name": "OtaFileInfo.json",
       "size": 2700,
-      "sha256": "9a582a1e6b4fa6e1d79fa749e854e82056c7ee29779412b93378ffd15e404dcc"
+      "sha256": "6a1222eac2cbf01f70793a6957f2f731c65620ebab870e1c7ed190ca333a8631"
     },
     {
       "name": "bt_controller.bin",
@@ -60,7 +60,7 @@
     {
       "name": "nuttx_ap.bin",
       "size": 7547528,
-      "sha256": "77a047fc5250cafccaef869559cc0c84f4e8f952576935fb23ae9f8911709a50"
+      "sha256": "189ce652c5b78396a8535858ec56a26547ee9e06d3ca9e027fd5f5f978911e3b"
     },
     {
       "name": "nuttx_apc1.bin",

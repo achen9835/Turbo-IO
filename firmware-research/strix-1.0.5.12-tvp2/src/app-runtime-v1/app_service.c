@@ -39,7 +39,7 @@ static void tick(void *);
 TAPMenu *tap_menu_create(void *app){TAPMenu *m=stream_memalign(8,sizeof *m);if(m){memset(m,0,sizeof *m);m->app=app;}return m;}
 void tap_menu_destroy(TAPMenu *m){if(m){tap_service_destroy(m->app);stream_free(m);}}
 static void *ptr(void *p,unsigned o){return p?*(void **)((uint8_t *)p+o):NULL;}
-static void *manager(void){return ptr(*(void **)(uintptr_t)0x19971594,0x3c);}
+static void *manager(void){return ptr(*(void **)(uintptr_t)0x19989694,0x3c);}
 static TNNavSlot *slot(void *a){return a?((M8NativeTail *)((uint8_t *)a+TIO_STOCK_MENU_BYTES))->navigation:NULL;}
 static bool paired(void){void *m=nav_monitors(),*l=m?nav_link(m):NULL;return l&&nav_bonded(l)&&nav_connection(0x80)!=0;}
 static bool home(void){const char *name=nav_top_app();if(!name||strcmp(name,"com.rayneo.liteos.launcher"))return false;void *m=nav_monitors(),*i=m?nav_input(m):NULL;return i&&!nav_folded(i)&&dots_business_idle();}
