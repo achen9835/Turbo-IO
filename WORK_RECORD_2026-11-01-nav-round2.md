@@ -80,3 +80,11 @@
   - 模块 233,488 B · sha256 `5418b8f6d144cd14f5bb095d4f971739d099e18588c7b01ee796e7af8d0b45f7`
 - 手机端：与本记录同提交构建的 ad-hoc IPA（由 CI 产出，哈希见构建日志/交付说明）。
 - 旧候选 `TAP3-2026-11`（`f68e3edc…`）与更旧 `05170b9b…` 均撤销，不要继续刷入。
+
+## 7. 本次实际交付（2026-11-01 03:0x）
+
+- 构建提交 `90d443f`（daily），CI run 41231110173：dylib 编译、TAP3-2026-11B 嵌入、ad-hoc IPA 打包全部成功。
+- IPA：`TurboIO-navselfheal-TAP3-2026-11B.ipa`，SHA-256 `040170a10d2c812cc048dc29fc38c3baa6e7b77c7b85671b8b4c500fba7ac754`。
+- IPA 内 `TurboWeReadCandidate.zip` 实测 SHA-256 = `c874225fab7b3722b43d5340203233fbdcffef6a8620acf64304b6eaabc5abec`，与候选描述一致；dylib 含 `TAP3-2026-11B`、`NAVIGATION-PHONE-03-BG`、`tnr_path_budget` 等新标记。
+- 交付目录：`D:\Downloads\TurboIO-TAP3-2026-11B-nav\`（IPA、SHA256SUMS、交付说明）。
+- 下一步：用户重签安装 + 按交付说明刷入 11B 并做五项实测；回传 `native-navigation-status.json` 与镜片照片。
