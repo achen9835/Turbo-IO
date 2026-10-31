@@ -55,6 +55,27 @@ static BOOL DeadSession(NSUInteger stage,NSTimeInterval last,NSTimeInterval dead
     if(isfinite(deadline)&&isfinite(now)&&now>=deadline)return YES;
     return stage==2&&isfinite(last)&&isfinite(now)&&now-last>120;
 }
+/* 安装会话飞行记录（2026-10-31）：官方 App 在 70%（240 片）后把剩余传输切到
+ * business 9 之外的第二通道，门禁此前对其完全不可见（计数全零≠没有流量）。
+ * 会话期内（stage>=1）全量记录出站调用形状（方法名/业务号→次数）与入站事
+ * 件业务号计数；只记形状不记内容，键数封顶防膨胀。 */
+static NSMutableDictionary *InstallCalls;
+static void RecordInstallCall(NSString *key){
+    if(![key isKindOfClass:NSString.class]||!key.length)return;
+    @synchronized(NSProcessInfo.processInfo){
+        if(!InstallCalls)InstallCalls=[NSMutableDictionary new];
+        if(!InstallCalls[key]&&InstallCalls.count>=40)return;
+        InstallCalls[key]=@([InstallCalls[key] unsignedIntegerValue]+1);
+    }
+}
+static NSString *CallKey(NSString *method,NSDictionary *args){
+    if(![method isKindOfClass:NSString.class])return @"<non-string>";
+    if([method isEqual:@"rayneonet_sendMessage"]){
+        id b=[args isKindOfClass:NSDictionary.class]?args[@"businessId"]:nil;
+        if([b isKindOfClass:NSNumber.class]&&CFGetTypeID((__bridge CFTypeRef)b)!=CFBooleanGetTypeID())return [NSString stringWithFormat:@"biz:%ld",(long)[b integerValue]];
+    }
+    return method.length>47?[method substringToIndex:47]:method;
+}
 static BOOL Var(const uint8_t *b,NSUInteger n,NSUInteger *at,uint64_t *v){*v=0;for(unsigned i=0;i<5;i++){if(*at>=n)return NO;uint8_t x=b[(*at)++];if(i==4&&(x&0xf0))return NO;*v|=(uint64_t)(x&127)<<(i*7);if(!(x&128))return i==0||x!=0;}return NO;}
 NSDictionary *TIOOTAFrame(NSData *data){
     if(![data isKindOfClass:NSData.class]||data.length<4||data.length>65536)return nil;
@@ -168,7 +189,8 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
          * 900 秒，仅凭到期就毒化会杀死仍在健康传输中的安装（2026-10-31）。 */
         else if(_stage==2&&isfinite(_deadline)&&realNow>=_deadline&&isfinite(_lastActivity)&&realNow-_lastActivity>120){_stage=3;_failure=[_failure length]?_failure:@"会话超时自动收尾";}
         BOOL dead=_stage>=2&&DeadSession(_stage,_lastActivity,_deadline,realNow);
-        return @{@"stage":@(_stage),@"authorized":@(_stage==1||_stage==2),@"started":@(_stage>=2),@"versionMatched":@(_versionSent),@"manifestMatched":@(_manifestSent),@"validatedSlices":@(_slices),@"validatedSliceBytes":@(_bytes),@"lastActivity":@(_lastActivity),@"captureFiles":@(_captureFiles.count),@"captureBytes":@(_captureBytes),@"failure":_failure?:@"",@"dead":@(dead),@"runtimeValidated":@NO};}}
+        NSDictionary *calls;@synchronized(NSProcessInfo.processInfo){calls=InstallCalls?[InstallCalls copy]:@{};}
+        return @{@"stage":@(_stage),@"authorized":@(_stage==1||_stage==2),@"started":@(_stage>=2),@"versionMatched":@(_versionSent),@"manifestMatched":@(_manifestSent),@"validatedSlices":@(_slices),@"validatedSliceBytes":@(_bytes),@"lastActivity":@(_lastActivity),@"captureFiles":@(_captureFiles.count),@"captureBytes":@(_captureBytes),@"failure":_failure?:@"",@"dead":@(dead),@"installCalls":calls,@"runtimeValidated":@NO};}}
 @end
 BOOL TIOOTAFlashBuild(void){
 #if TARGET_OS_IPHONE && TIO_OTA_FLASH_ENABLED
@@ -232,6 +254,7 @@ static id Get(id obj,NSString *key){@try{return [obj valueForKey:key];}@catch(NS
 BOOL TIOOTAFlashBlockCall(id call){
     if(!TIOOTAFlashBuild())return NO;
     NSString *method=Get(call,@"method");NSDictionary *args=Get(call,@"arguments");
+    if([[Current() status][@"stage"] unsignedIntegerValue]>=1)RecordInstallCall(CallKey(method,args));
     if(![method isKindOfClass:NSString.class])return YES;
     if([method.lowercaseString containsString:@"disconnect"]||[method.lowercaseString containsString:@"unbind"]||[method.lowercaseString containsString:@"unpair"]){@synchronized(NSProcessInfo.processInfo){ObservedDevice=nil;ObservedAt=0;}[Current() cancel];}
     if([method isEqual:@"rayneonet_sendMessage"]){
@@ -262,7 +285,8 @@ BOOL TIOOTAFlashBlockCall(id call){
 }
 void TIOOTAFlashObserveEvent(NSDictionary *event){
     if(!TIOOTAFlashBuild()||![event[@"eventType"] isEqual:@"messageReceived"])return;
-    NSDictionary *m=event[@"message"];NSUInteger business=0;if(![m isKindOfClass:NSDictionary.class]||!Number(m[@"businessId"],&business)||business!=9)return;
+    NSDictionary *m=event[@"message"];if([m isKindOfClass:NSDictionary.class]&&[[Current() status][@"stage"] unsignedIntegerValue]>=1)RecordInstallCall([NSString stringWithFormat:@"in:%@",m[@"businessId"]?:@"?"]);
+    NSUInteger business=0;if(![m isKindOfClass:NSDictionary.class]||!Number(m[@"businessId"],&business)||business!=9)return;
     NSDictionary *f=TIOOTAFrame(m[@"payload"]);id j=f[@"json"];
     if([f[@"type"] isEqual:@1]){@synchronized(NSProcessInfo.processInfo){ObservedDevice=nil;ObservedAt=0;}}
     if([f[@"type"] isEqual:@1]&&[j isKindOfClass:NSDictionary.class]&&TIOOTAAcceptsReadback(j[@"OsVersion"])&&[j[@"OtaValidationConfirmed"] isEqual:@YES]&&[m[@"deviceId"] isKindOfClass:NSString.class]){
