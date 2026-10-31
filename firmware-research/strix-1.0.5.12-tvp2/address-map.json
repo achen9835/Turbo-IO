@@ -1,0 +1,1210 @@
+{
+  "schema": 1,
+  "baseline": "Strix OS 1.0.5.12",
+  "stockAPSHA256": "af701a6525fbf703854b3d63e757734546c20bdb5d50e246867dc6a0565713ae",
+  "previousStockAPSHA256": "b3d6d9d7a4ece97e1dbaa64fc080eb5db8a5f7c9fecf340888ebb97a9112cc6c",
+  "symbols": [
+    {
+      "name": "tio_lv_image_create_ex",
+      "old": "0x10582ac5",
+      "new": "0x10561b1d",
+      "evidence": "manual-masked-28:image-create wrapper; calls the mapped LVGL create/set-target pair"
+    },
+    {
+      "name": "tio_lv_image_decoder_close",
+      "old": "0x10499cbb",
+      "new": "0x104b1c2f",
+      "evidence": "unique-exact-48"
+    },
+    {
+      "name": "tio_lv_image_decoder_open",
+      "old": "0x10499bf5",
+      "new": "0x104b1b69",
+      "evidence": "unique-exact-16"
+    },
+    {
+      "name": "tio_lv_image_get_src",
+      "old": "0x10582b01",
+      "new": "0x10561b59",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tio_lv_image_set_src",
+      "old": "0x10582f0d",
+      "new": "0x10561f65",
+      "evidence": "unique-exact-12"
+    },
+    {
+      "name": "tio_lv_obj_add_flag",
+      "old": "0x1052b7a7",
+      "new": "0x105445ef",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tio_lv_obj_align",
+      "old": "0x1052cba9",
+      "new": "0x105459f1",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tio_lv_obj_create_ex",
+      "old": "0x1052b285",
+      "new": "0x105440cd",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "tio_lv_obj_delete",
+      "old": "0x10530d59",
+      "new": "0x10549ba1",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tio_lv_obj_get_height",
+      "old": "0x1052cc63",
+      "new": "0x10545aab",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tio_lv_obj_get_width",
+      "old": "0x1052cc55",
+      "new": "0x10545a9d",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tio_lv_obj_remove_flag",
+      "old": "0x1052b2e1",
+      "new": "0x10544129",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tio_lv_obj_set_size",
+      "old": "0x1052cb07",
+      "new": "0x1054594f",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tio_lv_obj_set_style_bg_color",
+      "old": "0x105305d5",
+      "new": "0x1054941d",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tio_lv_obj_set_style_bg_opa",
+      "old": "0x105305f5",
+      "new": "0x1054943d",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tio_lv_obj_set_style_border_width",
+      "old": "0x105306e5",
+      "new": "0x1054952d",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tio_lv_obj_set_style_pad_bottom",
+      "old": "0x1053050f",
+      "new": "0x10549357",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tio_lv_obj_set_style_pad_left",
+      "old": "0x10530525",
+      "new": "0x1054936d",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tio_lv_obj_set_style_pad_right",
+      "old": "0x1053053b",
+      "new": "0x10549383",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tio_lv_obj_set_style_pad_top",
+      "old": "0x105304f9",
+      "new": "0x10549341",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tio_lv_obj_set_style_radius",
+      "old": "0x10530879",
+      "new": "0x105496c1",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "ce_ext_106e7b5c",
+      "old": "0x10578761",
+      "new": "0x105921c1",
+      "evidence": "manual-masked-48:focus/monitor cluster beside ce_focus_manager"
+    },
+    {
+      "name": "ce_ext_106e8458",
+      "old": "0x1057905d",
+      "new": "0x10592abd",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "ce_ext_106e8460",
+      "old": "0x10579065",
+      "new": "0x10592ac5",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "ce_ext_106d3310",
+      "old": "0x10563565",
+      "new": "0x1057cfc5",
+      "evidence": "unique-exact-16"
+    },
+    {
+      "name": "ce_ext_106d4c48",
+      "old": "0x10564fe5",
+      "new": "0x1057ea45",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "ce_ext_106d693c",
+      "old": "0x10566cdd",
+      "new": "0x1058073d",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "ce_ext_10941968",
+      "old": "0x107ebca9",
+      "new": "0x10803679",
+      "evidence": "unique-exact-12"
+    },
+    {
+      "name": "ce_ext_106d245c",
+      "old": "0x10562355",
+      "new": "0x1057bdb5",
+      "evidence": "unique-exact-12"
+    },
+    {
+      "name": "ce_ext_106b61f0",
+      "old": "0x1053ed63",
+      "new": "0x10558733",
+      "evidence": "manual-masked-96:unique 96-byte branch-relocated fingerprint"
+    },
+    {
+      "name": "ce_ext_106b60c4",
+      "old": "0x1053ffc9",
+      "new": "0x10559999",
+      "evidence": "manual-masked-96:JSON cluster beside ce_ext_106b61f0"
+    },
+    {
+      "name": "ce_ext_106b6028",
+      "old": "0x1053ece9",
+      "new": "0x105586b9",
+      "evidence": "unique-exact-12"
+    },
+    {
+      "name": "ce_ext_107d5cd8",
+      "old": "0x106b26ed",
+      "new": "0x106d1ab5",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "dots_getrandom",
+      "old": "0x1079ab41",
+      "new": "0x107b4179",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "dots_stock_notify",
+      "old": "0x1056a9c5",
+      "new": "0x10584425",
+      "evidence": "unique-exact-8"
+    },
+    {
+      "name": "ce_utc_time",
+      "old": "0x1056cfe9",
+      "new": "0x10586a49",
+      "evidence": "manual-masked-68:unique 64-byte branch-relocated fingerprint"
+    },
+    {
+      "name": "ce_focus_manager",
+      "old": "0x105776bd",
+      "new": "0x1059111d",
+      "evidence": "unique-exact-12"
+    },
+    {
+      "name": "ce_focus_enabled",
+      "old": "0x105776fd",
+      "new": "0x1059115d",
+      "evidence": "unique-exact-24"
+    },
+    {
+      "name": "ce_head_mode",
+      "old": "0x105723a9",
+      "new": "0x1058be09",
+      "evidence": "unique-exact-16"
+    },
+    {
+      "name": "tgr_indev_next",
+      "old": "0x10537f6d",
+      "new": "0x10550db5",
+      "evidence": "manual-masked-24:input-device cluster; distinct from display/timer twins"
+    },
+    {
+      "name": "tgr_indev_type",
+      "old": "0x10537fd9",
+      "new": "0x10550e21",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tgr_indev_group",
+      "old": "0x10537fed",
+      "new": "0x10550e35",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tgr_indev_driver",
+      "old": "0x10537ff9",
+      "new": "0x10550e41",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tgr_intercept",
+      "old": "0x105eb919",
+      "new": "0x1062c439",
+      "evidence": "unique-exact-8"
+    },
+    {
+      "name": "tgr_group_send",
+      "old": "0x1052aa81",
+      "new": "0x105438c9",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "tgr_raw_wheel",
+      "old": "0x105ebc3d",
+      "new": "0x1062c75d",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "tgr_sim_wheel",
+      "old": "0x106fb1d1",
+      "new": "0x1071ceb5",
+      "evidence": "unique-exact-8"
+    },
+    {
+      "name": "tgr_ota_status",
+      "old": "0x1056ce0d",
+      "new": "0x1058686d",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tap_fs_errno",
+      "old": "0x10479e19",
+      "new": "0x10491d81",
+      "evidence": "unique-exact-24"
+    },
+    {
+      "name": "tap_fs_fopen",
+      "old": "0x1047ca9f",
+      "new": "0x10494a07",
+      "evidence": "unique-exact-24"
+    },
+    {
+      "name": "tap_fs_fclose",
+      "old": "0x1047cad9",
+      "new": "0x10494a41",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tap_fs_fread",
+      "old": "0x1047cbfb",
+      "new": "0x10494b63",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tap_fs_fwrite",
+      "old": "0x1047cea7",
+      "new": "0x10494e0f",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tap_fs_fflush",
+      "old": "0x1047cfbf",
+      "new": "0x10494f27",
+      "evidence": "unique-exact-48"
+    },
+    {
+      "name": "tap_fs_ferror",
+      "old": "0x1047d223",
+      "new": "0x1049518b",
+      "evidence": "unique-exact-16"
+    },
+    {
+      "name": "tap_fs_feof",
+      "old": "0x10799f97",
+      "new": "0x107b35cf",
+      "evidence": "unique-exact-16"
+    },
+    {
+      "name": "tap_fs_fileno",
+      "old": "0x1079cea5",
+      "new": "0x107b64dd",
+      "evidence": "unique-exact-12"
+    },
+    {
+      "name": "tap_fs_mkdir",
+      "old": "0x1073ba59",
+      "new": "0x10755091",
+      "evidence": "unique-exact-48"
+    },
+    {
+      "name": "tap_fs_statfs",
+      "old": "0x1073c7d1",
+      "new": "0x10755e09",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tap_fs_fsync",
+      "old": "0x1073cdfb",
+      "new": "0x10756433",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "tio_lv_obj_set_style_border_color",
+      "old": "0x105306af",
+      "new": "0x105494f7",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tap_lv_border_opa",
+      "old": "0x105306cf",
+      "new": "0x10549517",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tap_random",
+      "old": "0x1079a38d",
+      "new": "0x107b39c5",
+      "evidence": "unique-exact-24"
+    },
+    {
+      "name": "strlen",
+      "old": "0x100301",
+      "new": "0x100301",
+      "evidence": "fixed-rom-literal:2"
+    },
+    {
+      "name": "strcmp",
+      "old": "0x100109",
+      "new": "0x100109",
+      "evidence": "fixed-rom-literal:3"
+    },
+    {
+      "name": "dc_resolve",
+      "old": "0x10731819",
+      "new": "0x1074ae51",
+      "evidence": "unique-exact-48"
+    },
+    {
+      "name": "dc_hints",
+      "old": "0x10731cf5",
+      "new": "0x1074b32d",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "dc_weight",
+      "old": "0x10731c99",
+      "new": "0x1074b2d1",
+      "evidence": "unique-exact-16"
+    },
+    {
+      "name": "dc_text_mode",
+      "old": "0x104abf89",
+      "new": "0x104c4615",
+      "evidence": "manual-masked-92:unique 64-byte branch-relocated fingerprint"
+    },
+    {
+      "name": "dc_remove_style",
+      "old": "0x1052fcb1",
+      "new": "0x10548af9",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "ce_text_align",
+      "old": "0x10530863",
+      "new": "0x105496ab",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "ce_cache_drop",
+      "old": "0x1049cd2d",
+      "new": "0x104b4ca1",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "ce_header_drop",
+      "old": "0x1049ce35",
+      "new": "0x104b4da9",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "stock_ctor",
+      "old": "0x10669ba5",
+      "new": "0x1068613d",
+      "evidence": "bl-target:Initialize tail after new stock constructor"
+    },
+    {
+      "name": "native_unregister_wheel",
+      "old": "0x106699b9",
+      "new": "0x10685f51",
+      "evidence": "unique-exact-12"
+    },
+    {
+      "name": "native_wake_overlay",
+      "old": "0x10667185",
+      "new": "0x10683721",
+      "evidence": "unique-exact-48"
+    },
+    {
+      "name": "native_report_activity",
+      "old": "0x105ec529",
+      "new": "0x106392f9",
+      "evidence": "manual-masked-96:unique 96-byte branch-relocated fingerprint"
+    },
+    {
+      "name": "native_has_flag",
+      "old": "0x1052b3ab",
+      "new": "0x105441f3",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "native_event_code",
+      "old": "0x1049eba5",
+      "new": "0x104b6b19",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "native_event_key",
+      "old": "0x1052c739",
+      "new": "0x10545581",
+      "evidence": "unique-exact-12"
+    },
+    {
+      "name": "native_label_create",
+      "old": "0x104ab469",
+      "new": "0x104c3999",
+      "evidence": "manual-masked-24:label cluster; same wrapper as canvas with distinct literal pool"
+    },
+    {
+      "name": "native_label_text",
+      "old": "0x104abdf9",
+      "new": "0x104c4485",
+      "evidence": "unique-exact-12"
+    },
+    {
+      "name": "native_text_color",
+      "old": "0x105307d5",
+      "new": "0x1054961d",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "native_align",
+      "old": "0x1052cba9",
+      "new": "0x105459f1",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "native_log",
+      "old": "0x106b26ed",
+      "new": "0x106d1ab5",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "stream_memalign",
+      "old": "0x10482d89",
+      "new": "0x1049acf1",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "stream_free",
+      "old": "0x10481941",
+      "new": "0x104998a9",
+      "evidence": "unique-exact-12"
+    },
+    {
+      "name": "stream_tick",
+      "old": "0x106b2b05",
+      "new": "0x106d1ecd",
+      "evidence": "manual-masked-96:unique 96-byte branch-relocated fingerprint"
+    },
+    {
+      "name": "stream_timer_create",
+      "old": "0x104a11ed",
+      "new": "0x104b9711",
+      "evidence": "unique-exact-16"
+    },
+    {
+      "name": "stream_timer_delete",
+      "old": "0x104a12c5",
+      "new": "0x104b97e9",
+      "evidence": "unique-exact-12"
+    },
+    {
+      "name": "stream_timer_next",
+      "old": "0x104a16f9",
+      "new": "0x104b9c1d",
+      "evidence": "unique-exact-12"
+    },
+    {
+      "name": "fm_system",
+      "old": "0x10579075",
+      "new": "0x10592ad5",
+      "evidence": "unique-exact-48"
+    },
+    {
+      "name": "fm_local_time",
+      "old": "0x1056d035",
+      "new": "0x10586a95",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "fm_battery_monitor",
+      "old": "0x1057905d",
+      "new": "0x10592abd",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "fm_battery_level",
+      "old": "0x10564fdd",
+      "new": "0x1057ea3d",
+      "evidence": "unique-exact-48"
+    },
+    {
+      "name": "focus_screen_on",
+      "old": "0x105ec47d",
+      "new": "0x1063924d",
+      "evidence": "manual-masked-28:screen-power cluster beside nav_always_on"
+    },
+    {
+      "name": "stream_event_user",
+      "old": "0x1049ebb9",
+      "new": "0x104b6b2d",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "stream_add_event",
+      "old": "0x1052c489",
+      "new": "0x105452d1",
+      "evidence": "unique-exact-24"
+    },
+    {
+      "name": "stream_canvas_create",
+      "old": "0x106f1df5",
+      "new": "0x106ffa7d",
+      "evidence": "manual-masked-24:canvas cluster immediately before mapped set_buffer"
+    },
+    {
+      "name": "stream_canvas_set_buffer",
+      "old": "0x106f1e11",
+      "new": "0x106ffa99",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "stream_stride",
+      "old": "0x10496cb5",
+      "new": "0x104aec1d",
+      "evidence": "manual-masked-16:wrapper preserves its local -0x14 call target"
+    },
+    {
+      "name": "stream_display_next",
+      "old": "0x10532791",
+      "new": "0x1054b5d9",
+      "evidence": "manual-masked-24:display cluster; distinct from input/timer twins"
+    },
+    {
+      "name": "stream_invalidate",
+      "old": "0x1052d05f",
+      "new": "0x10545ea7",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "stream_queue_send",
+      "old": "0x106b1b49",
+      "new": "0x106d0f11",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "memcpy",
+      "old": "0x1000a1",
+      "new": "0x1000a1",
+      "evidence": "fixed-rom-literal:2"
+    },
+    {
+      "name": "memset",
+      "old": "0x1000b9",
+      "new": "0x1000b9",
+      "evidence": "fixed-rom-literal:2"
+    },
+    {
+      "name": "memcmp",
+      "old": "0x1047e879",
+      "new": "0x104967e1",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "td_gettid",
+      "old": "0x10470ce9",
+      "new": "0x10488c51",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "native_snap",
+      "old": "0x1066a821",
+      "new": "0x10686db9",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "menu_remove_styles",
+      "old": "0x1052fcb1",
+      "new": "0x10548af9",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "menu_opa",
+      "old": "0x1053088f",
+      "new": "0x105496d7",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "menu_translate",
+      "old": "0x1053045f",
+      "new": "0x105492a7",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "menu_lottie_frame",
+      "old": "0x106f2443",
+      "new": "0x107000cb",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "menu_font",
+      "old": "0x106ba365",
+      "new": "0x106d972d",
+      "evidence": "unique-exact-16"
+    },
+    {
+      "name": "menu_text_font",
+      "old": "0x1053080b",
+      "new": "0x10549653",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "menu_text_align",
+      "old": "0x10530863",
+      "new": "0x105496ab",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "nav_label_static",
+      "old": "0x104abf55",
+      "new": "0x104c45e1",
+      "evidence": "unique-exact-24"
+    },
+    {
+      "name": "nav_always_on",
+      "old": "0x105ec49d",
+      "new": "0x1063926d",
+      "evidence": "unique-exact-12"
+    },
+    {
+      "name": "nav_release_always_on",
+      "old": "0x105ec50d",
+      "new": "0x106392dd",
+      "evidence": "unique-exact-16"
+    },
+    {
+      "name": "nav_screen_on",
+      "old": "0x105ec3d5",
+      "new": "0x106391a5",
+      "evidence": "unique-exact-16"
+    },
+    {
+      "name": "nav_force_off",
+      "old": "0x105ec441",
+      "new": "0x10639211",
+      "evidence": "manual-masked-14:screen-power cluster; line-number immediate differs"
+    },
+    {
+      "name": "nav_ensure_menu",
+      "old": "0x10666ca5",
+      "new": "0x10683241",
+      "evidence": "unique-exact-24"
+    },
+    {
+      "name": "nav_set_state",
+      "old": "0x10668bcd",
+      "new": "0x10685165",
+      "evidence": "unique-exact-24"
+    },
+    {
+      "name": "nav_top_app",
+      "old": "0x10563565",
+      "new": "0x1057cfc5",
+      "evidence": "unique-exact-16"
+    },
+    {
+      "name": "nav_monitors",
+      "old": "0x10578761",
+      "new": "0x105921c1",
+      "evidence": "manual-masked-48:same stock function as ce_ext_106e7b5c"
+    },
+    {
+      "name": "nav_link",
+      "old": "0x1057906d",
+      "new": "0x10592acd",
+      "evidence": "unique-exact-48"
+    },
+    {
+      "name": "nav_input",
+      "old": "0x10579065",
+      "new": "0x10592ac5",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "nav_bonded",
+      "old": "0x1056a0b5",
+      "new": "0x10583b15",
+      "evidence": "unique-exact-12"
+    },
+    {
+      "name": "nav_folded",
+      "old": "0x10566cdd",
+      "new": "0x1058073d",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "nav_business_idle",
+      "old": "0x105635a1",
+      "new": "0x1057d001",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "nav_connection",
+      "old": "0x104d02fd",
+      "new": "0x104eca55",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "nav_stop_event",
+      "old": "0x1049ebcf",
+      "new": "0x104b6b43",
+      "evidence": "unique-exact-48"
+    },
+    {
+      "name": "stream_timer_period",
+      "old": "0x104a152d",
+      "new": "0x104b9a51",
+      "evidence": "unique-exact-24"
+    },
+    {
+      "name": "tdp_rnlink_send",
+      "old": "0x104e3d65",
+      "new": "0x105004c1",
+      "evidence": "unique-exact-16"
+    },
+    {
+      "name": "port_stock_new",
+      "old": "0x106b2b3d",
+      "new": "0x106d1f05",
+      "evidence": "manual-masked-96:unique 96-byte branch-relocated fingerprint"
+    },
+    {
+      "name": "ce_stock_head_notify_resume",
+      "old": "0x1056d9c1",
+      "new": "0x10587421",
+      "evidence": "patch-resume:ce_head_notify_entry"
+    },
+    {
+      "name": "ce_stock_head_start_resume",
+      "old": "0x104e8d79",
+      "new": "0x104ea139",
+      "evidence": "patch-resume:ce_serial_start_entry"
+    },
+    {
+      "name": "ce_stock_head_stop_resume",
+      "old": "0x104e8e1d",
+      "new": "0x104ea1dd",
+      "evidence": "patch-resume:ce_serial_stop_entry"
+    },
+    {
+      "name": "ce_stock_sys_destroy_resume",
+      "old": "0x1056c5a1",
+      "new": "0x10586001",
+      "evidence": "patch-resume:ce_serial_destroy_entry"
+    },
+    {
+      "name": "resume_show",
+      "old": "0x1066a945",
+      "new": "0x10686edd",
+      "evidence": "patch-resume:Entry trampoline show"
+    },
+    {
+      "name": "resume_hide",
+      "old": "0x1066a979",
+      "new": "0x10686f11",
+      "evidence": "patch-resume:Entry trampoline hide"
+    },
+    {
+      "name": "resume_destroy",
+      "old": "0x10669a01",
+      "new": "0x10685f99",
+      "evidence": "patch-resume:Entry trampoline destroy"
+    },
+    {
+      "name": "resume_wheel",
+      "old": "0x1066a6b3",
+      "new": "0x10686c4b",
+      "evidence": "patch-resume:Entry trampoline wheel"
+    },
+    {
+      "name": "resume_event",
+      "old": "0x1066aa45",
+      "new": "0x10686fdd",
+      "evidence": "patch-resume:Entry trampoline event"
+    },
+    {
+      "name": "resume_message",
+      "old": "0x1057c051",
+      "new": "0x10595ab1",
+      "evidence": "patch-resume:Entry trampoline message"
+    },
+    {
+      "name": "resume_dc_text",
+      "old": "0x107312b5",
+      "new": "0x10749ead",
+      "evidence": "patch-resume:Entry trampoline dc_text"
+    },
+    {
+      "name": "resume_names",
+      "old": "0x1066a201",
+      "new": "0x10686799",
+      "evidence": "patch-resume:Entry trampoline names"
+    },
+    {
+      "name": "resume_dots",
+      "old": "0x10669ccd",
+      "new": "0x10686265",
+      "evidence": "patch-resume:Entry trampoline dots"
+    },
+    {
+      "name": "resume_delete_dots",
+      "old": "0x10669cab",
+      "new": "0x10686243",
+      "evidence": "patch-resume:Entry trampoline delete_dots"
+    },
+    {
+      "name": "resume_lottie",
+      "old": "0x1066a06d",
+      "new": "0x10686605",
+      "evidence": "patch-resume:Entry trampoline lottie"
+    },
+    {
+      "name": "resume_app_id",
+      "old": "0x10669c4d",
+      "new": "0x106861e5",
+      "evidence": "patch-resume:Entry trampoline app_id"
+    },
+    {
+      "name": "resume_refresh_label",
+      "old": "0x1066a02f",
+      "new": "0x106865c7",
+      "evidence": "patch-resume:Entry trampoline refresh_label"
+    },
+    {
+      "name": "resume_vm_event",
+      "old": "0x10668d91",
+      "new": "0x10685329",
+      "evidence": "patch-resume:Entry trampoline vm_event"
+    },
+    {
+      "name": "tdc_resume_source",
+      "old": "0x1056f713",
+      "new": "0x10589173",
+      "evidence": "patch-resume:tdc_hook_source"
+    },
+    {
+      "name": "tdc_resume_serialize",
+      "old": "0x106ef8c9",
+      "new": "0x1070bda1",
+      "evidence": "patch-resume:tdc_hook_serialize"
+    },
+    {
+      "name": "tdc_resume_message",
+      "old": "0x10570769",
+      "new": "0x1058a1c9",
+      "evidence": "patch-resume:tdc_hook_message"
+    },
+    {
+      "name": "dcj_parse",
+      "old": "0x1053d6bf",
+      "new": "0x1055708f",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "dcj_object",
+      "old": "0x1053da61",
+      "new": "0x10557431",
+      "evidence": "manual-masked-20:unique masked wrapper; object constructor immediate 0x40"
+    },
+    {
+      "name": "dcj_array",
+      "old": "0x1053da1d",
+      "new": "0x105573ed",
+      "evidence": "manual-masked-20:unique masked wrapper; array constructor immediate 0x20"
+    },
+    {
+      "name": "dcj_string",
+      "old": "0x1053d9c1",
+      "new": "0x10557391",
+      "evidence": "unique-exact-12"
+    },
+    {
+      "name": "dcj_duplicate",
+      "old": "0x1053daa5",
+      "new": "0x10557475",
+      "evidence": "unique-exact-16"
+    },
+    {
+      "name": "dcj_get",
+      "old": "0x1053d77b",
+      "new": "0x1055714b",
+      "evidence": "manual-masked-96:unique 96-byte branch-relocated fingerprint"
+    },
+    {
+      "name": "dcj_add",
+      "old": "0x1053d791",
+      "new": "0x10557161",
+      "evidence": "manual-masked-96:unique 96-byte branch-relocated fingerprint"
+    },
+    {
+      "name": "dcj_append",
+      "old": "0x1053d787",
+      "new": "0x10557157",
+      "evidence": "manual-masked-96:unique 96-byte branch-relocated fingerprint"
+    },
+    {
+      "name": "dcj_delete",
+      "old": "0x1053d23d",
+      "new": "0x10556c0d",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "dcj_free",
+      "old": "0x1053dbe1",
+      "new": "0x105575b1",
+      "evidence": "unique-exact-12"
+    },
+    {
+      "name": "dcj_print",
+      "old": "0x1053d6e7",
+      "new": "0x105570b7",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "tdc_send_raw",
+      "old": "0x106eff15",
+      "new": "0x1070c3ed",
+      "evidence": "unique-exact-32"
+    },
+    {
+      "name": "tdc_notify",
+      "old": "0x1056f67f",
+      "new": "0x105890df",
+      "evidence": "unique-exact-64"
+    },
+    {
+      "name": "tdc_apps",
+      "old": "0x10705b69",
+      "new": "0x10714a7d",
+      "evidence": "unique-exact-16"
+    },
+    {
+      "name": "tdc_install",
+      "old": "0x10705989",
+      "new": "0x1071489d",
+      "evidence": "unique-exact-12"
+    },
+    {
+      "name": "tdc_uninstall",
+      "old": "0x10705a55",
+      "new": "0x10714969",
+      "evidence": "manual-masked-96:unique 96-byte branch-relocated fingerprint"
+    },
+    {
+      "name": "tdc_running",
+      "old": "0x107058e9",
+      "new": "0x107147fd",
+      "evidence": "unique-exact-8"
+    }
+  ],
+  "literals": [
+    {
+      "name": "launcher_manager",
+      "old": "0x19971594",
+      "new": "0x19989694",
+      "evidence": "direct"
+    },
+    {
+      "name": "launcher_callback_struct",
+      "old": "0x196aea48",
+      "new": "0x196c6988",
+      "evidence": "direct"
+    },
+    {
+      "name": "launcher_callback_manager",
+      "old": "0x196aeabc",
+      "new": "0x196c69fc",
+      "evidence": "direct"
+    },
+    {
+      "name": "launcher_published_tail",
+      "old": "0x196aead4",
+      "new": "0x196c6a14",
+      "evidence": "derived:launcher_callback_struct:0x8c"
+    },
+    {
+      "name": "stream_link_callback",
+      "old": "0x10569ba5",
+      "new": "0x10583605",
+      "evidence": "direct"
+    },
+    {
+      "name": "head_start_literal",
+      "old": "0x181b5ce4",
+      "new": "0x181ca732",
+      "evidence": "direct"
+    },
+    {
+      "name": "head_stop_literal",
+      "old": "0x181b5cbf",
+      "new": "0x181ca70d",
+      "evidence": "direct"
+    },
+    {
+      "name": "sys_destroy_literal",
+      "old": "0x181cf300",
+      "new": "0x181e6e8c",
+      "evidence": "direct"
+    },
+    {
+      "name": "sys_destroy_legacy_literal",
+      "old": "0x182ca670",
+      "new": "0x181e6e8c",
+      "evidence": "direct"
+    },
+    {
+      "name": "head_monitor_destroy",
+      "old": "0x1056d191",
+      "new": "0x10586bf1",
+      "evidence": "exact:32"
+    },
+    {
+      "name": "imu_start_object",
+      "old": "0x196988bc",
+      "new": "0x1959a7b4",
+      "evidence": "direct"
+    },
+    {
+      "name": "imu_stop_object",
+      "old": "0x19698884",
+      "new": "0x1959a77c",
+      "evidence": "direct"
+    },
+    {
+      "name": "coexist_string_a",
+      "old": "0x18052201",
+      "new": "0x1805244d",
+      "evidence": "direct"
+    },
+    {
+      "name": "coexist_string_b",
+      "old": "0x1805240d",
+      "new": "0x18052659",
+      "evidence": "direct"
+    },
+    {
+      "name": "coexist_format",
+      "old": "0x18177273",
+      "new": "0x18177536",
+      "evidence": "direct"
+    },
+    {
+      "name": "coexist_log_format",
+      "old": "0x1804300a",
+      "new": "0x1804338b",
+      "evidence": "direct"
+    },
+    {
+      "name": "render_units",
+      "old": "0x184d4440",
+      "new": "0x184ec384",
+      "evidence": "direct"
+    },
+    {
+      "name": "render_dispatch",
+      "old": "0x10428d89",
+      "new": "0x10440cf1",
+      "evidence": "exact:64"
+    },
+    {
+      "name": "render_dispatch_alt",
+      "old": "0x105335ff",
+      "new": "0x1054c447",
+      "evidence": "exact:16"
+    },
+    {
+      "name": "lv_mem_current",
+      "old": "0x184d45fc",
+      "new": "0x184ec540",
+      "evidence": "derived:render_units:0x1bc"
+    },
+    {
+      "name": "lv_mem_peak",
+      "old": "0x184d4600",
+      "new": "0x184ec544",
+      "evidence": "derived:render_units:0x1c0"
+    },
+    {
+      "name": "imu_rpmsg_resume",
+      "old": "0x104e7e81",
+      "new": "0x104e9241",
+      "evidence": "exact:64"
+    },
+    {
+      "name": "imu_start_resume",
+      "old": "0x104e8ee1",
+      "new": "0x104ea2a1",
+      "evidence": "masked:64"
+    },
+    {
+      "name": "imu_stop_resume",
+      "old": "0x104e8f4d",
+      "new": "0x104ea30d",
+      "evidence": "masked:64"
+    },
+    {
+      "name": "thread_create",
+      "old": "0x1047a931",
+      "new": "0x10492899",
+      "evidence": "masked:24"
+    },
+    {
+      "name": "thread_join",
+      "old": "0x1046eb39",
+      "new": "0x10486aa1",
+      "evidence": "exact:24"
+    },
+    {
+      "name": "thread_sleep",
+      "old": "0x104814cd",
+      "new": "0x10499435",
+      "evidence": "exact:64"
+    }
+  ]
+}
