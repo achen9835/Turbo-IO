@@ -52,6 +52,10 @@ const run = args => execFileSync('plutil', args, {stdio: 'pipe'});
 const info = () => JSON.parse(execFileSync('plutil', ['-convert', 'json', '-o', '-', plist], {encoding: 'utf8'}));
 run(['-insert', 'TIOExperimentalOTAQueryRouting', '-string', routing, plist]);
 run(['-insert', 'TIOExperimentalOTABuild', '-string', 'FOCUS-04-SOURCE', plist]);
+// 文件共享开关：官方原版 plist 没有它，爱思「文件管理」和手机「文件」App 都
+// 看不到本 App 的 Documents——official-capture（官方固件导出）因此取不出来。
+if (!info().UIFileSharingEnabled) run(['-insert', 'UIFileSharingEnabled', '-json', 'true', plist]);
+if (!info().LSSupportsOpeningDocumentsInPlace) run(['-insert', 'LSSupportsOpeningDocumentsInPlace', '-json', 'true', plist]);
 // 音乐需要后台音频模式
 let i = info();
 if (!i.UIBackgroundModes) run(['-insert', 'UIBackgroundModes', '-json', '["audio"]', plist]);
