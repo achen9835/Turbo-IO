@@ -54,8 +54,14 @@ run(['-insert', 'TIOExperimentalOTAQueryRouting', '-string', routing, plist]);
 run(['-insert', 'TIOExperimentalOTABuild', '-string', 'FOCUS-04-SOURCE', plist]);
 // 文件共享开关：官方原版 plist 没有它，爱思「文件管理」和手机「文件」App 都
 // 看不到本 App 的 Documents——official-capture（官方固件导出）因此取不出来。
-if (!info().UIFileSharingEnabled) run(['-insert', 'UIFileSharingEnabled', '-json', 'true', plist]);
-if (!info().LSSupportsOpeningDocumentsInPlace) run(['-insert', 'LSSupportsOpeningDocumentsInPlace', '-json', 'true', plist]);
+// 布尔值用 PlistBuddy 注入（plutil -json 不接受裸标量，2026-10-31 CI 实证）。
+const buddy = args => execFileSync('/usr/libexec/PlistBuddy', args, {stdio: 'pipe'});
+const forceBool = key => {
+  try { buddy(['-c', 'Add :' + key + ' bool true', plist]); }
+  catch (e) { try { buddy(['-c', 'Set :' + key + ' true', plist]); } catch (e2) { /* 已是目标值 */ } }
+};
+if (!info().UIFileSharingEnabled) forceBool('UIFileSharingEnabled');
+if (!info().LSSupportsOpeningDocumentsInPlace) forceBool('LSSupportsOpeningDocumentsInPlace');
 // 音乐需要后台音频模式
 let i = info();
 if (!i.UIBackgroundModes) run(['-insert', 'UIBackgroundModes', '-json', '["audio"]', plist]);
