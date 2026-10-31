@@ -22,16 +22,23 @@
 #endif
 #endif
 #endif
+/* 传输窗口（stage==2）文件类调用的可观测性：v4 起不再按方法名拦截（见下），
+ * 但逐次记名——若安装再次中断，状态行直接给出中断前流过/被关注的调用名。 */
+static NSUInteger StageTwoFileCalls;
+static NSString *LastStageTwoFileCall=@"-";
 BOOL TIOOTAFileCallBlocked(NSString *method,BOOL scopedImage,NSUInteger stage){
  if(![method isKindOfClass:NSString.class])return YES;
- // 2026-10-29 v3：只有传输窗口（stage==2）拦**非本方**文件流，本方通道
- //（TNV 导航 / 图传 / 镜像 / 音乐，由 scopedImage 识别）任何阶段都放行——
- // v2 在 stage==2 连自家 TNV 传输一起拦，刷完固件后 stage 粘 2（会话无完成
- // 回落），导航的 turbo-navigation.tnv 提交即死：画面冻结、停止也发不出退出。
- // 固件本体走 business 9 帧逐片 memcmp 核对，并发流不会静默损坏。
- if(stage!=2||scopedImage)return NO;
+ /* 2026-10-31 v4：传输窗口全透明。v3 在 stage==2 拦非本方文件流（方法名含
+  * sendfile/ota/upgrade）且拦截不进任何计数器（blockedCalls 只统计 prepare
+  * 构建）——真机 TAP3 两次安装停在一字不差的同一字节（240 片/12,096,730，
+  * 1.0.10 宿主），而官方直连（门禁整体关闭）同包同眼镜 17MB 全量成功；该拦截
+  * 无法自证清白。固件本体走 business 9 帧逐片 memcmp 核对，并发流不会静默
+  * 损坏；1.0.10 宿主安装流程若中途换用 sendFile 类通道，v3 会无声吞掉它。
+  * 改为全放行并记名，换取可判定的真机证据。 */
+ (void)scopedImage;(void)stage;
  NSString *lower=method.lowercaseString;
- return [lower containsString:@"sendfile"]||[lower containsString:@"ota"]||[lower containsString:@"upgrade"];
+ if([lower containsString:@"sendfile"]||[lower containsString:@"ota"]||[lower containsString:@"upgrade"])@synchronized(NSProcessInfo.processInfo){StageTwoFileCalls++;LastStageTwoFileCall=[method copy];}
+ return NO;
 }
 static id Error(NSError **error,NSString *s){if(error)*error=[NSError errorWithDomain:@"TurboIO.OTAFlash" code:1 userInfo:@{NSLocalizedDescriptionKey:s}];return nil;}
 static BOOL Number(id n,NSUInteger *out){
@@ -275,4 +282,4 @@ BOOL TIOOTAFlashAuthorize(NSError **error){
     return [Current() prepareDirectory:dir device:device uptime:now error:error];
 }
 BOOL TIOOTAFlashCancel(void){return [Current() cancel];}
-NSDictionary *TIOOTAFlashStatus(void){NSMutableDictionary *s=[[Current() status] mutableCopy];s[@"flashBuild"]=@(TIOOTAFlashBuild());s[@"automaticUpdateDisabled"]=@(TIOOTAAutoUpdateDisabled(NSUserDefaults.standardUserDefaults.dictionaryRepresentation));@synchronized(NSProcessInfo.processInfo){s[@"recentTargetVersionRead"]=@(ObservedDevice.length&&NSProcessInfo.processInfo.systemUptime-ObservedAt<=120);}return s;}
+NSDictionary *TIOOTAFlashStatus(void){NSMutableDictionary *s=[[Current() status] mutableCopy];s[@"flashBuild"]=@(TIOOTAFlashBuild());s[@"automaticUpdateDisabled"]=@(TIOOTAAutoUpdateDisabled(NSUserDefaults.standardUserDefaults.dictionaryRepresentation));@synchronized(NSProcessInfo.processInfo){s[@"recentTargetVersionRead"]=@(ObservedDevice.length&&NSProcessInfo.processInfo.systemUptime-ObservedAt<=120);s[@"stageTwoFileCalls"]=@(StageTwoFileCalls);s[@"lastStageTwoFileCall"]=LastStageTwoFileCall;}return s;}
