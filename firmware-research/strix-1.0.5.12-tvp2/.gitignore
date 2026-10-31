@@ -1,0 +1,7 @@
+build/
+__pycache__/
+*.pyc
+*.o
+*.elf
+# 本地改动构建的候选产物只保留 candidate-release/ 两件（zip + 描述），
+# 编译中间物不入库。

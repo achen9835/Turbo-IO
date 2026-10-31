@@ -1,0 +1,111 @@
+{
+  "schema": 1,
+  "codeName": "TAP3-2026-10",
+  "displayName": "TAP3 · Strix 1.0.5.12 基座 + TVP2/导航 HUD · 2026-10",
+  "confirmToken": "TAP3",
+  "baseVersion": "Strix OS 1.0.5.12",
+  "upgradeFrom": [
+    "Strix OS 1.0.5.5",
+    "Strix OS 1.0.5.12"
+  ],
+  "zip": {
+    "size": 8893638,
+    "sha256": "05170b9b4eed38edbf562affaeab21f248394a44702d812440226d5e27a524eb"
+  },
+  "otaSize": 8893638,
+  "ap": {
+    "name": "nuttx_ap.bin",
+    "size": 7547528,
+    "sha256": "77a047fc5250cafccaef869559cc0c84f4e8f952576935fb23ae9f8911709a50",
+    "md5": "7e4193cfcb2af44168490a2b2c45e4ed"
+  },
+  "apBudgetBytes": 9600000,
+  "manifest": {
+    "name": "OtaFileInfo.json",
+    "size": 2700,
+    "sha256": "9a582a1e6b4fa6e1d79fa749e854e82056c7ee29779412b93378ffd15e404dcc"
+  },
+  "stockAPSHA256": "af701a6525fbf703854b3d63e757734546c20bdb5d50e246867dc6a0565713ae",
+  "payloadPins": [
+    {
+      "name": "OtaFileInfo.json",
+      "size": 2700,
+      "sha256": "9a582a1e6b4fa6e1d79fa749e854e82056c7ee29779412b93378ffd15e404dcc"
+    },
+    {
+      "name": "bt_controller.bin",
+      "size": 625364,
+      "sha256": "0060cc360b04577e8f5ce8f5d54fabde6103a6fef5a1a052260097920165a0c6"
+    },
+    {
+      "name": "cb_fw_venus.bin",
+      "size": 114592,
+      "sha256": "8799f12071bdac082218e3601c24ab0989275fc2f7db74e37b8314a225c2cf7d"
+    },
+    {
+      "name": "fac_test_img.bin",
+      "size": 1821552,
+      "sha256": "18eb0901c3e0daeae48dd5f015252b6931ea7368f0160c2c985c4e74296d17eb"
+    },
+    {
+      "name": "images.bin",
+      "size": 383431,
+      "sha256": "219ba2f7935850a059ac7e6a1ffa181056ce70891501db28238940dfbdc44cc5"
+    },
+    {
+      "name": "lotties.bin",
+      "size": 651481,
+      "sha256": "ad66d83a3394034f825a12769aad292fc03e59fa865fe06bc43536b918a0b32b"
+    },
+    {
+      "name": "nuttx_ap.bin",
+      "size": 7547528,
+      "sha256": "77a047fc5250cafccaef869559cc0c84f4e8f952576935fb23ae9f8911709a50"
+    },
+    {
+      "name": "nuttx_apc1.bin",
+      "size": 1435740,
+      "sha256": "abee438702d29936a01e60b863f3f3ecdea73097d60c09bcded1a61606098e08"
+    },
+    {
+      "name": "nuttx_audio.bin",
+      "size": 1461920,
+      "sha256": "549a72c032595e3829da7d63b7e1fd13cceda1a55dfefa7a7cad02db5a9b42ab"
+    },
+    {
+      "name": "nuttx_bth.bin",
+      "size": 1194132,
+      "sha256": "a7c4618ac992170d71fe0951ef6febfa46f13409c0bfc73c06ba74b0a00033f0"
+    },
+    {
+      "name": "ota_installer_progress.bin",
+      "size": 5616,
+      "sha256": "6fd65d296a667e1a7d94ec129adfd26458a4008ef403b331f855192c36eb3e3f"
+    },
+    {
+      "name": "pil_algo_up_demo_nand.dll",
+      "size": 504388,
+      "sha256": "e266726fe055ac6ec6f785a9440e8da7421402f2b4d3d7889039ad9b94e119c2"
+    },
+    {
+      "name": "pil_algo_vad_demo.dll",
+      "size": 433900,
+      "sha256": "5391fd024f1dfd38d031aeff5b1f4e91b13ca6d51f30e67763cd9fdf9db521a8"
+    },
+    {
+      "name": "pil_algo_wakeup_dll_nand.dll",
+      "size": 287560,
+      "sha256": "d1594cb8658b228e52c2606d02f1eab696d35a11ed42ddcb725e76a745f5550f"
+    },
+    {
+      "name": "rives.bin",
+      "size": 689431,
+      "sha256": "836bc019f7152890b94cafafe2edaa024f317526318349f7833319e41158b104"
+    },
+    {
+      "name": "smf.json",
+      "size": 23510,
+      "sha256": "2713dc3a302a65c101fa981500cd8b217766c526b6045bf02db5e9e6763d076d"
+    }
+  ]
+}
