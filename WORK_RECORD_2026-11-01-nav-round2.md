@@ -160,3 +160,17 @@
   详细诊断追加高德扩展读数（相机 kind/limit/m、红绿灯近距、事件 kind/m）。
 - 交付：CI run 41321204442，IPA SHA-256 c2ef13681568efe815fd4306a63aaa86819ab50fa8a993c4023872781826de97，内嵌固件仍 11C d1ac2655…（无需重刷）；目录 D:\Downloads\TurboIO-TAP3-2026-11C-uitools。
 - 待用户回传：镜片照片、详细诊断截图/导出 native-navigation-status.json、省包下载结果，再决定是否改固件地图布局/增加红绿灯文字提示。
+
+## 11. 追加：镜片实拍无路网 + 手机控件强制化 + 四川省包内置（2026-11-02）
+
+用户 2026-11-02 00:36 镜片实拍：HUD 文字/路线正常，但地图仍只有路线、无路网/红绿灯/限速；并明确要求删除手机页上的“矢量小地图开关 / 授权联网 / 导航常亮”等占位控件。
+
+- 判定：用户位置为四川西昌（截图地图：西昌站/航天大道），手机到 Overpass 三镜像均超时、省包未下载，故只有路线。
+- 手机端改动（commit a67ddc0 + 54d7aaa，纯手机）：
+  - 删除矢量小地图开关、联网授权按钮、导航常亮开关；对应值强制 enabled=YES/allowNetwork=YES/TNVSetAlways(YES)；
+  - 页内移除“兼容显示通道”折叠与旧字幕状态行（入口移到更多菜单），进一步减少首屏；
+  - RoadPack 新增 loadBundledPacks：读取 App 内 TurboHUDMaps/*.pack，复制到可写目录并把 bbox 注入清单；
+  - RoadMap decorate 无覆盖时自动按位置下载当前省包（串行/静默/状态行可见），下载完自动重建路网；
+  - CI 打包时从 roadmap-packs Release 拉取四川省包（32,083,341 B，SHA-256 43675c57…）校验后打入 Runner.app/TurboHUDMaps/。
+- 红绿灯/限速仍未解决：来自高德驾车摄像头/红绿灯回调，模拟导航通常无数据；保留“HUD 标记测试”用于区分“镜片不画”还是“高德没给数据”。
+- 交付：CI run 41327793274，commit 54d7aaa；IPA SHA-256 d0916a6bde38a0fc0619c74f6c40ef5d607eac794d1854044330f124fb78991c；内嵌固件仍 11C d1ac2655…（无需重刷）；目录 D:\Downloads\TurboIO-TAP3-2026-11C-sichuan。
