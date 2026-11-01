@@ -18,6 +18,7 @@
                  done:(void(^)(BOOL ok, NSString *note))done;   /* 主线程回调 */
 - (void)deletePack:(NSString *)province;
 - (BOOL)coversLat:(double)lat lon:(double)lon; /* 仅查已下载包的省级 bbox，不加载格数据 */
+- (NSString *)provinceForLat:(double)lat lon:(double)lon; /* 清单 bbox 命中的省 slug（不需已下载）；未知返回 nil */
 /* 3×3 格合并查询；bbox/province 出参给 RoadMap 做区域登记与状态行。 */
 - (NSArray *)featuresAtLat:(double)lat lon:(double)lon bbox:(NSArray **)bbox province:(NSString **)province;
 @end

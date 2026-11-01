@@ -80,11 +80,35 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  unsigned _sceneRange,_labelRange;
  NSURLSession *_session;NSURLSessionDataTask *_task;NSMutableData *_received;NSTimeInterval _lastRequest;NSUInteger _requests,_epoch;BOOL _httpOK;
  NSString *_query,*_bboxB64;NSUInteger _endpoint,_attempt;BOOL _sourceFailed;NSString *_sourceReason;
+ NSString *_autoPackProvince;BOOL _autoPackBusy; /* 当前省包自动下载（导航即用，不占页面开关） */
 }
-- (instancetype)initWithWGS84ToMap:(NSArray *(^)(double,double))convert{if((self=[super init])){_convert=[convert copy];_note=@"矢量小地图未开启 · 仅显示路线示意图";}return self;}
+- (instancetype)initWithWGS84ToMap:(NSArray *(^)(double,double))convert{if((self=[super init])){_convert=[convert copy];_note=@"路网自动开启 · 正在准备";[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(packChanged:) name:@"TIORoadPackChanged" object:nil];}return self;}
 - (NSString *)note{return _note?:@"";}
-- (void)reset{_epoch++;[_task cancel];[_session invalidateAndCancel];_task=nil;_session=nil;_received=nil;_regions=nil;_features=nil;_bbox=nil;_scene=nil;_scene2=nil;_origin=nil;_segment=nil;_requests=0;_lastRequest=0;_query=nil;_bboxB64=nil;_endpoint=0;_attempt=0;_sourceFailed=NO;_sourceReason=nil;self.allowNetwork=NO;_note=@"路网缓存已清理";}
-- (void)dealloc{[_session invalidateAndCancel];}
+- (void)reset{_epoch++;[_task cancel];[_session invalidateAndCancel];_task=nil;_session=nil;_received=nil;_regions=nil;_features=nil;_bbox=nil;_scene=nil;_scene2=nil;_origin=nil;_segment=nil;_requests=0;_lastRequest=0;_query=nil;_bboxB64=nil;_endpoint=0;_attempt=0;_sourceFailed=NO;_sourceReason=nil;_autoPackProvince=nil;_autoPackBusy=NO;self.allowNetwork=NO;_note=@"路网缓存已清理";}
+- (void)dealloc{[NSNotificationCenter.defaultCenter removeObserver:self];[_session invalidateAndCancel];}
+- (void)packChanged:(NSNotification *)note{[self reloadPackData];}
+- (void)reloadPackData{/* 省包新就绪：丢弃已构建场景，下一帧按 pack 重新载入路网 */_features=nil;_regions=nil;_scene=nil;_scene2=nil;_origin=nil;_segment=nil;_sceneAt=0;}
+- (void)autoProvidePackFor:(NSArray *)wgs{
+ if(!self.enabled||!LL(wgs)||_autoPackBusy)return;
+ TIORoadPackManager *m=[TIORoadPackManager shared];
+ double lat=[wgs[0] doubleValue],lon=[wgs[1] doubleValue];
+ if([m coversLat:lat lon:lon])return;
+ NSString *province=[m provinceForLat:lat lon:lon];
+ if(!province.length||[province isEqual:_autoPackProvince])return;
+ _autoPackProvince=[province copy];
+ if([m packDownloaded:province]){[self reloadPackData];return;}
+ _autoPackBusy=YES;
+ _note=[NSString stringWithFormat:@"正在自动下载 %@ 省路网包（导航时自动获取，先显示路线）…",province];
+ NSString *slug=[province copy];
+ __weak typeof(self) weakSelf=self;
+ [m downloadPack:slug progress:nil done:^(BOOL ok,NSString *note){
+  dispatch_async(dispatch_get_main_queue(),^{
+   TIORoadMap *s=weakSelf;if(!s)return;s->_autoPackBusy=NO;
+   if(ok){[s reloadPackData];s->_note=[NSString stringWithFormat:@"%@ 省路网包已下载，正在加载周边路网…",slug];}
+   else{s->_note=[NSString stringWithFormat:@"省包自动下载失败：%@（可到“省际路网包”手动重试）",note.length?note:@"原因未知"];}
+  });
+ }];
+}
 - (NSArray *)wgs:(NSArray *)map{
  if(!LL(map))return nil;if(!_convert)return map;
  // Only the Overpass search/fixture coverage uses WGS84. Render origin,
@@ -308,6 +332,7 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  if(!covered)covered=[self loadPack:wgs];   /* 已下载省份：纯离线，优先级最高 */
  if(!covered)covered=[self loadCache:wgs];  /* Overpass 结果的有界磁盘缓存 */
  if(!covered)covered=[self loadFixture:wgs];
+ if(!covered)[self autoProvidePackFor:wgs]; /* 无覆盖时自动下载当前省包（用户要求路网强制开启） */
  // Prefetch before the rendered viewport reaches an edge. Do not clear the old
  // region while a new request is queued, rate-limited, fails, or is parsing.
  // 已有省份包覆盖时不再向 Overpass 发请求（省流量也省图源限额）。

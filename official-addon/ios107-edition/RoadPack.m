@@ -264,6 +264,7 @@ static uint32_t rd32(const uint8_t *p) { return p[0] | (uint32_t)p[1] << 8 | (ui
         c.requestCachePolicy = NSURLRequestReloadIgnoringLocalCacheData;
         _downloadSession = [NSURLSession sessionWithConfiguration:c delegate:self delegateQueue:NSOperationQueue.mainQueue];
         [self loadCachedManifest];
+        [self loadBundledPacks]; /* 预置省包（如随 IPA 打入的四川省）优先就绪，弱网也有路网 */
         /* 清掉上次进程/旧实现中断留下的半包，避免长期占用磁盘。 */
         NSFileManager *fm = [NSFileManager defaultManager];
         for (NSString *f in [fm contentsOfDirectoryAtPath:[self packsDir] error:nil])
@@ -286,6 +287,36 @@ static uint32_t rd32(const uint8_t *p) { return p[0] | (uint32_t)p[1] << 8 | (ui
         _manifest = packs;
         _note = [NSString stringWithFormat:@"省际路网包：清单缓存 · %lu 省", (unsigned long)_manifest.count];
     }
+}
+- (void)loadBundledPacks {
+    /* 随 IPA 打进 TurboHUDMaps/*.pack 的省包：首次启动复制到可写目录，
+       并把 bbox 注入清单；弱网或清单获取失败时也能离线显示路网。 */
+    NSString *dir = [NSBundle.mainBundle.bundlePath stringByAppendingPathComponent:@"TurboHUDMaps"];
+    NSArray<NSString *> *names = [[NSFileManager defaultManager] contentsOfDirectoryAtPath:dir error:nil];
+    if (!names.count) return;
+    NSString *packsDir = [self packsDir];
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSMutableArray<NSDictionary *> *merged = [(_manifest ?: @[]) mutableCopy];
+    for (NSString *name in names) {
+        if (![name.pathExtension isEqualToString:@"pack"]) continue;
+        NSString *province = name.stringByDeletingPathExtension;
+        if (!SafeSlug(province, 64)) continue;
+        NSString *src = [dir stringByAppendingPathComponent:name];
+        NSString *dst = [packsDir stringByAppendingPathComponent:name];
+        NSDictionary *existing = [fm attributesOfItemAtPath:dst error:nil];
+        if ([existing[NSFileSize] unsignedLongLongValue] <= 64) {
+            [fm removeItemAtPath:dst error:nil];
+            if (![fm copyItemAtPath:src toPath:dst error:nil]) continue;
+            [fm setAttributes:@{NSFilePosixPermissions: @0600} ofItemAtPath:dst error:nil];
+        }
+        TIORoadPackFile *f = [[TIORoadPackFile alloc] initWithPath:dst province:province];
+        if (!f) continue;
+        NSMutableArray *drop = [NSMutableArray new];
+        for (NSDictionary *entry in merged) if ([entry[@"province"] isEqual:province]) [drop addObject:entry];
+        [merged removeObjectsInArray:drop];
+        [merged addObject:@{@"province":province,@"file":name,@"size":@(f->blob.length),@"bbox":@[@(f->minLat),@(f->minLon),@(f->maxLat),@(f->maxLon)],@"display":province,@"bundled":@YES}];
+    }
+    if (merged.count) _manifest = [merged copy];
 }
 - (NSArray<NSDictionary *> *)manifest { return _manifest; }
 - (NSString *)note { return _note; }
@@ -551,6 +582,17 @@ static uint32_t rd32(const uint8_t *p) { return p[0] | (uint32_t)p[1] << 8 | (ui
         [_lock unlock];
     }
     return f;
+}
+- (NSString *)provinceForLat:(double)lat lon:(double)lon {
+    if (!isfinite(lat) || !isfinite(lon)) return nil;
+    for (NSDictionary *p in _manifest) {
+        NSArray *b = p[@"bbox"];
+        if (![b isKindOfClass:NSArray.class] || b.count < 4) continue;
+        double a = [b[0] doubleValue], c = [b[1] doubleValue], d = [b[2] doubleValue], e = [b[3] doubleValue];
+        if (!isfinite(a) || !isfinite(c) || !isfinite(d) || !isfinite(e)) continue;
+        if (lat >= a && lat <= d && lon >= c && lon <= e) return p[@"province"];
+    }
+    return nil;
 }
 - (BOOL)coversLat:(double)lat lon:(double)lon {
     if (!isfinite(lat) || !isfinite(lon)) return NO;

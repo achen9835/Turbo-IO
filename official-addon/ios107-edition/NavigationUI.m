@@ -189,8 +189,9 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
         return @[@(lat),@(lon)]; /* WGS84/无转换兜底：只影响 OSM 路网对齐精度 */
 #endif
     }];
-    id roadPref=[NSUserDefaults.standardUserDefaults objectForKey:@"TIONavRoadMapEnabled"];
-    self.roadMap.enabled=roadPref?[roadPref boolValue]:YES; /* 默认开：只用内置/已缓存路网；联网另需会话授权 */
+    // 用户 2026-11-02 明确要求：矢量小地图/联网取路网不再做开关，导航即自动开启。
+    self.roadMap.enabled=YES;
+    self.roadMap.allowNetwork=YES;
     [self refreshRoadControls];
 #endif
     // Voice flow presents this panel as a bare modal (no research-shell back
@@ -210,19 +211,19 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
  * 安全——关掉后下一个导航帧不再携带 tnr 键，会话层按协议发 TNR_CLEAR 清屏。 */
 #if TIO_DISPLAY_PHONE
 - (void)buildRoadControls{
-    self.roadButton=[self button:@"矢量小地图（周边路网）" action:@selector(roadToggle) identifier:@"navigation-road-toggle"];
     self.roadStatus=[UILabel new];self.roadStatus.numberOfLines=0;self.roadStatus.font=[UIFont systemFontOfSize:12];self.roadStatus.textColor=UIColor.secondaryLabelColor;[self.stack addArrangedSubview:self.roadStatus];
-    [self button:@"授权本次联网取路网（OpenStreetMap · 限6次/会话）" action:@selector(roadNetworkConsent) identifier:@"navigation-road-network"];
     [self button:@"省际路网包（按省下载 · 离线用）" action:@selector(roadPacksOpen) identifier:@"navigation-road-packs"];
     [self refreshRoadControls];
+    /* 2026-11-02：路网自动模式——进入导航页即刷新省包清单，供 RoadMap 无覆盖时按位置自动下载省包。 */
+    [[TIORoadPackManager shared] refreshManifest:^(BOOL ok,NSString *note){ (void)ok;(void)note; }];
     // phone-packs 线的可选一行 patch：省际路网包下载/删除完成（RoadPack.m 在主线程 post）后，
     // 本页状态行立即刷新，不用等 1Hz tick。零参 selector 与 A2UIProbe/AppUI 的既有用法一致。
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshRoadControls) name:@"TIORoadPackChanged" object:nil];
 }
 - (void)refreshRoadControls{
-    if(!self.roadButton||!self.roadMap)return;
-    [self.roadButton setTitle:[NSString stringWithFormat:@"矢量小地图：%@（内置深圳/香港 · 其余需联网）",self.roadMap.enabled?@"开":@"关"] forState:UIControlStateNormal];
-    self.roadStatus.text=self.roadMap.note;
+    if(!self.roadStatus||!self.roadMap)return;
+    /* 开关已移除：统一展示自动模式与当前路网来源/失败原因。 */
+    self.roadStatus.text=[NSString stringWithFormat:@"路网自动开启 · %@",self.roadMap.note];
 }
 - (void)roadToggle{
     self.roadMap.enabled=!self.roadMap.enabled;

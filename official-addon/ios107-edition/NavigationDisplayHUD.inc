@@ -68,7 +68,7 @@
 }
 - (void)buildDisplayHUD{
  UILabel *title=[self navLabel:@"眼镜原生导航 · TNV1" size:16 weight:UIFontWeightSemibold];[self.lensCard addArrangedSubview:title];
- UIStackView *row=[UIStackView new];UILabel *label=[self navLabel:@"导航常亮（断连仍有超时保护）" size:13 weight:UIFontWeightRegular];UISwitch *toggle=[UISwitch new];toggle.on=TNVAlways();[toggle addTarget:self action:@selector(nativeNavAlwaysChanged:) forControlEvents:UIControlEventValueChanged];[row addArrangedSubview:label];[row addArrangedSubview:toggle];[self.lensCard addArrangedSubview:row];
+ TNVSetAlways(YES); /* 用户 2026-11-02 要求：常亮强制开启，不再做占位置的开关 */
  self.tdpPreview=[UIImageView new];self.tdpPreview.contentMode=UIViewContentModeScaleAspectFit;self.tdpPreview.backgroundColor=UIColor.blackColor;self.tdpPreview.clipsToBounds=YES;self.tdpPreview.layer.cornerRadius=10;[self.tdpPreview.heightAnchor constraintEqualToAnchor:self.tdpPreview.widthAnchor multiplier:0.25].active=YES;[self.lensCard addArrangedSubview:self.tdpPreview];
  self.tdpStatus=[self navLabel:@"需要支持 TNV1 的实验固件；以实际道路指示为准" size:12 weight:UIFontWeightRegular];self.tdpStatus.accessibilityIdentifier=@"navigation-tdp-status";[self.lensCard addArrangedSubview:self.tdpStatus];
  self.tdpButton=[self navAction:@"开启眼镜原生导航" icon:@"arrow.triangle.turn.up.right.diamond" selector:@selector(toggleDisplayHUD) primary:YES];self.tdpButton.accessibilityIdentifier=@"navigation-tdp-enable";[self.lensCard addArrangedSubview:self.tdpButton];
