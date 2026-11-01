@@ -88,3 +88,44 @@
 - IPA 内 `TurboWeReadCandidate.zip` 实测 SHA-256 = `c874225fab7b3722b43d5340203233fbdcffef6a8620acf64304b6eaabc5abec`，与候选描述一致；dylib 含 `TAP3-2026-11B`、`NAVIGATION-PHONE-03-BG`、`tnr_path_budget` 等新标记。
 - 交付目录：`D:\Downloads\TurboIO-TAP3-2026-11B-nav\`（IPA、SHA256SUMS、交付说明）。
 - 下一步：用户重签安装 + 按交付说明刷入 11B 并做五项实测；回传 `native-navigation-status.json` 与镜片照片。
+
+## 8. 追加：11B 真机启动事故与 TAP3-2026-11C 修复（2026-11-01 晚）
+
+### 8.1 现象
+
+用户刷入 11B 后：第一次重启长时间卡在雷鸟开机图标；第二次重启眼镜提示“刷机失败”，手机端仍显示刷机成功。
+
+### 8.2 根因（已由构建产物静态证明，不依赖猜测）
+
+- 11B 修改 `src/navigation-runtime-v1/nav_runtime.c` 后，模块 `.text` 增长 204 字节（模块 233296→233488 B），其后符号地址整体后移（`.state/fw-repro/module.elf` vs `.state/fw-11B-build1/module.elf` 对比：17 个被补丁引用的符号 +204 B）。
+- 原厂 AP 的 40 条固定补丁中有 38 条是跳入模块的 Thumb-2 分支（B.W/BL），`build-inputs.json` 里按旧模块地址写死。11B 有 **17 条分支仍指向旧模块地址**，启动期 hook 跳进错误代码 → AP 无法启动；官方安装器只负责写入，所以手机看到“安装成功”。
+- 11 版能启动、11B 不能，仅因为 11B 改了模块源码触发布局漂移；此前的构建/审计只检查“分支落在模块范围内”，没有检查落到哪个函数。
+
+### 8.3 修复（11C）
+
+- 38 条模块目标补丁新增 `targetSymbol` / `targetOffset`；`build.py` 链接 ELF 后从 `llvm-nm` 符号表重新计算分支编码，符号漂移或编码过期直接抛错，不再静默产出坏包。
+- 新增 `build.py --repin`：重算补丁表与 module/AP/ZIP/清单摘要，并更新 `build-inputs.json`、`candidate-ota.json`、`verification.json`、`candidate-release/firmware.zip`。
+- 11C 由 repin 生成：38/38 补丁目标逐条核对等于新模块 ELF 符号地址，且 `after` 字节与成品 AP 一致；第二次全新构建摘要完全一致；`build.py --audit`/`port_audit.py` 通过；11B 旧包在摘要复核时被拒绝。
+- 固件源码与 11B 完全相同（导航会话自愈逻辑不变），差异只在补丁表编码。
+
+### 8.4 新候选 TAP3-2026-11C
+
+| 项目 | 值 |
+| --- | --- |
+| ZIP | 8,893,750 B · sha256 `d1ac2655abb413b30ec94bed960925f8c44d56fdc8920c311a303e9ed14548aa` · md5 `7f799711bf5469c7860bfdc814a79978` |
+| AP | 7,547,720 B · sha256 `b9af8e506ed5cae58e3629cab1c0311697758b2047a6d275267f5e7934f34113` · md5 `fbb09b77626b0aea21abac143ffcc456` |
+| 模块 | 233,488 B · sha256 `5418b8f6d144cd14f5bb095d4f971739d099e18588c7b01ee796e7af8d0b45f7` |
+| 清单 | 2,700 B · sha256 `e8258b4506536c0f51c2431312bf790bf3fb39556a1545442d5e7e9e602b327e` |
+
+旧 11B（`c874225f…`）撤销；11（`f68e3edc…`）与 05170b9b 继续撤销。
+
+### 8.5 已刷 11B 且启动失败设备的处理边界
+
+- 本项目不保证救砖。优先走官方雷鸟 App 的重新升级/售后恢复；若官方 App 无法连接或设备无法进入系统，应停止自行刷写并联系官方售后。
+- 在设备恢复为可启动的官方系统之前，不要通过旧 IPA 再次刷入 11B；旧 IPA 内仍嵌 11B 候选。
+- 恢复后可安装新 IPA（内嵌 11C），在诊断页确认候选 ZIP 为 `d1ac2655…` 后再决定是否试刷。
+
+### 8.6 教训
+
+- “构建成功 + 摘要可复现 + 分支在模块范围内”不等于可启动：补丁表是**布局耦合**产物，任何模块源码改动都必须重新生成补丁编码并逐条核对符号。
+- 后续 TAP2（`strix-1.0.5.5-tvp2`）等使用同一补丁机制的树，改动模块源码时也必须移植本 guard/repin 流程，否则有同样风险。

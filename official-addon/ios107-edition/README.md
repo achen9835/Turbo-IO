@@ -38,7 +38,7 @@ TIO_DISPLAY_PHONE=1 TIO_DISPLAY_FLASH=1 TIO_OTA_FLASH_ENABLED=1 \
 TIO_CLASSIC_BINDINGS=1 bash build.sh embedded com.rayneo.venus.pub
 
 node --test package.test.mjs
-python3 test.py --firmware /absolute/path/to/TAP3-2026-11B.zip
+python3 test.py --firmware /absolute/path/to/TAP3-2026-11C.zip
 ```
 
 `FLASH` 是保护模块编译开关，**不是授权**；本版打包默认带 TMG2 升级通道，初始仍锁定。不要移除校验或改 Info.plist 冒充其他版本。
@@ -73,7 +73,7 @@ node package.mjs \
 
 ## 刷入当前 TAP3 候选
 
-按[TAP3 导航会话自愈版升级教程](OTA.md)执行：内置校验 → 只下载与目录核对 → 单次授权 → 官方安装 → 自然重启 → 传输覆盖、刷后回读与镜片运行三层验收。11B 在 11 版地址修正基础上补导航会话自愈（8 秒无更新/已失联的陈旧会话可被新 START 接管、失联约 60 秒自动退出导航页、手机会话换代后的 STOP 也能退页）。高风险实验，非开发者请勿刷；11 版与更旧 TAP3 不要重刷。
+按[TAP3-2026-11C 导航会话自愈版升级教程](OTA.md)执行：内置校验 → 只下载与目录核对 → 单次授权 → 官方安装 → 自然重启 → 传输覆盖、刷后回读与镜片运行三层验收。11C = 11B 的导航会话自愈（8 秒无更新/已失联的陈旧会话可被新 START 接管、失联约 60 秒自动退出导航页、会话换代后的 STOP 也能退页）+ 修复 11B 的补丁表布局漂移启动事故（17 条跳入模块的分支曾指向旧符号地址，真机卡开机 logo/刷机失败）。**11B 已撤销，不要刷入。**高风险实验，非开发者请勿刷；更旧 TAP3 不要重刷。
 
 ## 已知限制
 
