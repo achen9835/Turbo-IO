@@ -26,13 +26,29 @@ static NSString *SHA256HexFromCtx(CC_SHA256_CTX *ctx) {
     return s;
 }
 
-/* 文件名白名单：清单来自网络 Release，绝不允许路径分隔符/上跳。 */
+/* 省份 slug：用于本机文件名，只允许小写数字/下划线/连字符。 */
 static BOOL SafeSlug(NSString *value, NSUInteger maxLength) {
     if (![value isKindOfClass:NSString.class] || !value.length || value.length > maxLength) return NO;
     static NSCharacterSet *bad;
     static dispatch_once_t once;
     dispatch_once(&once, ^{
-        bad = [[NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyz0123456789._-"] invertedSet];
+        bad = [[NSCharacterSet characterSetWithCharactersInString:@"abcdefghijklmnopqrstuvwxyz0123456789_-"] invertedSet];
+    });
+    if ([value rangeOfCharacterFromSet:bad].location != NSNotFound) return NO;
+    return ![value containsString:@".."];
+}
+
+/* Release 资源文件名：服务端资产名带大写（TurboRoadMap-anhui.pack）；
+ * 只允许单段文件名与安全字符，且必须以 .pack 结尾，路径分隔符/上跳一律拒绝。
+ * 2026-11-01 真机：旧实现把 file 当 province slug 校验（仅小写），
+ * 导致 manifest 28 省全部被判无效 → “清单获取失败（用本地缓存）”。 */
+static BOOL SafePackFile(NSString *value, NSUInteger maxLength) {
+    if (![value isKindOfClass:NSString.class] || !value.length || value.length > maxLength) return NO;
+    if (![value.pathExtension isEqualToString:@"pack"]) return NO;
+    static NSCharacterSet *bad;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        bad = [[NSCharacterSet characterSetWithCharactersInString:@"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789._-"] invertedSet];
     });
     if ([value rangeOfCharacterFromSet:bad].location != NSNotFound) return NO;
     return ![value containsString:@".."];
@@ -58,7 +74,7 @@ static NSArray<NSDictionary *> *ValidPacks(id object) {
         if (![item isKindOfClass:NSDictionary.class]) continue;
         NSString *province = item[@"province"], *file = item[@"file"];
         NSNumber *size = item[@"size"];
-        if (!SafeSlug(province, 64) || [province containsString:@"."] || !SafeSlug(file, 96) || !HexDigest(item[@"sha256"])) continue; /* province 与 localPathFor 的字符集一致（不带点） */
+        if (!SafeSlug(province, 64) || !SafePackFile(file, 96) || !HexDigest(item[@"sha256"])) continue; /* province 与 localPathFor 的字符集一致（不带点）；file 用 Release 资产名规则 */
         if (![size isKindOfClass:NSNumber.class] || [size longLongValue] <= 64 || [size longLongValue] > (long long)kMaxPackBytes) continue;
         [out addObject:item];
     }
@@ -216,6 +232,7 @@ static uint32_t rd32(const uint8_t *p) { return p[0] | (uint32_t)p[1] << 8 | (ui
     /* 下载队列只在主队列读写（delegateQueue=主队列）。一次只传一个包：单包
      * 可达 200 MB，旧的 26 任务并发 + 整包 NSMutableData 是“全部下载”闪退根因。 */
     NSMutableArray<NSMutableDictionary *> *_pending;
+    BOOL _manifestRetried; /* 清单网络失败只自动重试一次，避免弱网弹窗风暴 */
     NSMutableDictionary *_active;
     NSURLSessionDataTask *_activeTask;
     NSFileHandle *_activeHandle;
@@ -292,22 +309,42 @@ static uint32_t rd32(const uint8_t *p) { return p[0] | (uint32_t)p[1] << 8 | (ui
 }
 - (void)refreshManifest:(void (^)(BOOL, NSString *))done {
     NSMutableURLRequest *r = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:[kReleaseBase stringByAppendingString:@"/manifest.json"]]
-                                                     cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:20];
+                                                     cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:30];
+    [r setValue:@"TurboIO-TNR1-private-pilot/1.0" forHTTPHeaderField:@"User-Agent"];
     NSURLSessionDataTask *t = [_manifestSession dataTaskWithRequest:r completionHandler:^(NSData *data, NSURLResponse *resp, NSError *error) {
         NSInteger code = [(NSHTTPURLResponse *)resp statusCode];
         id obj = (code == 200 && data.length && data.length < kMaxManifestBytes) ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
         NSArray<NSDictionary *> *packs = [obj isKindOfClass:NSDictionary.class] ? ValidPacks(obj[@"packs"]) : nil;
         dispatch_async(dispatch_get_main_queue(), ^{
             if (packs.count) {
+                self->_manifestRetried = NO;
                 self->_manifest = packs;
                 self->_note = [NSString stringWithFormat:@"省际路网包：清单 %lu 省", (unsigned long)self->_manifest.count];
                 [data writeToFile:self.manifestCachePath options:NSDataWritingAtomic error:nil];
                 [[NSFileManager defaultManager] setAttributes:@{NSFilePosixPermissions: @0600} ofItemAtPath:self.manifestCachePath error:nil];
                 if (done) done(YES, self->_note);
-            } else {
-                self->_note = @"省际路网包：清单获取失败（用本地缓存）";
-                if (done) done(NO, error ? error.localizedDescription : self->_note);
+                return;
             }
+            /* 弱网/GitHub 抖动的单次网络错误自动重试一次（HTTP/JSON/格式失败不重试）。 */
+            if (error && !self->_manifestRetried) {
+                self->_manifestRetried = YES;
+                dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(1.5 * NSEC_PER_SEC)), dispatch_get_main_queue(), ^{
+                    [self refreshManifest:done];
+                });
+                return;
+            }
+            self->_manifestRetried = NO;
+            /* 失败原因必须能区分网络/HTTP/JSON/格式，否则用户只会看到“失败”。 */
+            NSString *why;
+            if (error) why = [NSString stringWithFormat:@"网络错误 %@", error.localizedDescription];
+            else if (code != 200) why = [NSString stringWithFormat:@"HTTP %ld", (long)code];
+            else if (![obj isKindOfClass:NSDictionary.class]) why = @"返回不是合法 JSON";
+            else why = @"清单格式不合格";
+            [self loadCachedManifest]; /* 失败时明确尝试本地缓存 */
+            self->_note = self->_manifest.count
+                ? [NSString stringWithFormat:@"省际路网包：清单获取失败（%@），已用本地缓存 %lu 省", why, (unsigned long)self->_manifest.count]
+                : [NSString stringWithFormat:@"省际路网包：清单获取失败（%@），且无本地缓存", why];
+            if (done) done(NO, self->_note);
         });
     }];
     [t resume];
@@ -340,7 +377,7 @@ static uint32_t rd32(const uint8_t *p) { return p[0] | (uint32_t)p[1] << 8 | (ui
     long long expected = [entry[@"size"] longLongValue];
     if (expected <= 64 || expected > (long long)kMaxPackBytes) { [self finishContext:ctx ok:NO note:@"包大小异常，拒下"]; return; }
     NSString *file = entry[@"file"];
-    if (!SafeSlug(file, 96)) { [self finishContext:ctx ok:NO note:@"包文件名不安全，拒下"]; return; }
+    if (!SafePackFile(file, 96)) { [self finishContext:ctx ok:NO note:@"包文件名不安全，拒下"]; return; }
     NSURL *url = [NSURL URLWithString:[kReleaseBase stringByAppendingFormat:@"/%@", file]];
     if (!url || [url.scheme caseInsensitiveCompare:@"https"] != NSOrderedSame) { [self finishContext:ctx ok:NO note:@"下载地址无效"]; return; }
     for (NSMutableDictionary *queued in _pending) if ([queued[@"province"] isEqual:province]) { [self finishContext:ctx ok:NO note:@"已在下载队列"]; return; }
