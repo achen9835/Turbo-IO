@@ -18,6 +18,7 @@
 #import "NativeNavigationUI.h"
 #import "NativeNavigation.h"
 #import "RoadMap.h"
+#import "RoadPack.h"
 #import "RoadPackUI.h"
 #import "ProtocolContext.h"
 #import "DisplayHUDRenderer.h"
