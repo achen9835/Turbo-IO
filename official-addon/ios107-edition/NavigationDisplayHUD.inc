@@ -92,6 +92,9 @@
  NSString *stopLine=attempts?[NSString stringWithFormat:@"退出补发 %u/%u",attempts,maxAttempts]:@"退出补发 0";
  if(![diag[@"stopRetryPending"] boolValue]&&attempts)stopLine=[stopLine stringByAppendingString:@" · 已确认"];
  self.tdpStatus.text=[hint stringByAppendingFormat:@"%@\n已确认 %@ 个快照 · %@ · 语音阶段：%@\n%@",s[@"note"],s[@"snapshots"]?:@0,TNVAlways()?@"常亮":@"60秒无更新息屏",diag[@"voiceStage"],stopLine];
+ NSDictionary *tnv=TDPPhoneNavigationStatus();
+ NSString *mapReason=tnv[@"mapReason"];
+ self.tdpStatus.text=[self.tdpStatus.text stringByAppendingFormat:@"\n矢量帧 %@ · 发 %lu / 丢 %lu%@%@", [tnv[@"mapMode"] boolValue]?@"已生成":@"未生成",(unsigned long)[tnv[@"mapSends"] unsignedIntegerValue],(unsigned long)[tnv[@"mapDrops"] unsignedIntegerValue],[tnv[@"minSent"] boolValue]?@" · 已降级":@"",mapReason.length?[@" · " stringByAppendingString:mapReason]:@""];
  self.tdpPreview.hidden=YES; // Old pixel renderer is not an accurate TNV1 preview.
 }
 - (void)hudMarkerTest{

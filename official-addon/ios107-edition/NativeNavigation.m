@@ -85,7 +85,7 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
 @implementation TNVSession{
  NSString *_device,*_task,*_nativeTask,*_note;uint32_t _sid,_seq;NSTimeInterval(^_clock)(void);void(^_sender)(NSData *,NSString *,TNVSubmitted);void(^_cleanup)(NSString *);
  NSData *_packet,*_latest,*_committed,*_sending;NSMutableArray *_early;BOOL _active,_fileBusy,_ack,_submitted,_failed,_stopping,_stopped,_always;
- NSData *_mapLatest,*_map2Latest,*_mapCommitted,*_mapSending,*_poseLatest,*_poseCommitted;NSTimeInterval _poseAt,_lastPose;NSUInteger _maps,_poses;BOOL _extended,_probed,_mapV2;
+ NSData *_mapLatest,*_map2Latest,*_mapCommitted,*_mapSending,*_mapMin,*_poseLatest,*_poseCommitted;NSTimeInterval _poseAt,_lastPose;NSUInteger _maps,_poses;BOOL _extended,_probed,_mapV2,_minSent;NSString *_mapReason;
  NSString *_source;NSUInteger _wireBytes;
  NSTimeInterval _deadline,_lastOffer,_lastCommit,_lastWire,_next;NSUInteger _count;unsigned _op;
  /* 2026-11-01: transient recovery. A single TN_BUSY/TN_UI_FAILED used to kill the
@@ -100,7 +100,7 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
 }
 - (instancetype)initWithDevice:(NSString *)device session:(uint32_t)sid clock:(NSTimeInterval(^)(void))clock sender:(void(^)(NSData *,NSString *,TNVSubmitted))sender cleanup:(void(^)(NSString *))cleanup{if(!device.length||!sid||!clock||!sender)return nil;if((self=[super init])){_device=[device copy];_sid=sid;_clock=[clock copy];_sender=[sender copy];_cleanup=[cleanup copy];_note=@"尚未开始";}return self;}
 - (BOOL)active{return _active;}- (BOOL)busy{return _packet||_fileBusy;}
-- (NSDictionary *)status{return @{@"active":@(_active),@"busy":@(self.busy),@"note":_note?:@"",@"snapshots":@(_count),@"session":@(_sid),@"sequence":@(_seq),@"always":@(_always),@"failed":@(_failed),@"maps":@(_maps),@"poses":@(_poses),@"mapBytes":@(_mapV2?_map2Latest.length:_mapLatest.length),@"mapPaths":@(_mapLatest.length>=16?U16((const uint8_t *)_mapLatest.bytes+6):0),@"mapLabels":@(_map2Latest.length>=16?U16((const uint8_t *)_map2Latest.bytes+10):0),@"mapMode":@(_extended),@"roadLabels":@(_mapV2),@"source":_source?:@"unknown",@"wireBytes":@(_wireBytes),@"acks":@(_acks),@"transients":@(_transients),@"mapSends":@(_mapSends),@"mapDrops":@(_mapDrops),@"tries":@(_tries),@"stopTries":@(_stopTries),@"stopped":@(_stopped),@"lastEvent":_lastEvent?:@""};}
+- (NSDictionary *)status{return @{@"active":@(_active),@"busy":@(self.busy),@"note":_note?:@"",@"snapshots":@(_count),@"session":@(_sid),@"sequence":@(_seq),@"always":@(_always),@"failed":@(_failed),@"maps":@(_maps),@"poses":@(_poses),@"mapBytes":@(_mapV2?_map2Latest.length:_mapLatest.length),@"mapPaths":@(_mapLatest.length>=16?U16((const uint8_t *)_mapLatest.bytes+6):0),@"mapLabels":@(_map2Latest.length>=16?U16((const uint8_t *)_map2Latest.bytes+10):0),@"mapMode":@(_extended),@"roadLabels":@(_mapV2),@"source":_source?:@"unknown",@"wireBytes":@(_wireBytes),@"acks":@(_acks),@"transients":@(_transients),@"mapSends":@(_mapSends),@"mapDrops":@(_mapDrops),@"mapMin":@(_mapMin!=nil),@"minSent":@(_minSent),@"mapReason":_mapReason?:@"",@"tries":@(_tries),@"stopTries":@(_stopTries),@"stopped":@(_stopped),@"lastEvent":_lastEvent?:@""};}
 // Breadcrumb kept in the status JSON so a frozen lens has a readable cause.
 - (void)note:(NSString *)text{_note=text;_lastEvent=[NSString stringWithFormat:@"%.0f %@",_clock(),text?:@""];}
 // Drop the current in-flight file bookkeeping. Ownership of an uncertain native
@@ -147,9 +147,11 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
  BOOL valid=[map isKindOfClass:NSData.class]&&[pose isKindOfClass:NSData.class]&&[at isKindOfClass:NSNumber.class]&&isfinite([at doubleValue])&&[at doubleValue]<=_clock()&&_clock()-[at doubleValue]<=4&&tnr_body_valid(TNR_SCENE,map.bytes,map.length)&&tnr_body_valid(TNR_POSE,pose.bytes,pose.length)&&U32(map.bytes)==U32(pose.bytes);
  if(!valid){/* tnrHold=矢量图暂缺（定位暂缺/图源未就绪）：保留最后一张图，避免每个
   * 静止间隙都发 TNR_CLEAR 把镜片上的路网清掉；只有路网开关关闭（无 hold 标记）
-  * 才走清屏。 */if([frame[@"tnrHold"] isEqual:@YES])return;_mapLatest=nil;_map2Latest=nil;_poseLatest=nil;return;}
+  * 才走清屏。 */if([frame[@"tnrHold"] isEqual:@YES])return;_mapReason=!map?@"无场景数据":!pose?@"无姿态数据":!at?@"无姿态时间":([at doubleValue]>_clock()?@"姿态时间超前":(_clock()-[at doubleValue]>4?@"姿态过期":@"本机场景校验失败"));_mapLatest=nil;_map2Latest=nil;_poseLatest=nil;return;}
  NSData *v2=frame[@"tnrScene2"];_map2Latest=[v2 isKindOfClass:NSData.class]&&tnr_body_valid(TNR_SCENE2,v2.bytes,v2.length)&&U32(v2.bytes)==U32(map.bytes)?[v2 copy]:nil;
- _extended=YES;_mapLatest=[map copy];_poseLatest=[pose copy];_poseAt=[at doubleValue];
+ NSData *min=frame[@"tnrSceneMin"];NSData *minOK=[min isKindOfClass:NSData.class]&&tnr_body_valid(TNR_SCENE,min.bytes,min.length)&&U32(min.bytes)==U32(map.bytes)?[min copy]:nil;
+ if(![map isEqual:_mapLatest]||![minOK isEqual:_mapMin])_minSent=NO;
+ _mapReason=nil;_mapMin=minOK;_extended=YES;_mapLatest=[map copy];_poseLatest=[pose copy];_poseAt=[at doubleValue];
 }
 - (BOOL)start:(NSDictionary *)frame always:(BOOL)always{if(_seq||_active||self.busy||_failed)return NO;TNScene s;if(!TNVScene(frame,always,&s))return NO;[self mapOffer:frame];_source=[frame[@"tnrSource"] isKindOfClass:NSString.class]?frame[@"tnrSource"]:@"unknown";_always=always;_latest=[NSData dataWithBytes:&s length:sizeof s];_lastOffer=_clock();_active=YES;_note=@"正在请求自动打开原生导航";if(![self send:TN_START scene:_latest]){_active=NO;return NO;}return YES;}
 - (void)offer:(NSDictionary *)frame{if(!_active||_stopping)return;[self mapOffer:frame];TNScene s;if(!TNVScene(frame,_always,&s)){/* Only terminal phases stop the session; transient non-navigating frames (planning/reroute transitions) must not kill a live render. */if([frame[@"phase"] isEqual:@"arrived"]||[frame[@"phase"] isEqual:@"stopped"])[self stop];return;}_latest=[NSData dataWithBytes:&s length:sizeof s];_lastOffer=_clock();}
@@ -208,7 +210,10 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
  BOOL changed=![_latest isEqual:_committed],urgent=NO;
  if(_latest&&_committed){const TNScene *a=_latest.bytes,*b=_committed.bytes;urgent=a->icon!=b->icon||a->mode!=b->mode||strcmp(a->road,b->road)||strcmp(a->turn,b->turn);}
  if(fresh&&(urgent||now-_lastCommit>=10||(changed&&now-_lastCommit>=1))){[self send:TN_UPDATE scene:_latest];return;}
- if(_extended&&_mapV2&&fresh&&_poseLatest&&now-_poseAt<=4&&now>=_poseAt){
+ if(_extended&&fresh&&_poseLatest&&now-_poseAt<=4&&now>=_poseAt){
+  /* 完整场景连续被拒两次后，先发一条只含路线的 SCENE v1（不依赖 SCENE2 caps
+     和背景路网），把矢量通道与比例尺/车辆/标记先打通。 */
+  if(_mapMin&&_mapDrops>=2&&!_minSent){_minSent=YES;[self send:(enum TNOp)TNR_SCENE scene:_mapMin];return;}
   NSData *map=_mapV2&&_map2Latest?_map2Latest:_mapLatest;
   if(map&&![map isEqual:_mapCommitted]){
    if(_mapV2&&_map2Latest){NSMutableData *combined=[map mutableCopy];uint8_t *p=(uint8_t *)combined.mutableBytes+combined.length-12;memcpy(p,_poseLatest.bytes,12);unsigned age=(unsigned)((now-_poseAt)*1000);p[10]=age;p[11]=age>>8;_mapSending=map;[self send:(enum TNOp)TNR_SCENE2 scene:combined];}

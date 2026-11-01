@@ -76,7 +76,7 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  }return NO;
 }
 @implementation TIORoadMap{
- NSArray *(^_convert)(double,double);NSArray *_features,*_bbox,*_origin,*_regions;double _labelHeading,_sceneAt;NSData *_scene,*_scene2;uint32_t _generation;id _segment;NSString *_note;
+ NSArray *(^_convert)(double,double);NSArray *_features,*_bbox,*_origin,*_regions;double _labelHeading,_sceneAt;NSData *_scene,*_scene2,*_sceneMin;uint32_t _generation;id _segment;NSString *_note;
  unsigned _sceneRange,_labelRange;
  NSURLSession *_session;NSURLSessionDataTask *_task;NSMutableData *_received;NSTimeInterval _lastRequest;NSUInteger _requests,_epoch;BOOL _httpOK;
  NSString *_query,*_bboxB64;NSUInteger _endpoint,_attempt;BOOL _sourceFailed;NSString *_sourceReason;
@@ -84,10 +84,22 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
 }
 - (instancetype)initWithWGS84ToMap:(NSArray *(^)(double,double))convert{if((self=[super init])){_convert=[convert copy];_note=@"路网自动开启 · 正在准备";[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(packChanged:) name:@"TIORoadPackChanged" object:nil];}return self;}
 - (NSString *)note{return _note?:@"";}
-- (void)reset{_epoch++;[_task cancel];[_session invalidateAndCancel];_task=nil;_session=nil;_received=nil;_regions=nil;_features=nil;_bbox=nil;_scene=nil;_scene2=nil;_origin=nil;_segment=nil;_requests=0;_lastRequest=0;_query=nil;_bboxB64=nil;_endpoint=0;_attempt=0;_sourceFailed=NO;_sourceReason=nil;_autoPackProvince=nil;_autoPackBusy=NO;self.allowNetwork=NO;_note=@"路网缓存已清理";}
+- (void)reset{_epoch++;[_task cancel];[_session invalidateAndCancel];_task=nil;_session=nil;_received=nil;_regions=nil;_features=nil;_bbox=nil;_scene=nil;_scene2=nil;_sceneMin=nil;_origin=nil;_segment=nil;_requests=0;_lastRequest=0;_query=nil;_bboxB64=nil;_endpoint=0;_attempt=0;_sourceFailed=NO;_sourceReason=nil;_autoPackProvince=nil;_autoPackBusy=NO;self.allowNetwork=NO;_note=@"路网缓存已清理";}
 - (void)dealloc{[NSNotificationCenter.defaultCenter removeObserver:self];[_session invalidateAndCancel];}
 - (void)packChanged:(NSNotification *)note{[self reloadPackData];}
-- (void)reloadPackData{/* 省包新就绪：丢弃已构建场景，下一帧按 pack 重新载入路网 */_features=nil;_regions=nil;_scene=nil;_scene2=nil;_origin=nil;_segment=nil;_sceneAt=0;}
+- (void)reloadPackData{/* 省包新就绪：丢弃已构建场景，下一帧按 pack 重新载入路网 */_features=nil;_regions=nil;_scene=nil;_scene2=nil;_sceneMin=nil;_origin=nil;_segment=nil;_sceneAt=0;}
+- (NSData *)minimalSceneForCoords:(NSArray *)coords origin:(NSArray *)origin range:(unsigned)range generation:(uint32_t)generation{
+ /* 只含路线、无背景道路/无标签的最小 SCENE：完整场景被镜片拒收时先打通矢量通道 */
+ if(!LL(origin)||![coords isKindOfClass:NSArray.class]||coords.count<2||!generation)return nil;
+ NSArray *best=nil;
+ for(NSArray *part in Pieces(coords,origin,nil,NO))if(part.count>=2&&(!best||part.count>best.count))best=part;
+ if(!best)return nil;best=Simplify(best);if(best.count<2)return nil;best=Budget(best,128);
+ if(best.count<2||best.count>128)return nil;
+ NSMutableData *out=[NSMutableData dataWithLength:16+8+4*best.count];uint8_t *b=out.mutableBytes;
+ W32(b,generation);W16(b+4,range);W16(b+6,1);W16(b+8,best.count);W16(b+16,best.count);b[18]=6;b[19]=0;b[20]=8;
+ NSUInteger at=24;for(NSArray *p in best){W16(b+at,[p[0] intValue]);W16(b+at+2,[p[1] intValue]);at+=4;}
+ return tnr_body_valid(TNR_SCENE,out.bytes,out.length)?out:nil;
+}
 - (void)autoProvidePackFor:(NSArray *)wgs{
  if(!self.enabled||!LL(wgs)||_autoPackBusy)return;
  TIORoadPackManager *m=[TIORoadPackManager shared];
@@ -141,7 +153,7 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  for(NSDictionary *r in [regions reverseObjectEnumerator])for(NSDictionary *f in r[@"features"]){
   if(all.count>=10000)break;if([seen containsObject:f])continue;[seen addObject:f];[all addObject:f];
  }
- _features=all;_scene=nil;_scene2=nil;
+ _features=all;_scene=nil;_scene2=nil;_sceneMin=nil;
 }
 - (BOOL)covers:(NSArray *)ll {return [self hasCoverage:ll margin:0];}
 /* 省际路网包优先：已下载的省直接离线取 3×3 格窗口，不联网。 */
@@ -367,9 +379,12 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  BOOL refreshNames=_features.count&&now-_sceneAt>=3&&(turn>=30||Distance(position,_origin?:position)>50||(haveLabels&&![self hasVisibleLabelsAt:position heading:(unsigned)heading]));
  if(!_scene||!_origin||Distance(position,_origin)>100||![_segment isEqual:frame[@"segment"]]||zoom||refreshNames){
   _origin=position;_segment=frame[@"segment"];_labelHeading=heading;_sceneAt=now;_sceneRange=range;_scene=[self scene:coords origin:_origin range:range];
+  if(_scene)_sceneMin=[self minimalSceneForCoords:coords origin:_origin range:range generation:_generation];
+  else{uint32_t gen=_generation+1;_sceneMin=[self minimalSceneForCoords:coords origin:_origin range:range generation:gen];
+   if(_sceneMin){_generation=gen;_scene=_sceneMin;_note=@"完整矢量场景未通过校验收回，已降级为路线矢量图";}}
  }
  if(!_scene)return frame;NSArray *xy=XY(position,_origin);double x=[xy[0] doubleValue]*4,y=[xy[1] doubleValue]*4;if(fabs(x)>2000||fabs(y)>2000)return frame;
  uint8_t pose[12]={0};W32(pose,_generation);W16(pose+4,(int)lround(x));W16(pose+6,(int)lround(y));W16(pose+8,[frame[@"navHeading"] unsignedIntValue]%360);
- NSMutableDictionary *out=[frame mutableCopy];out[@"tnrScene"]=_scene;if(_scene2)out[@"tnrScene2"]=_scene2;out[@"tnrPose"]=[NSData dataWithBytes:pose length:12];out[@"tnrPoseAt"]=frame[@"tnrLocationAt"];return out;
+ NSMutableDictionary *out=[frame mutableCopy];out[@"tnrScene"]=_scene;if(_scene2)out[@"tnrScene2"]=_scene2;if(_sceneMin)out[@"tnrSceneMin"]=_sceneMin;out[@"tnrPose"]=[NSData dataWithBytes:pose length:12];out[@"tnrPoseAt"]=frame[@"tnrLocationAt"];return out;
 }
 @end
