@@ -68,8 +68,6 @@
 }
 - (void)buildDisplayHUD{
  UILabel *title=[self navLabel:@"眼镜原生导航 · TNV1" size:16 weight:UIFontWeightSemibold];[self.lensCard addArrangedSubview:title];
- UILabel *guide=[self navLabel:@"① 先刷入TNV1实验固件\n② 规划路线 → 开始模拟或导航\n③ 点开启，手机主动打开眼镜导航页，无需手动进菜单\n内置箭头＋文字＋路线示意图（非地图底图）。默认60秒无有效更新息屏，实体键可唤醒，返回键退出。试验用品，请以手机和道路实际指示为准。" size:12 weight:UIFontWeightRegular];guide.textColor=UIColor.secondaryLabelColor;guide.hidden=YES;__weak UILabel *weakGuide=guide;
- [self.lensCard addArrangedSubview:TIOFoldHeader(@"使用说明与固件要求",NO,^{weakGuide.hidden=!weakGuide.hidden;})];[self.lensCard addArrangedSubview:guide];
  UIStackView *row=[UIStackView new];UILabel *label=[self navLabel:@"导航常亮（断连仍有超时保护）" size:13 weight:UIFontWeightRegular];UISwitch *toggle=[UISwitch new];toggle.on=TNVAlways();[toggle addTarget:self action:@selector(nativeNavAlwaysChanged:) forControlEvents:UIControlEventValueChanged];[row addArrangedSubview:label];[row addArrangedSubview:toggle];[self.lensCard addArrangedSubview:row];
  self.tdpPreview=[UIImageView new];self.tdpPreview.contentMode=UIViewContentModeScaleAspectFit;self.tdpPreview.backgroundColor=UIColor.blackColor;self.tdpPreview.clipsToBounds=YES;self.tdpPreview.layer.cornerRadius=10;[self.tdpPreview.heightAnchor constraintEqualToAnchor:self.tdpPreview.widthAnchor multiplier:0.25].active=YES;[self.lensCard addArrangedSubview:self.tdpPreview];
  self.tdpStatus=[self navLabel:@"需要支持 TNV1 的实验固件；以实际道路指示为准" size:12 weight:UIFontWeightRegular];self.tdpStatus.accessibilityIdentifier=@"navigation-tdp-status";[self.lensCard addArrangedSubview:self.tdpStatus];
@@ -88,16 +86,31 @@
   if(![self.display[@"phase"] isEqual:@"navigating"]||NSProcessInfo.processInfo.systemUptime-self.lastInfo>15)
    hint=self.autoNativeHUD?@"ⓘ 定位中：手机出现转向指引后，眼镜原生导航将自动开启\n\n":@"ⓘ 等待手机出现转向指引后可开启\n\n";
  }
- // 用户反馈③“需要更强现场诊断”：把关键 3-5 项直接放在状态行里，用户一截图就是证据。
+ // 第一页只留 3 行关键状态；完整事件时间线移到「详细诊断」。
  NSDictionary *diag=TIONavDiagSnapshot();
- NSMutableString *recent=[NSMutableString new];
- NSArray *events=diag[@"hudEvents"];
- for(NSString *e in [events reverseObjectEnumerator]){if(recent.length>=170)break;[recent appendFormat:@"\n· %@",e];}
  unsigned attempts=[diag[@"stopRetryAttempts"] unsignedIntegerValue],maxAttempts=[diag[@"stopRetryMax"] unsignedIntegerValue];
  NSString *stopLine=attempts?[NSString stringWithFormat:@"退出补发 %u/%u",attempts,maxAttempts]:@"退出补发 0";
  if(![diag[@"stopRetryPending"] boolValue]&&attempts)stopLine=[stopLine stringByAppendingString:@" · 已确认"];
- self.tdpStatus.text=[hint stringByAppendingFormat:@"%@\n已确认 %@ 个快照 · %@\n语音阶段：%@ · %@\n%@%@\n路线示意图，不含路口实景或底图",s[@"note"],s[@"snapshots"]?:@0,TNVAlways()?@"常亮":@"60秒无更新息屏",diag[@"voiceStage"],on?@"已上镜":@"未上镜",stopLine,recent];
+ self.tdpStatus.text=[hint stringByAppendingFormat:@"%@\n已确认 %@ 个快照 · %@ · 语音阶段：%@\n%@",s[@"note"],s[@"snapshots"]?:@0,TNVAlways()?@"常亮":@"60秒无更新息屏",diag[@"voiceStage"],stopLine];
  self.tdpPreview.hidden=YES; // Old pixel renderer is not an accurate TNV1 preview.
+}
+- (void)hudMarkerTest{
+    BOOL hud=[TDPPhoneNavigationStatus()[@"active"] boolValue];
+    if(!hud&&![self.display[@"phase"] isEqual:@"navigating"]){[self alert:@"请先开始导航并开启眼镜原生导航" message:@"测试帧只用于确认镜片渲染（限速圈/红绿灯/拥堵条/事件图标），不会改变路线。"];return;}
+    NSMutableDictionary *f=[self.display mutableCopy];
+    f[@"phase"]=@"navigating";
+    if(![f[@"segment"] isKindOfClass:NSNumber.class])f[@"segment"]=@(-1);
+    f[@"lights"]=@(3);f[@"lightsMeters"]=@(180);
+    NSMutableArray *bars=[NSMutableArray new];
+    for(int i=0;i<24;i++)[bars addObject:@(i<8?1:(i<16?2:3))];
+    f[@"barLevels"]=bars;
+    f[@"camera"]=@{@"kind":@(TN_CAMERA_SPEED),@"limit":@(60),@"m":@(300)};
+    f[@"event"]=@{@"kind":@(TN_EVENT_ACCIDENT),@"m":@(500)};
+    self.lastInfo=NSProcessInfo.processInfo.systemUptime;
+    [self setFrame:f];
+    self.note=@"已发送 HUD 标记测试帧：限速 60（300m）、最近红绿灯 180m、拥堵条、事故 500m。若镜片仍不显示标记，请把本页与镜片照片发我；若显示，则真实导航数据到达时也会显示。";
+    TIONavDiagHUDEvent(@"HUD标记测试",@"已发送限速/红绿灯/拥堵/事件测试帧");
+    [self refresh];
 }
 - (void)toggleDisplayHUD{
  if([TDPPhoneNavigationStatus()[@"active"] boolValue]){self.autoNativeHUD=NO;TDPPhoneNavigationStop();[self armStopRetryWindow:0];TIONavDiagHUDEvent(@"手动停止",@"用户点停止并退出眼镜导航");[self refreshDisplayHUD];return;} // Explicit user stop: the auto-engager must never fight back.
