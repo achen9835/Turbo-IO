@@ -174,3 +174,22 @@
   - CI 打包时从 roadmap-packs Release 拉取四川省包（32,083,341 B，SHA-256 43675c57…）校验后打入 Runner.app/TurboHUDMaps/。
 - 红绿灯/限速仍未解决：来自高德驾车摄像头/红绿灯回调，模拟导航通常无数据；保留“HUD 标记测试”用于区分“镜片不画”还是“高德没给数据”。
 - 交付：CI run 41327793274，commit 54d7aaa；IPA SHA-256 d0916a6bde38a0fc0619c74f6c40ef5d607eac794d1854044330f124fb78991c；内嵌固件仍 11C d1ac2655…（无需重刷）；目录 D:\Downloads\TurboIO-TAP3-2026-11C-sichuan。
+
+## 12. 追加：矢量帧现场诊断 + 最小场景降级（2026-11-02 01:0x）
+
+用户复测：镜片与上版完全一致，点 HUD 标记测试无任何反应；判断“绝对是固件问题”，
+要求参考其 TAP1 成功导航。
+
+- 复查：镜片右侧小路线图是固件兜底示意图；TNR 状态无效时 marker/scale/car 均不绘制，
+  因此 HUD 标记测试无反应是“矢量场景未生效”的直接结果，尚不能区分手机未生成/本机校验拒收/镜片拒收。
+- 手机端（commit b957a5a）：
+  - RoadMap 新增 minimalSceneForCoords（仅路线、无背景路网/标签的合法 SCENE）；完整场景
+    被拒时自动降级为最小场景作为 tnrScene，另存 tnrSceneMin 供连续丢弃后重发；
+  - NativeNavigation mapOffer 记录失败原因（无场景/无姿态/时间超前/过期/本机校验失败），
+    地图发送不再强制 caps（无 caps 时退回 SCENE v1），连续丢弃 2 次自动改发最小 SCENE；
+  - 眼镜显示卡片新增“矢量帧 已生成/未生成 · 发N/丢M · 已降级 · 原因”现场诊断行。
+- 交付：CI run 41330411915，commit b957a5a，IPA SHA-256 5a10f4ea…；内嵌固件仍 11C
+  d1ac2655…（无需重刷）；目录 D:\Downloads\TurboIO-TAP3-2026-11C-vecdiag。
+- 下一步判定：若“发>0 丢=0”但镜片仍只有旧示意图，则确认固件 TNR 绘制问题，按 TAP1
+  成功导航的系统做 11D（栅格小地图 + 路况标记带兜底，不依赖 TNR）；若未生成/丢弃原因
+  则按手机侧修复。
