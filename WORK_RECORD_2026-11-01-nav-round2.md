@@ -129,3 +129,10 @@
 
 - “构建成功 + 摘要可复现 + 分支在模块范围内”不等于可启动：补丁表是**布局耦合**产物，任何模块源码改动都必须重新生成补丁编码并逐条核对符号。
 - 后续 TAP2（`strix-1.0.5.5-tvp2`）等使用同一补丁机制的树，改动模块源码时也必须移植本 guard/repin 流程，否则有同样风险。
+
+### 8.7 11C 实际交付（2026-11-01 晚）
+
+- 构建提交 `c4ba116`；CI run 41317226443 成功；11C IPA = `TurboIO-navselfheal-TAP3-2026-11C.ipa`，SHA-256 `3750564506b9de74ad36a5a7b94175fdfc20434352b34142fa4cf78c147cdfb1`。
+- 已核对 IPA 内 `TurboWeReadCandidate.zip` = 11C 固件 `d1ac2655…`（8,893,750 B）；dylib 含 `TAP3-2026-11C`/`NAVIGATION-PHONE-03-BG`/`tnr_path_budget` 标记。
+- 交付目录 `D:\Downloads\TurboIO-TAP3-2026-11C-nav`（IPA、SHA256SUMS、交付与恢复说明）；旧 11B 目录已加“已撤销”警示。
+- 当前阻塞：用户设备因 11B 启动失败，需先按官方 App/售后恢复；11C 真机验收仍未开始。
