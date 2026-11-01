@@ -136,3 +136,11 @@
 - 已核对 IPA 内 `TurboWeReadCandidate.zip` = 11C 固件 `d1ac2655…`（8,893,750 B）；dylib 含 `TAP3-2026-11C`/`NAVIGATION-PHONE-03-BG`/`tnr_path_budget` 标记。
 - 交付目录 `D:\Downloads\TurboIO-TAP3-2026-11C-nav`（IPA、SHA256SUMS、交付与恢复说明）；旧 11B 目录已加“已撤销”警示。
 - 当前阻塞：用户设备因 11B 启动失败，需先按官方 App/售后恢复；11C 真机验收仍未开始。
+
+## 9. 追加：11C 真机启动成功 + 路网包清单误判修复（2026-11-01 深夜）
+
+- 用户反馈 C 版固件更新成功、设备可正常启动，11B 启动事故由 11C 补丁表修复解决。
+- 新问题：省际路网包页弹“清单获取失败（用本地缓存）”。根因是手机端 RoadPack 重写时把 Release 资产名 file（TurboRoadMap-xxx.pack，含大写）也交给仅小写的 province slug 校验，ValidPacks 把 manifest 28 省全部判无效；loadCachedManifest 同样被拒，因此列表为空、无法下载。
+- 修复（commit 99a7d65）：新增 SafePackFile（允许大小写/数字/._-、必须以 .pack 结尾、拒绝路径分隔符与上跳）；ValidPacks/downloadPack 改用它；refreshManifest 失败原因细分网络/HTTP/JSON/格式，失败时尝试本地缓存并报告省份数；网络错误自动重试一次；超时 30 秒。
+- 本机验证：线上 manifest 28/28 省通过新规则；下载 TurboRoadMap-macau.pack 的 size/SHA 与清单一致。
+- 仅手机端改动，固件仍为 11C（d1ac2655…），无需重刷。修复版 IPA：CI run 41319497446，SHA-256 9dc5ee8fb0c666931d56502b13b3e5ced4f0f482e71223a23a5f47bbf1c89f3e；交付目录 D:\Downloads\TurboIO-TAP3-2026-11C-roadpackfix。
