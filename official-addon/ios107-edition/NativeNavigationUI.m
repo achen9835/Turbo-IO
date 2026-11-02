@@ -11,8 +11,8 @@
 #import <UIKit/UIKit.h>
 #import <objc/message.h>
 static TNVSession *Session;static TNVTransport *Transport;static NSTimer *Timer;static NSString *Peer;static NSTimeInterval LastSave;
-BOOL TNVAlways(void){NSUserDefaults *d=NSUserDefaults.standardUserDefaults;id v=[d objectForKey:@"TurboNavigationAlwaysOnV1"];return [v isKindOfClass:NSNumber.class]?[v boolValue]:YES;} // Default ON per product decision; the settings toggle still overrides.
-void TNVSetAlways(BOOL value){[NSUserDefaults.standardUserDefaults setBool:value forKey:@"TurboNavigationAlwaysOnV1"];[Session setAlways:value];}
+BOOL TNVAlways(void){return YES;}
+void TNVSetAlways(BOOL value){(void)value;[Session setAlways:YES];}
 NSDictionary *TNVStatus(void){return Session.status?:@{@"active":@NO,@"busy":@NO,@"snapshots":@0,@"note":@"TNV1专用固件：手机开始导航后可自动打开眼镜页面"};}
 BOOL TNVConsume(NSDictionary *e){if(Peer&&![Peer isEqual:TIOProtocolDevice()])[Session disconnect];return [Session consume:e];}
 BOOL TNVPauseForOTA(void){return !Session.active&&!Session.busy;}
@@ -32,7 +32,7 @@ void TNVPump(void){
  // 不含坐标、设备号、Key 或账号。
  NSDictionary *diag=TIONavDiagSnapshot();
  NSMutableDictionary *d=[st mutableCopy];
- d[@"build"]=@"NAVIGATION-PHONE-03-BG";d[@"physicalVerified"]=@NO;d[@"timestamp"]=@(NSDate.date.timeIntervalSince1970);d[@"appState"]=@(UIApplication.sharedApplication.applicationState);
+ d[@"build"]=@"NAVIGATION-PHONE-04-VECTOR";d[@"physicalVerified"]=@NO;d[@"timestamp"]=@(NSDate.date.timeIntervalSince1970);d[@"appState"]=@(UIApplication.sharedApplication.applicationState);
  d[@"voiceStage"]=diag[@"voiceStage"]?:@"";d[@"hudEvents"]=diag[@"hudEvents"]?:@[];d[@"stopRetryAttempts"]=diag[@"stopRetryAttempts"]?:@0;d[@"stopRetryMax"]=diag[@"stopRetryMax"]?:@0;d[@"stopRetryPending"]=diag[@"stopRetryPending"]?:@NO;
  NSData *json=[NSJSONSerialization dataWithJSONObject:d options:NSJSONWritingSortedKeys error:nil];if(!json)return;
  // 双写：Library/Application Support 给扩展自身诊断页读；Documents/TurboIOResearch 走宿主

@@ -1,5 +1,7 @@
 #include "nav_runtime.h"
+#include "nav_map.h"
 #include <string.h>
+_Static_assert(TN_PACKET_MAX==TNR_MAX_BYTES,"navigation envelope and vector packet limits must match");
 static uint16_t u16(const uint8_t *p){return (uint16_t)(p[0]|((uint16_t)p[1]<<8));}
 static uint32_t u32(const uint8_t *p){return p[0]|((uint32_t)p[1]<<8)|((uint32_t)p[2]<<16)|((uint32_t)p[3]<<24);}
 static void p16(uint8_t *p,uint16_t n){p[0]=(uint8_t)n;p[1]=(uint8_t)(n>>8);}
@@ -46,7 +48,7 @@ static bool decode_scene(TNScene *s,const uint8_t *p,size_t n){
 }
 bool tn_packet_valid(const uint8_t *p,size_t n){
  if(!p||n<32||n>TN_PACKET_MAX||memcmp(p,"TNV1",4)||p[4]!=1||p[6]||p[7]||u32(p+24)||u32(p+28)||!u32(p+8)||!u32(p+12)||u32(p+16)!=n-32||u32(p+20)!=wire_crc(p,n))return false;
- unsigned op=p[5];if(op<TN_START||op>TN_QUERY)return false;
+ unsigned op=p[5];if(op>=TNR_SCENE&&op<=TNR_SCENE2)return tnr_body_valid(op,p+32,n-32);if(op<TN_START||op>TN_QUERY)return false;
  if(op==TN_START||op==TN_UPDATE){TNScene s;return decode_scene(&s,p+32,n-32);}
  return op==TN_MODE?n==33&&p[32]<=TN_ALWAYS:n==32;
 }

@@ -5,7 +5,7 @@
 #include <stdint.h>
 /* New, private protocol. NOT accepted by the currently flashed TDP1 firmware.
  * Call only on the Launcher/UI executor, after paired-source validation. */
-#define TN_PACKET_MAX 512u
+#define TN_PACKET_MAX 4096u
 #define TN_POINTS_MAX 32u
 #define TN_ROAD_MAX 96u
 #define TN_TURN_MAX 48u

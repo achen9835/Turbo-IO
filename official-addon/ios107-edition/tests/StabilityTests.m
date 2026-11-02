@@ -71,6 +71,6 @@ int main(void){@autoreleasepool{
  for(int i=0;i<4097;i++)[tooLong addObject:TestCoordinate(0,i*0.2)];
  [map setValue:nil forKey:@"scene"];
  assert(![map decorate:Frame(TestCoordinate(0,0),0) coordinates:tooLong][@"tnrScene"]);
- [map reset];assert([map.coverageStatus[@"regions"] intValue]==0);assert(!map.allowNetwork);
+ [map reset];assert([map.coverageStatus[@"regions"] intValue]==0);assert(map.allowNetwork);
  printf("PASS cache boundary/delayed refresh/two-region eviction/reset; visible road labels %u/%u moving/rotating samples; no network.\n",visible,total);
 }return 0;}

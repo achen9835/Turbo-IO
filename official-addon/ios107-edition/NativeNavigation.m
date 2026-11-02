@@ -109,10 +109,10 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
 - (void)fail:(NSString *)note{_active=NO;_failed=YES;_stopping=NO;_retryPacket=nil;_retryScene=nil;_tries=0;[self clearWire];[self note:note];}
 - (void)finish{if(!_packet||!_ack||_fileBusy||!_submitted)return;unsigned op=_op;NSData *sent=_sending;NSString *task=_task;_packet=nil;_nativeTask=nil;_early=nil;_sending=nil;_retryPacket=nil;_retryScene=nil;if(_cleanup)_cleanup(task);_task=nil;_tries=0;_next=_clock()+(_extended?0:1);
  if(op==TN_START||op==TN_UPDATE){_committed=sent;_lastCommit=_clock();_count++;}
- if(op==TNR_SCENE){_mapCommitted=sent;_poseCommitted=nil;_maps++;_mapSends++;}
- if(op==TNR_SCENE2){_mapCommitted=sent;_mapSending=nil;_poseCommitted=[sent subdataWithRange:NSMakeRange(sent.length-12,12)];_lastPose=_clock();_maps++;_poses++;_mapSends++;}
+ if(op==TNR_SCENE){_mapCommitted=sent;_poseCommitted=nil;_maps++;}
+ if(op==TNR_SCENE2){_mapCommitted=_mapSending?:sent;_mapSending=nil;_poseCommitted=[sent subdataWithRange:NSMakeRange(sent.length-12,12)];_lastPose=_clock();_maps++;_poses++;}
  if(op==TN_QUERY)_probed=YES;
- if(op==TNR_POSE){_poseCommitted=sent;_lastPose=_clock();_poses++;_mapSends++;}
+ if(op==TNR_POSE){_poseCommitted=sent;_lastPose=_clock();_poses++;}
  if(op==TNR_CLEAR){_mapCommitted=nil;_poseCommitted=nil;}
  if(op==TN_STOP){_active=NO;_stopping=NO;_stopped=YES;[self note:@"眼镜已确认退出导航"];return;}
  [self note:@"原生导航已提交 · 镜片效果待确认"];
@@ -133,7 +133,8 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
 }
 
 - (BOOL)send:(enum TNOp)op scene:(NSData *)scene{
- if(self.busy||_failed||_seq==UINT32_MAX)return NO;_retryPacket=nil;_retryScene=nil;_tries=0;uint8_t b[TNR_MAX_BYTES];size_t n=op>=TNR_SCENE?tnr_wrap(b,sizeof b,op,_sid,++_seq,scene.bytes,scene.length):tn_encode(b,sizeof b,op,_sid,++_seq,scene?(const TNScene *)scene.bytes:NULL);if(!n)return NO;
+ if(self.busy||_failed||_seq==UINT32_MAX)return NO;_retryPacket=nil;_retryScene=nil;_tries=0;uint8_t b[TNR_MAX_BYTES];size_t n=op>=TNR_SCENE?tnr_wrap(b,sizeof b,op,_sid,++_seq,scene.bytes,scene.length):tn_encode(b,sizeof b,op,_sid,++_seq,scene?(const TNScene *)scene.bytes:NULL);if(!n){if(op>=TNR_SCENE)_mapDrops++;return NO;}
+ if(op>=TNR_SCENE)_mapSends++;
  _packet=[NSData dataWithBytes:b length:n];_wireBytes+=n;_task=NSUUID.UUID.UUIDString;_nativeTask=nil;_early=[NSMutableArray new];_ack=_submitted=NO;_fileBusy=YES;_op=op;_sending=scene;_lastWire=_clock();_deadline=_lastWire+(op==TNR_POSE?3:8);NSString *task=_task;
  __weak typeof(self) weak=self;_sender(_packet,task,^(BOOL ok,NSString *native){TNVSession *s=weak;if(!s||![task isEqual:s->_task])return;
   if(!ok||![native isKindOfClass:NSString.class]||!native.length||native.length>256){s->_fileBusy=NO;[s transient:@"文件提交失败" code:0];return;}
@@ -196,7 +197,7 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
  NSTimeInterval now=_clock();
  if(_packet&&now>=_deadline){
   if(_op==TN_STOP)[self transient:@"回执超时" code:0];
-  else{[self clearWire];_tries=0;_next=now+0.5;[self note:@"导航包回执超时，本轮跳过"];}
+  else{if(_op>=TNR_SCENE)_mapDrops++;[self clearWire];_tries=0;_next=now+0.5;[self note:@"导航包回执超时，本轮跳过"];}
   return;
  }
  if(self.busy)return;
@@ -246,8 +247,9 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
   return YES;
  }
  if(_op>=TNR_SCENE){
-  if(q.result==TN_NO_SESSION){[self fail:[NSString stringWithFormat:@"眼镜导航会话已不存在（码 %u）；本轮结束，等待自动恢复",q.result]];return YES;}
-  _mapDrops++;[self clearWire];[self note:[NSString stringWithFormat:@"镜片未接受矢量图（码 %u），导航继续",q.result]];return YES;
+  if(q.result==TN_OK&&q.active){_acks++;_ack=YES;[self finish];return YES;}
+  if(q.result==TN_NO_SESSION||q.result==TN_OK){[self fail:[NSString stringWithFormat:@"眼镜导航会话已不存在（码 %u）；本轮结束，等待自动恢复",q.result]];return YES;}
+  [self transient:[NSString stringWithFormat:@"镜片未接受矢量图（码 %u）",q.result] code:q.result];return YES;
  }
  if(q.result==TN_STALE){[self clearWire];[self note:@"眼镜回执过期，跳过本帧"];return YES;}
  if(q.result==TN_BUSY||q.result==TN_UI_FAILED){[self transient:[NSString stringWithFormat:@"眼镜暂忙（码 %u）",q.result] code:q.result];return YES;}

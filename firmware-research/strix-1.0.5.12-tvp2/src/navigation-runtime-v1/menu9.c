@@ -1,5 +1,4 @@
-/* 1.0.4.12 ONLY. Experimental native eight-index carousel, not a proven OTA.
- * This replaces the virtual eighth overlay. Native wheel spring, direction,
+/* Strix OS 1.0.5.12 native nine-index carousel. Native wheel spring, direction,
  * snap, hide/show and seven stock launch targets are retained. All functions
  * run on the existing Launcher/LVGL executor. No new timers or global RAM.
  */

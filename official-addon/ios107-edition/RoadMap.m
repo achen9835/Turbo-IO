@@ -76,7 +76,7 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  }return NO;
 }
 @implementation TIORoadMap{
- NSArray *(^_convert)(double,double);NSArray *_features,*_bbox,*_origin,*_regions;double _labelHeading,_sceneAt;NSData *_scene,*_scene2,*_sceneMin;uint32_t _generation;id _segment;NSString *_note;
+ NSArray *(^_convert)(double,double);NSArray *_features,*_bbox,*_origin,*_regions;double _labelHeading,_sceneAt;NSData *_scene,*_scene2,*_sceneMin,*_markerScene,*_markerPose;uint32_t _generation;id _segment;NSString *_note;
  unsigned _sceneRange,_labelRange;
  NSURLSession *_session;NSURLSessionDataTask *_task;NSMutableData *_received;NSTimeInterval _lastRequest;NSUInteger _requests,_epoch;BOOL _httpOK;
  NSString *_query,*_bboxB64;NSUInteger _endpoint,_attempt;BOOL _sourceFailed;NSString *_sourceReason;
@@ -84,10 +84,10 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
 }
 - (instancetype)initWithWGS84ToMap:(NSArray *(^)(double,double))convert{if((self=[super init])){_convert=[convert copy];_note=@"路网自动开启 · 正在准备";[[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(packChanged:) name:@"TIORoadPackChanged" object:nil];}return self;}
 - (NSString *)note{return _note?:@"";}
-- (void)reset{_epoch++;[_task cancel];[_session invalidateAndCancel];_task=nil;_session=nil;_received=nil;_regions=nil;_features=nil;_bbox=nil;_scene=nil;_scene2=nil;_sceneMin=nil;_origin=nil;_segment=nil;_requests=0;_lastRequest=0;_query=nil;_bboxB64=nil;_endpoint=0;_attempt=0;_sourceFailed=NO;_sourceReason=nil;_autoPackProvince=nil;_autoPackBusy=NO;self.allowNetwork=NO;_note=@"路网缓存已清理";}
+- (void)reset{_epoch++;[_task cancel];[_session invalidateAndCancel];_task=nil;_session=nil;_received=nil;_regions=nil;_features=nil;_bbox=nil;_scene=nil;_scene2=nil;_sceneMin=nil;_markerScene=nil;_markerPose=nil;_origin=nil;_segment=nil;_requests=0;_lastRequest=0;_query=nil;_bboxB64=nil;_endpoint=0;_attempt=0;_sourceFailed=NO;_sourceReason=nil;_autoPackProvince=nil;_autoPackBusy=NO;self.allowNetwork=YES;_note=@"路网缓存已清理，联网授权保持开启";}
 - (void)dealloc{[NSNotificationCenter.defaultCenter removeObserver:self];[_session invalidateAndCancel];}
 - (void)packChanged:(NSNotification *)note{[self reloadPackData];}
-- (void)reloadPackData{/* 省包新就绪：丢弃已构建场景，下一帧按 pack 重新载入路网 */_features=nil;_regions=nil;_scene=nil;_scene2=nil;_sceneMin=nil;_origin=nil;_segment=nil;_sceneAt=0;}
+- (void)reloadPackData{/* 省包新就绪：丢弃已构建场景，下一帧按 pack 重新载入路网 */_features=nil;_regions=nil;_scene=nil;_scene2=nil;_sceneMin=nil;_markerScene=nil;_markerPose=nil;_origin=nil;_segment=nil;_sceneAt=0;}
 - (NSData *)minimalSceneForCoords:(NSArray *)coords origin:(NSArray *)origin range:(unsigned)range generation:(uint32_t)generation{
  /* 只含路线、无背景道路/无标签的最小 SCENE：完整场景被镜片拒收时先打通矢量通道 */
  if(!LL(origin)||![coords isKindOfClass:NSArray.class]||coords.count<2||!generation)return nil;
@@ -100,6 +100,26 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  NSUInteger at=24;for(NSArray *p in best){W16(b+at,[p[0] intValue]);W16(b+at+2,[p[1] intValue]);at+=4;}
  return tnr_body_valid(TNR_SCENE,out.bytes,out.length)?out:nil;
 }
+- (NSDictionary *)markerTestFrame:(NSDictionary *)frame{
+ if(!self.enabled||![frame[@"phase"] isEqual:@"navigating"])return nil;
+ if(!_markerScene){
+  if(_generation==UINT32_MAX)return nil;
+  NSArray *origin=@[@22.5,@114.0];
+  NSArray *route=@[origin,@[@(22.5-50.0/111319.49),@114.0],@[@(22.5+800.0/111319.49),@114.0]];
+  uint32_t generation=_generation+1;
+  NSData *scene=[self minimalSceneForCoords:route origin:origin range:320 generation:generation];
+  if(!scene)return nil;
+  uint8_t pose[12]={0};W32(pose,generation);
+  _generation=generation;_markerScene=scene;_markerPose=[NSData dataWithBytes:pose length:sizeof pose];
+ }
+ NSMutableDictionary *out=[frame mutableCopy];out[@"tnrScene"]=_markerScene;out[@"tnrSceneMin"]=_markerScene;out[@"tnrPose"]=_markerPose;out[@"tnrPoseAt"]=@(NSProcessInfo.processInfo.systemUptime);out[@"tnrSource"]=@"hud-marker-selftest";
+ out[@"navHeading"]=@0;out[@"navPoints"]=@[@[@512,@900],@[@512,@700],@[@512,@100]];out[@"speedKmh"]=@42;
+ out[@"lights"]=@3;out[@"lightsMeters"]=@20;out[@"lightsList"]=@[@20];
+ NSMutableArray *bars=[NSMutableArray new];for(unsigned i=0;i<24;i++)[bars addObject:@(i<8?1:(i<16?2:3))];out[@"barLevels"]=bars;
+ out[@"camera"]=@{@"kind":@(TN_CAMERA_SPEED),@"limit":@60,@"m":@50};out[@"event"]=@{@"kind":@(TN_EVENT_ACCIDENT),@"m":@90};
+ return out;
+}
+- (void)clearMarkerTest{_markerScene=nil;_markerPose=nil;_scene=nil;_scene2=nil;_sceneMin=nil;_origin=nil;_segment=nil;_sceneAt=0;}
 - (void)autoProvidePackFor:(NSArray *)wgs{
  if(!self.enabled||!LL(wgs)||_autoPackBusy)return;
  TIORoadPackManager *m=[TIORoadPackManager shared];

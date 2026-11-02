@@ -6,8 +6,6 @@ static uint32_t nm_u32(const uint8_t *p){return p[0]|(uint32_t)p[1]<<8|(uint32_t
 static void nm_p32(uint8_t *p,uint32_t v){for(unsigned i=0;i<4;i++)p[i]=(uint8_t)(v>>(8*i));}
 static int ab(int v){return v<0?-v:v;}
 static bool point_ok(const uint8_t *p){return ab((int16_t)nm_u16(p))<=8192&&ab((int16_t)nm_u16(p+2))<=8192;}
-/* Strict UTF-8, BMP printable names only; no control/bidi/surrogate text.
- * Width is conservative at the stock 16 px font. No allocation or shaping. */
 static unsigned text_width(const uint8_t *p,unsigned n){
  unsigned w=0;
  for(unsigned i=0;i<n;){unsigned a=p[i++],c=a;
@@ -48,25 +46,20 @@ bool tnr_receive(TNRState *s,unsigned op,const uint8_t *p,size_t n,uint32_t now)
   for(unsigned i=0;i<d->point_count;i++){const uint8_t *q=p+16+8*d->path_count+4*i;d->points[i]=(TNRPoint){(int16_t)nm_u16(q),(int16_t)nm_u16(q+2)};}
   d->label_count=(uint16_t)nm_u16(p+10);
   for(unsigned i=0;i<d->label_count;i++){const uint8_t *q=p+16+8*d->path_count+4*d->point_count+40*i;d->labels[i].p=(TNRPoint){(int16_t)nm_u16(q),(int16_t)nm_u16(q+2)};memcpy(d->labels[i].text,q+8,q[4]);d->labels[i].width=(uint16_t)text_width(q+8,q[4]);}
-  /* Keep the old scene visible until a matching origin-relative pose arrives. */
-  s->pending=true;if(op==TNR_SCENE)return true;p+=n-12; /* op10 commits atomically */
+  s->pending=true;if(op==TNR_SCENE)return true;p+=n-12;
  }
  if(s->pending){if(nm_u32(p)!=s->scenes[s->bank^1u].generation)return false;s->bank^=1u;s->valid=true;s->located=false;s->pending=false;}
  if(!s->valid||nm_u32(p)!=s->scenes[s->bank].generation)return false;
  TNRPose q={.generation=nm_u32(p),.p={(int16_t)nm_u16(p+4),(int16_t)nm_u16(p+6)},.heading=(uint16_t)nm_u16(p+8),.age=(uint16_t)nm_u16(p+10)};
  if(s->located&&!tnr_stale(s,now))tnr_position(s,now,&s->from);else s->from=q;
- /* Never interpolate long discontinuities across a junction or a relocalization. */
  if(ab(q.p.x-s->from.p.x)+ab(q.p.y-s->from.p.y)>400)s->from=q;
  s->target=q;s->pose_at=now;s->located=true;s->dirty=true;return true;
 }
 bool tnr_needs_draw(const TNRState *s,uint32_t now){return s&&(s->dirty||s->was_stale!=tnr_stale(s,now)||(s->valid&&s->located&&(uint32_t)(now-s->pose_at)<TNR_BLEND_MS+40&&(uint32_t)(now-s->last_draw)>=33));}
 void tnr_presented(TNRState *s,uint32_t now){if(s){s->dirty=false;s->last_draw=now;s->was_stale=tnr_stale(s,now);}}
-/* Q14 sine table; no libm, heap allocation or FP ABI assumptions in renderer. */
 static const int16_t sin5[]={0,1428,2845,4240,5604,6924,8192,9397,10531,11585,12551,13421,14189,14849,15396,15826,16135,16322,16384};
 static int sine(unsigned a){a%=360;int sign=a>=180?-1:1;a%=180;if(a>90)a=180-a;unsigned i=a/5,r=a%5;return sign*(sin5[i]+(i<18?(sin5[i+1]-sin5[i])*(int)r/5:0));}
 static TNRPoint screen(TNRPoint p,const TNRPose *pose,unsigned range){int x=p.x-pose->p.x,y=p.y-pose->p.y,s=sine(pose->heading),c=sine(pose->heading+90);int dx=(x*c-y*s)/16384,dy=(x*s+y*c)/16384;return (TNRPoint){(int16_t)(148+dx*296/(int)(range*4)),(int16_t)(103-dy*296/(int)(range*4))};}
-/* Project "metres ahead along the pose heading" onto the canvas. This remains
- * the fallback when the highlighted route does not cover the requested distance. */
 TNRPoint tnr_ahead(const TNRState *s,const TNRPose *pose,unsigned metres){
  int32_t q=(int32_t)(metres>700u?700u:metres)*4;
  TNRPoint w={(int16_t)((q*(int32_t)sine(pose->heading))>>14),(int16_t)((q*(int32_t)sine(pose->heading+90))>>14)};
@@ -75,8 +68,6 @@ TNRPoint tnr_ahead(const TNRState *s,const TNRPose *pose,unsigned metres){
 static unsigned length_qm(TNRPoint a,TNRPoint b){
  int x=ab(b.x-a.x),y=ab(b.y-a.y);return (unsigned)((x>y?x:y)+((x>y?y:x)>>1));
 }
-/* Signed arc offset from the vehicle to a route path's first point. Usually the
- * path starts at the vehicle and this is a small negative projection offset. */
 int32_t tnr_route_base_qm(const TNRState *s,const TNRPose *pose,const TNRPath *r){
  const TNRScene *d=&s->scenes[s->bank];uint32_t best=UINT32_MAX,offset=0;unsigned walked=0;
  for(unsigned j=1;j<r->count;j++){
@@ -103,8 +94,6 @@ TNRPoint tnr_route_ahead(const TNRState *s,const TNRPose *pose,unsigned metres){
  }
  return tnr_ahead(s,pose,metres);
 }
-/* Scene-space point -> canvas pixel; the congestion tint in nav_view walks the
- * highlighted route with this so its shading matches the drawn geometry. */
 TNRPoint tnr_project(const TNRState *s,const TNRPose *pose,TNRPoint p){return screen(p,pose,s->scenes[s->bank].range);}
 static int64_t orient(TNRPoint a,TNRPoint b,TNRPoint c){return (int64_t)(b.x-a.x)*(c.y-a.y)-(int64_t)(b.y-a.y)*(c.x-a.x);}
 static bool edges_cross(TNRPoint a,TNRPoint b,TNRPoint c,TNRPoint d){
@@ -151,8 +140,6 @@ bool tnr_scale(unsigned range,unsigned *metres,unsigned *pixels){
 }
 static void scale_draw(uint8_t *out,unsigned range,unsigned gray){
  unsigned metres,pixels;if(!tnr_scale(range,&metres,&pixels))return;
- /* Small fixed digit atlas, not heap/LVGL objects; same projection as roads.
-  * Reserve bottom-left ~68x27 px, outside the vehicle marker and road labels. */
  static const uint8_t glyph[11][7]={
   {14,17,19,21,25,17,14},{4,12,4,4,4,4,14},{14,17,1,2,4,8,31},
   {30,1,1,14,1,1,30},{2,6,10,18,31,2,2},{31,16,16,30,1,1,30},
@@ -161,19 +148,13 @@ static void scale_draw(uint8_t *out,unsigned range,unsigned gray){
  for(unsigned y=120;y<146;y++)memset(out+y*TNR_W+3,0,66);
  unsigned digits[4],count=0;if(metres>=100)digits[count++]=metres/100;
  digits[count++]=(metres/10)%10;digits[count++]=metres%10;digits[count++]=10;
- for(unsigned i=0;i<count;i++)for(unsigned y=0;y<7;y++)for(unsigned x=0;x<5;x++)
+ for(unsigned i=0;i<count;i++)for(unsigned y=0;y<7;y++)for(int x=0;x<5;x++)
   if(glyph[digits[i]][y]&(1u<<(4-x)))for(unsigned yy=0;yy<2;yy++)for(unsigned xx=0;xx<2;xx++)out[(122+y*2+yy)*TNR_W+5+i*12+x*2+xx]=(uint8_t)gray;
  for(unsigned x=5;x<=5+pixels;x++){out[140*TNR_W+x]=(uint8_t)gray;out[141*TNR_W+x]=(uint8_t)gray;}
  for(unsigned y=137;y<=143;y++){out[y*TNR_W+5]=(uint8_t)gray;out[y*TNR_W+5+pixels]=(uint8_t)gray;}
 }
 void tnr_draw(const TNRState *s,uint32_t now,uint8_t out[TNR_W*TNR_H]){
- memset(out,0,TNR_W*TNR_H);TNRPose p;if(!tnr_position(s,now,&p))return;const TNRScene *d=&s->scenes[s->bank];bool stale=tnr_stale(s,now);static const uint8_t gray[]={185,172,158,144,130,116,255}; /* 2026-10-28 真机亮度反馈：原 56-140 底层在低亮度档先消失，整体提亮并压平档差 */
- /* Phone sorts bridges/layers; highlighted route is always the final layer.
-  * Pass order matters (2026-10-28 真机反馈路口断线): the route's wide erase
-  * halo goes down FIRST, then background roads redraw over it -- crossings
-  * stay joined instead of showing halo bites -- and the bright route line
-  * lands last on top. Hard raster caps per pass; route keeps its own budget
-  * so background roads cannot starve it. */
+ memset(out,0,TNR_W*TNR_H);TNRPose p;if(!tnr_position(s,now,&p))return;const TNRScene *d=&s->scenes[s->bank];bool stale=tnr_stale(s,now);static const uint8_t gray[]={185,172,158,144,130,116,255};
  for(unsigned i=0;i<d->path_count;i++){const TNRPath *r=&d->paths[i];if(r->style!=6)continue;unsigned halo=4000;
   for(unsigned j=1;j<r->count;j++){TNRPoint a=screen(d->points[r->first+j-1],&p,d->range),b=screen(d->points[r->first+j],&p,d->range);line(out,a,b,0,5,false,true,&halo);}
  }

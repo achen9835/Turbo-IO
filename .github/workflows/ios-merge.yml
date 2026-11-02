@@ -102,6 +102,12 @@ jobs:
         with:
           node-version: '22'
 
+      - name: 固件、导航与 OTA 离线回归
+        run: |
+          python3 official-addon/ios107-edition/test.py \
+            --firmware firmware-research/strix-1.0.5.12-tvp2/candidate-release/firmware.zip \
+            --stock firmware-research/strix-1.0.5.12/stock/Strix-OS-1.0.5.12-original.zip
+
       # 有实际行为的校验：必错的输入直接失败，不浪费 10 分钟构建
       - name: 校验 Bundle ID 输入
         run: |

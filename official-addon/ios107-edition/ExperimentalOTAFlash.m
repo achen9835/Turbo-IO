@@ -160,8 +160,13 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
     }
     return report;
 }
+- (BOOL)transferComplete{
+    NSArray *coverage=[self coverageStatus];BOOL complete=coverage.count>0,apComplete=NO;
+    for(NSDictionary *row in coverage){if([row[@"Name"] isEqual:@"nuttx_ap.bin"])apComplete=[row[@"complete"] boolValue];if(![row[@"complete"] boolValue])complete=NO;}
+    return complete&&apComplete;
+}
 - (BOOL)freshReadback:(NSTimeInterval)now{
-    return isfinite(now)&&now>=0&&[_readbackDevice isEqual:_device]&&_versionReadAt>0&&_idleReadAt>0&&now>=_versionReadAt&&now>=_idleReadAt&&now-_versionReadAt<=120&&now-_idleReadAt<=120;
+    return isfinite(now)&&now>=0&&_stage>=2&&[_readbackDevice isEqual:_device]&&_versionReadAt>=_lastActivity&&_idleReadAt>=_lastActivity&&_versionReadAt>0&&_idleReadAt>0&&now>=_versionReadAt&&now>=_idleReadAt&&now-_versionReadAt<=120&&now-_idleReadAt<=120;
 }
 - (void)observe:(NSData *)payload device:(NSString *)device uptime:(NSTimeInterval)now{
     @synchronized(self){
@@ -177,6 +182,7 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
 - (BOOL)confirmRuntimeAt:(NSTimeInterval)now error:(NSError **)error{
     @synchronized(self){
         if(_stage<2){Error(error,@"尚未开始安装，不能记录刷后运行验收。");return NO;}
+        if(![self transferComplete]){Error(error,@"实际请求的负载尚未完整传输，不能提前记录刷后运行验收。");return NO;}
         if(![self freshReadback:now]){Error(error,@"需要同一眼镜两分钟内的版本与空闲回执；请先回官方固件页重新检查。");return NO;}
         _runtimeValidated=YES;_runtimeAt=now;return YES;
     }
@@ -238,9 +244,7 @@ BOOL TIOPhoneOTAReadAllowed(NSData *data){
         else if(_stage==2&&isfinite(_deadline)&&realNow>=_deadline&&isfinite(_lastActivity)&&realNow-_lastActivity>120){_stage=3;_failure=[_failure length]?_failure:@"会话超时自动收尾";}
         BOOL dead=_stage>=2&&DeadSession(_stage,_lastActivity,_deadline,realNow);
         NSDictionary *calls;@synchronized(NSProcessInfo.processInfo){calls=InstallCalls?[InstallCalls copy]:@{};}
-        NSArray *coverage=[self coverageStatus];BOOL transferComplete=coverage.count>0,apComplete=NO;
-        for(NSDictionary *row in coverage){if([row[@"Name"] isEqual:@"nuttx_ap.bin"])apComplete=[row[@"complete"] boolValue];if(![row[@"complete"] boolValue])transferComplete=NO;}
-        transferComplete=transferComplete&&apComplete;
+        NSArray *coverage=[self coverageStatus];BOOL transferComplete=[self transferComplete];
         BOOL readback=[self freshReadback:realNow],validated=_runtimeValidated&&transferComplete&&readback;
         NSString *phase=validated?@"validated":_stage==0?@"locked":_stage==1?@"armed":_stage==3?@"unknown":!transferComplete?(dead?@"unknown":@"transferring"):!readback?@"awaitingReadback":@"awaitingLens";
         return @{@"stage":@(_stage),@"authorized":@(_stage==1||_stage==2),@"started":@(_stage>=2),@"versionMatched":@(_versionSent),@"manifestMatched":@(_manifestSent),@"validatedSlices":@(_slices),@"validatedSliceBytes":@(_bytes),@"lastActivity":@(_lastActivity),@"captureFiles":@(_captureFiles.count),@"captureBytes":@(_captureBytes),@"failure":_failure?:@"",@"dead":@(dead),@"installCalls":calls,@"coverage":coverage,@"transferComplete":@(transferComplete),@"readbackFresh":@(readback),@"runtimeValidated":@(_runtimeValidated),@"runtimeAt":@(_runtimeAt),@"installationValidated":@(validated),@"phase":phase};}}

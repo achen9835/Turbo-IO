@@ -1,15 +1,13 @@
 #include "nav_view.h"
 #include <string.h>
 static int mag(int v){return v<0?-v:v;}
-static TNXY xy(TNRPoint p){return (TNXY){p.x,p.y};} /* map-space point -> draw helper */
+static TNXY xy(TNRPoint p){return (TNXY){p.x,p.y};}
 static void pixel(uint8_t *p,int w,int h,int x,int y,int radius,uint8_t gray){
  for(int yy=y-radius;yy<=y+radius;yy++)for(int xx=x-radius;xx<=x+radius;xx++)
  if(xx>=0&&xx<w&&yy>=0&&yy<h)p[(unsigned)yy*(unsigned)w+(unsigned)xx]=gray;
 }
 static void line(uint8_t *p,int w,int h,TNXY a,TNXY b,int radius,uint8_t gray){
  int dx=mag(b.x-a.x),dy=-mag(b.y-a.y),sx=a.x<b.x?1:-1,sy=a.y<b.y?1:-1,e=dx+dy;
- /* Input coordinates are generated from bounded normalized points, never
-  * caller pixel coordinates. Bound iterations anyway against adapter errors. */
  for(unsigned n=0;n<1024;n++){pixel(p,w,h,a.x,a.y,radius,gray);if(a.x==b.x&&a.y==b.y)break;
   int e2=e*2;if(e2>=dy){e+=dy;a.x+=sx;}if(e2<=dx){e+=dx;a.y+=sy;}}
 }
@@ -17,15 +15,13 @@ static void ring(uint8_t *p,int w,int h,int cx,int cy,int r,uint8_t gray){
  for(int dy=-r;dy<=r;dy++)for(int dx=-r;dx<=r;dx++){int d=dx*dx+dy*dy;
   if(d>=r*r-r&&d<=r*r+r)pixel(p,w,h,cx+dx,cy+dy,0,gray);}
 }
-/* Q14 sine via 0..90 degree symmetry: the AP payload has no libm. */
 static const int16_t TN_SINQ14[91]={0,286,572,857,1143,1428,1713,1997,2280,2563,2845,3126,3406,3686,3964,4240,4516,4790,5063,5334,5604,5872,6138,6402,6664,6924,7182,7438,7692,7943,8192,8438,8682,8923,9162,9397,9630,9860,10087,10311,10531,10749,10963,11174,11381,11585,11786,11982,12176,12365,12551,12733,12911,13085,13255,13421,13583,13741,13894,14044,14189,14330,14466,14598,14726,14849,14968,15082,15191,15296,15396,15491,15582,15668,15749,15826,15897,15964,16026,16083,16135,16182,16225,16262,16294,16322,16344,16362,16374,16382,16384};
 static int tsin(unsigned d){d%=360;return d<=90?TN_SINQ14[d]:d<=180?TN_SINQ14[180-d]:d<=270?-TN_SINQ14[d-180]:-TN_SINQ14[360-d];}
 static int tcos(unsigned d){return tsin(d+90);}
-/* 3x5 dot matrix: digits plus the few letters/symbols the marker labels need. */
 static const uint8_t TN_GLYPH3X5[14][5]={{7,5,5,5,7},{2,6,2,2,7},{7,1,7,4,7},{7,1,7,1,7},{5,5,7,1,1},{7,4,7,1,7},{7,4,7,5,7},{7,1,1,2,2},{7,5,7,5,7},{7,5,7,1,7},
- {0,0,0,0,2},{5,6,4,6,5},{0,7,7,5,5},{0,5,2,5,0}}; /* 10='.' 11='k' 12='m' 13='×' */
+ {0,0,0,0,2},{5,6,4,6,5},{0,7,7,5,5},{0,5,2,5,0}};
 static void glyph3x5_at(uint8_t *p,int w,int h,int x,int y,char c,uint8_t gray){
- if(c==' ')return; /* blank advances the label without drawing */
+ if(c==' ')return;
  unsigned g=c>='0'&&c<='9'?(unsigned)(c-'0'):c=='.'?10u:c=='k'?11u:c=='m'?12u:(unsigned char)c==0xD7?13u:(unsigned char)c==0xB7?10u:12u;
  for(int dy=0;dy<5;dy++)for(int dx=0;dx<3;dx++)
   if((TN_GLYPH3X5[g][dy]>>(2-dx))&1)pixel(p,w,h,x+dx,y+dy,0,gray);
@@ -33,7 +29,6 @@ static void glyph3x5_at(uint8_t *p,int w,int h,int x,int y,char c,uint8_t gray){
 static void text3x5_at(uint8_t *p,int w,int h,int x,int y,const char *s,unsigned n,uint8_t gray){
  for(unsigned i=0;i<n;i++)glyph3x5_at(p,w,h,x+(int)i*4,y,s[i],gray);
 }
-/* "300m" under a kilometre, "1.2km" past it, "12km" past ten; out holds 6. */
 static unsigned dist3x5(char out[6],unsigned m){
  char *p=out;
  if(m<1000){char tmp[3];unsigned n=0;do{tmp[n++]=(char)('0'+m%10);m/=10;}while(m);
@@ -43,8 +38,6 @@ static unsigned dist3x5(char out[6],unsigned m){
   while(n)*p++=tmp[--n];*p++='k';*p++='m';}
  *p=0;return (unsigned)(p-out);
 }
-/* Camera, event and light distances follow the highlighted route. Labels yield
- * to existing road names, earlier alerts, the vehicle and the scale block. */
 static bool label_clash(int x0,int y0,int x1,int y1,const int taken[][4],unsigned n){
  for(unsigned i=0;i<n;i++)if(x0<=taken[i][2]&&x1>=taken[i][0]&&y0<=taken[i][3]&&y1>=taken[i][1])return true;
  return false;
@@ -92,9 +85,6 @@ static void map_markers(TNViewFrame *f,const TNRState *s,uint32_t now){
   taken[nt][0]=q.x-radius-1;taken[nt][1]=q.y-radius-1;taken[nt][2]=q.x+radius+1;taken[nt][3]=q.y+radius+1;nt++;
  }
 }
-/* Traffic levels use cumulative distance along the highlighted route, not
- * straight-line distance from the vehicle. A dim continuous guide preserves
- * route geometry between severity-specific dash patterns. */
 static void dash_line(TNViewFrame *f,TNXY a,TNXY b,unsigned on,unsigned off,uint8_t gray){
  int dx=b.x-a.x,dy=b.y-a.y,total=mag(dx)>mag(dy)?mag(dx):mag(dy);
  if(total<=0){line(f->map,TN_MAP_W,TN_MAP_H,a,b,1,gray);return;}
@@ -132,13 +122,7 @@ static void draw(TNViewFrame *f){
  memset(f->names,0,sizeof f->names);
  memset(f->icon,0,sizeof f->icon);memset(f->map,0,sizeof f->map);
  TNVisual *v=&f->visual;uint8_t gray=v->stale?100:255;
- for(unsigned i=1;i<v->icon_count;i++)
-  line(f->icon,TN_ICON_W,TN_ICON_H,v->icon[i-1],v->icon[i],1,gray);
- /* Orientation: fixed heading-up (2026-10-26 真机拍板); the route always
-  * rotates about the car pivot. The TNR3 vector map owns the canvas when one
-  * is active (callers overlay tnr_draw + congestion tint + markers); this
-  * fallback keeps the semantic route readable meanwhile. Map space comes from
-  * nav_visual map(): x 406..518, y 10..122 for the 1024-point protocol box. */
+ for(unsigned i=1;i<v->icon_count;i++)line(f->icon,TN_ICON_W,TN_ICON_H,v->icon[i-1],v->icon[i],1,gray);
  int cx=(v->nav_pos.x-406)*296/112,cy=(v->nav_pos.y-10)*148/112;
  int c=tcos(v->heading),s=tsin(v->heading),rm=25;
  TNXY tp[TN_POINTS_MAX];
@@ -148,8 +132,7 @@ static void draw(TNViewFrame *f){
   if(rx>rm)rm=rx;if(-rx>rm)rm=-rx;if(ry>rm)rm=ry;if(-ry>rm)rm=-ry;
  }
  for(unsigned i=0;i<v->route_count;i++)tp[i]=(TNXY){148+tp[i].x*70/rm,74+tp[i].y*70/rm};
- for(unsigned i=1;i<v->route_count;i++)
-  line(f->map,TN_MAP_W,TN_MAP_H,tp[i-1],tp[i],2,v->stale?60:160);
+ for(unsigned i=1;i<v->route_count;i++)line(f->map,TN_MAP_W,TN_MAP_H,tp[i-1],tp[i],2,v->stale?60:160);
  line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){148,68},(TNXY){144,76},1,gray);
  line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){148,68},(TNXY){152,76},1,gray);
  line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){144,76},(TNXY){152,76},1,gray);
@@ -168,14 +151,10 @@ static void publish(TNView *v,TNViewFrame *f){
  a->buffer(a->ctx,v->map,f->map,TN_MAP_W,TN_MAP_H);
  const char *s[]={f->visual.distance,f->visual.turn,f->visual.road,f->visual.summary};
  for(unsigned i=0;i<4;i++)a->text_static(a->ctx,v->text[i],s[i]);
- a->text_static(a->ctx,v->text[5],f->visual.speed); /* text[4] stays clock-owned */
- /* Footer has a single owner: tn_view_clock. Semantic/map updates must not
-  * replace its retained pointer with a power-mode hint between clock ticks. */
+ a->text_static(a->ctx,v->text[5],f->visual.speed);
  if(!v->clock_shown){tn_clock_text(v->clocks[0],0,0,f->visual.stale);
   v->clock_bank=0;v->clock_shown=true;a->text_static(a->ctx,v->text[4],v->clocks[0]);}
  publish_names(v,f);
- /* Call on the single UI executor: no yields between mutations. Native LVGL
-  * refresh occurs after this function; no ACK claims physical PRESENTED. */
 }
 bool tn_view_open(TNView *v,const TNWidgets *a,void *parent,const TNScene *s){
  if(!v||!a||!parent||!a->idle||!a->root||!a->canvas||!a->label||!a->place||!a->buffer||!a->text_static||!a->visible||!a->destroy||!a->idle(a->ctx))return false;
@@ -183,12 +162,10 @@ bool tn_view_open(TNView *v,const TNWidgets *a,void *parent,const TNScene *s){
  if(!tn_visual(s,false,&v->frames[0].visual))return false;v->api=*a;v->active=0;v->clock_shown=false;
  v->root=a->root(a->ctx,parent);if(!v->root)return false;a->visible(a->ctx,v->root,false);a->place(a->ctx,v->root,0,0,540,180);
  v->icon=a->canvas(a->ctx,v->root);v->map=a->canvas(a->ctx,v->root);
- static const unsigned sizes[]={32,20,16,16,16,16}; /* distance, turn, road, summary, clock, speed; 32/20/18/16 are the only sizes proven in the firmware font table */
+ static const unsigned sizes[]={32,20,16,16,16,16};
  for(unsigned i=0;i<6;i++)v->text[i]=a->label(a->ctx,v->root,sizes[i]);
  for(unsigned i=0;i<TNR_MAX_LABELS;i++){v->map_text[i]=a->label(a->ctx,v->root,16);if(!v->map_text[i])goto fail;a->visible(a->ctx,v->map_text[i],false);}
  if(!v->icon||!v->map)goto fail;for(unsigned i=0;i<6;i++)if(!v->text[i])goto fail;
- /* The 296x148 map keeps its canvas. A 12px left rail and three distinct type
-  * levels put the next manoeuvre first without shrinking the route canvas. */
  a->place(a->ctx,v->icon,12,12,TN_ICON_W,TN_ICON_H);a->place(a->ctx,v->map,238,4,TN_MAP_W,TN_MAP_H);
  a->place(a->ctx,v->text[0],84,10,138,34);a->place(a->ctx,v->text[5],86,48,120,20);
  a->place(a->ctx,v->text[1],12,82,210,24);
@@ -222,14 +199,15 @@ bool tn_view_clock(TNView *v,int64_t local_epoch,int64_t eta_epoch,bool stale){
 }
 bool tn_view_map(TNView *v,unsigned op,const uint8_t *body,size_t n,uint32_t now){
  if(!v||!v->open||v->retiring)return false;
- return tnr_receive(&v->map_state,op,body,n,now);
+ if(!tnr_receive(&v->map_state,op,body,n,now))return false;
+ (void)tn_view_map_tick(v,now);return true;
 }
 bool tn_view_map_tick(TNView *v,uint32_t now){
  if(!v||!v->open||v->retiring)return false;v->map_now=now;
  if(!tnr_needs_draw(&v->map_state,now))return true;
  if(!v->api.idle(v->api.ctx))return false;
  unsigned next=v->active^1u;TNViewFrame *f=&v->frames[next];
- f->visual=v->frames[v->active].visual; /* map tick repaints only; scene text untouched */
+ f->visual=v->frames[v->active].visual;
  if(v->map_state.valid){tnr_draw(&v->map_state,now,f->map);map_congestion(f,&v->map_state,now);map_markers(f,&v->map_state,now);}else draw(f);
  v->api.buffer(v->api.ctx,v->map,f->map,TN_MAP_W,TN_MAP_H);publish_names(v,f);v->active=next;tnr_presented(&v->map_state,now);return true;
 }

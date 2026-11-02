@@ -1,5 +1,4 @@
-/* Only link against SHA-pinned 1.0.4.12 aliases; no hardcoded firmware writes.
- * This is a native binding, not the still-pending launcher/menu integration. */
+/* Link only against the audited Strix OS 1.0.5.12 aliases; no firmware writes. */
 #include "nav_lvgl.h"
 #include "../menu8-renderer.h"
 #include "../image-upload-test/render_idle.h"

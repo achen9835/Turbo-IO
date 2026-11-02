@@ -285,8 +285,13 @@ def repin(stock_path, llvm, out, code_name=None, display_name=None):
     for key in ('moduleSHA256','APBytes','APSHA256'):
         working.pop(key, None)
     working['archive'].pop('sha256', None)
+    for row in working['sources']:
+        row.pop('sha256', None)
     result = build(stock_path, llvm, out, spec=working, repin=True)
     edits = result['edits']
+    for row in spec['sources']:
+        if 'sha256' in row and row['path'] != '@generated-animation':
+            row['sha256'] = sha((HERE/row['path']).read_bytes())
     spec['edits'] = edits
     spec['moduleBytes'] = result['moduleBytes']
     spec['moduleSHA256'] = result['moduleSHA256']

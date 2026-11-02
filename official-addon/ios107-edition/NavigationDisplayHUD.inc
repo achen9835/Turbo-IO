@@ -73,7 +73,6 @@
  self.tdpStatus=[self navLabel:@"需要支持 TNV1 的实验固件；以实际道路指示为准" size:12 weight:UIFontWeightRegular];self.tdpStatus.accessibilityIdentifier=@"navigation-tdp-status";[self.lensCard addArrangedSubview:self.tdpStatus];
  self.tdpButton=[self navAction:@"开启眼镜原生导航" icon:@"arrow.triangle.turn.up.right.diamond" selector:@selector(toggleDisplayHUD) primary:YES];self.tdpButton.accessibilityIdentifier=@"navigation-tdp-enable";[self.lensCard addArrangedSubview:self.tdpButton];
 }
-- (void)nativeNavAlwaysChanged:(UISwitch *)sender{TNVSetAlways(sender.on);}
 - (void)refreshDisplayHUD{
  if(!self.tdpButton)return;NSDictionary *s=TDPPhoneNavigationStatus();BOOL on=[s[@"active"] boolValue];
  BOOL can=[self canStartDisplayHUD];
@@ -98,21 +97,13 @@
  self.tdpPreview.hidden=YES; // Old pixel renderer is not an accurate TNV1 preview.
 }
 - (void)hudMarkerTest{
-    BOOL hud=[TDPPhoneNavigationStatus()[@"active"] boolValue];
-    if(!hud&&![self.display[@"phase"] isEqual:@"navigating"]){[self alert:@"请先开始导航并开启眼镜原生导航" message:@"测试帧只用于确认镜片渲染（限速圈/红绿灯/拥堵条/事件图标），不会改变路线。"];return;}
-    NSMutableDictionary *f=[self.display mutableCopy];
-    f[@"phase"]=@"navigating";
-    if(![f[@"segment"] isKindOfClass:NSNumber.class])f[@"segment"]=@(-1);
-    f[@"lights"]=@(3);f[@"lightsMeters"]=@(180);
-    NSMutableArray *bars=[NSMutableArray new];
-    for(int i=0;i<24;i++)[bars addObject:@(i<8?1:(i<16?2:3))];
-    f[@"barLevels"]=bars;
-    f[@"camera"]=@{@"kind":@(TN_CAMERA_SPEED),@"limit":@(60),@"m":@(300)};
-    f[@"event"]=@{@"kind":@(TN_EVENT_ACCIDENT),@"m":@(500)};
-    self.lastInfo=NSProcessInfo.processInfo.systemUptime;
-    [self setFrame:f];
-    self.note=@"已发送 HUD 标记测试帧：限速 60（300m）、最近红绿灯 180m、拥堵条、事故 500m。若镜片仍不显示标记，请把本页与镜片照片发我；若显示，则真实导航数据到达时也会显示。";
-    TIONavDiagHUDEvent(@"HUD标记测试",@"已发送限速/红绿灯/拥堵/事件测试帧");
+    if(![TDPPhoneNavigationStatus()[@"active"] boolValue]||![self.display[@"phase"] isEqual:@"navigating"]){[self alert:@"请先确认眼镜已进入原生导航" message:@"测试使用20秒独立场景，不改变手机上的真实路线。只有镜片已进入导航才能验证接收与绘制。"];return;}
+    NSDictionary *test=[self.roadMap markerTestFrame:self.display];
+    if(!test){[self alert:@"无法创建测试场景" message:@"请先停止当前导航，再重新开启后重试。"];return;}
+    self.hudMarkerTestUntil=NSProcessInfo.processInfo.systemUptime+20;
+    TDPPhoneNavigationOffer(test);
+    self.note=@"20 秒 HUD 独立测试已排队：限速 60（50m）、红绿灯 20m、事故 90m、拥堵档位。请观察右侧地图；结束后自动恢复真实导航。测试不代表高德已提供这些真实数据。";
+    TIONavDiagHUDEvent(@"HUD标记测试",@"20秒独立场景已排队；限速50m/红绿灯20m/事故90m");
     [self refresh];
 }
 - (void)toggleDisplayHUD{

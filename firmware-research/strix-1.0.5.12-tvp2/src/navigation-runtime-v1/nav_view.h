@@ -2,8 +2,6 @@
 #define TURBO_NAV_VIEW_H
 #include "nav_visual.h"
 #include "nav_map.h"
-/* Native LVGL glue is injected so allocation failure / renderer ownership can
- * be tested without pretending that mock rendering is a hardware acceptance. */
 typedef struct {
  void *ctx;
  bool (*idle)(void *);
@@ -16,8 +14,6 @@ typedef struct {
  void (*visible)(void *,void *,bool);
  void (*destroy)(void *,void *);
 } TNWidgets;
-/* Map-primary layout: a 64x64 turn glyph and three text levels share the left
- * rail; the full TNR canvas stays on the right and congestion rides the route. */
 #define TN_ICON_W 64u
 #define TN_ICON_H 64u
 #define TN_MAP_W TNR_W
@@ -31,7 +27,7 @@ typedef struct {
 typedef struct {
  TNRState map_state;uint32_t map_now;
  TNWidgets api;
- void *root,*icon,*map,*text[6],*map_text[TNR_MAX_LABELS]; /* text[5]=speed */
+ void *root,*icon,*map,*text[6],*map_text[TNR_MAX_LABELS];
  TNViewFrame frames[2];
  char clocks[2][64];
  unsigned clock_bank;
@@ -44,5 +40,5 @@ bool tn_view_update(TNView *,const TNScene *,bool stale);
 bool tn_view_clock(TNView *,int64_t local_epoch,int64_t eta_epoch,bool stale);
 bool tn_view_map(TNView *,unsigned,const uint8_t *,size_t,uint32_t);
 bool tn_view_map_tick(TNView *,uint32_t);
-bool tn_view_close(TNView *); /* false means renderer busy; retry on UI timer */
+bool tn_view_close(TNView *);
 #endif

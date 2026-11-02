@@ -135,10 +135,11 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property double navLat,navLon;
 @property NSInteger navSpeedKmh,navHeadingDeg; /* -1=尚未从 AMapNaviLocation 读到 */
 #endif
-/* 矢量小地图（TNR3）：内置/已缓存路网默认可用，联网取路网需每次会话单独授权。
+/* 大地图与路网自动开启；HUD 自测使用独立场景，不改变真实导航回调。
  * 只依赖 TIO_DISPLAY_PHONE 构建线（RoadMap.m 在该线编译），不依赖高德链接。 */
 #if TIO_DISPLAY_PHONE
 @property TIORoadMap *roadMap;
+@property NSTimeInterval hudMarkerTestUntil;
 @property UIButton *roadButton;
 @property UILabel *roadStatus;
 @property NSArray *roadCoordinates;
@@ -208,36 +209,19 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(navigationForeground) name:UIApplicationDidBecomeActiveNotification object:nil];
     self.display=TIONavDisplay(@"stopped",0,@"",-1,-1,-1,NO);[self refresh];
 }
-/* 矢量小地图控制：开关只影响本机是否构建/发送 TNR 路网包，会话中切换同样
- * 安全——关掉后下一个导航帧不再携带 tnr 键，会话层按协议发 TNR_CLEAR 清屏。 */
 #if TIO_DISPLAY_PHONE
 - (void)buildRoadControls{
     self.roadStatus=[UILabel new];self.roadStatus.numberOfLines=0;self.roadStatus.font=[UIFont systemFontOfSize:12];self.roadStatus.textColor=UIColor.secondaryLabelColor;[self.stack addArrangedSubview:self.roadStatus];
     [self button:@"省际路网包（按省下载 · 离线用）" action:@selector(roadPacksOpen) identifier:@"navigation-road-packs"];
     [self refreshRoadControls];
-    /* 2026-11-02：路网自动模式——进入导航页即刷新省包清单，供 RoadMap 无覆盖时按位置自动下载省包。 */
     [[TIORoadPackManager shared] refreshManifest:^(BOOL ok,NSString *note){ (void)ok;(void)note; }];
-    // phone-packs 线的可选一行 patch：省际路网包下载/删除完成（RoadPack.m 在主线程 post）后，
-    // 本页状态行立即刷新，不用等 1Hz tick。零参 selector 与 A2UIProbe/AppUI 的既有用法一致。
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(refreshRoadControls) name:@"TIORoadPackChanged" object:nil];
 }
 - (void)refreshRoadControls{
     if(!self.roadStatus||!self.roadMap)return;
-    /* 开关已移除：统一展示自动模式与当前路网来源/失败原因。 */
     self.roadStatus.text=[NSString stringWithFormat:@"路网自动开启 · %@",self.roadMap.note];
 }
-- (void)roadToggle{
-    self.roadMap.enabled=!self.roadMap.enabled;
-    [NSUserDefaults.standardUserDefaults setObject:@(self.roadMap.enabled) forKey:@"TIONavRoadMapEnabled"];
-    [self refreshRoadControls];
-}
 - (void)roadPacksOpen{[self.navigationController pushViewController:[TIORoadPackListController new] animated:YES];}
-- (void)roadNetworkConsent{
-    UIAlertController *a=[UIAlertController alertControllerWithTitle:@"限次联网路网试验" message:@"将当前位置附近约1.2公里范围的道路查询发送给公开 Overpass 图源（OpenStreetMap）；高德路线仍来自高德，底图为 OSM，可能有偏移或缺路。每次导航会话最多 6 次、间隔至少 60 秒，导航结束即撤销授权。未授权时只用内置公开区域样本，不发送实际位置。请勿驾驶中调试。" preferredStyle:UIAlertControllerStyleAlert];
-    [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
-    [a addAction:[UIAlertAction actionWithTitle:@"允许本次导航会话" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){self.roadMap.allowNetwork=YES;[self refreshRoadControls];}]];
-    [self presentViewController:a animated:YES completion:nil];
-}
 #endif
 - (void)viewWillAppear:(BOOL)animated{[super viewWillAppear:animated];if(!self.timer){__weak typeof(self) weak=self;self.timer=[NSTimer scheduledTimerWithTimeInterval:1 repeats:YES block:^(NSTimer *t){[weak tick];}];} [self refresh];}
 - (void)viewDidDisappear:(BOOL)animated{
@@ -271,6 +255,8 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     if(![tele isEqual:self.lastTeleDiagnostic]){self.lastTeleDiagnostic=tele;NSString *dir=[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Application Support/TurboIOPrivateAddon"];[NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:@{NSFilePosixPermissions:@0700} error:nil];NSMutableDictionary *d=[tele mutableCopy];d[@"time"]=@([NSDate.date timeIntervalSince1970]);NSString *p=[dir stringByAppendingPathComponent:@"navigation-tele-diagnostic.json"];[[NSJSONSerialization dataWithJSONObject:d options:0 error:nil] writeToFile:p options:NSDataWritingAtomic error:nil];[NSFileManager.defaultManager setAttributes:@{NSFilePosixPermissions:@0600} ofItemAtPath:p error:nil];}}
 - (void)setFrame:(NSDictionary *)frame{
 #if TIO_DISPLAY_PHONE
+    BOOL markerTesting=[frame[@"phase"] isEqual:@"navigating"]&&NSProcessInfo.processInfo.systemUptime<self.hudMarkerTestUntil;
+    if(!markerTesting&&self.hudMarkerTestUntil){self.hudMarkerTestUntil=0;[self.roadMap clearMarkerTest];}
     if(![frame[@"phase"] isEqual:@"navigating"]||![frame[@"segment"] isEqual:self.display[@"segment"]])self.crossPixels=nil;
 #endif
 #if TIO_DISPLAY_PHONE
@@ -288,7 +274,8 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 #endif
     self.display=frame;TIONavOfferDisplay(frame);[self.teleHUD offer:frame at:NSProcessInfo.processInfo.systemUptime];[self.subtitleHUD offer:frame at:NSProcessInfo.processInfo.systemUptime];
 #if TIO_DISPLAY_PHONE
-    TDPPhoneNavigationOffer([self displayHUDFrame]);[self autoStartNativeHUDIfNeeded];[self refreshDisplayHUD];
+    NSDictionary *test=markerTesting?[self.roadMap markerTestFrame:frame]:nil;
+    TDPPhoneNavigationOffer(test?:[self displayHUDFrame]);[self autoStartNativeHUDIfNeeded];[self refreshDisplayHUD];
 #endif
     [self refresh];}
 - (void)tick{
@@ -306,6 +293,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     if(self.voiceAwaitingMode&&NSProcessInfo.processInfo.systemUptime>self.voiceModeExpire){TIOVoiceNavTrace([NSString stringWithFormat:@"出行方式15秒未选择：默认%@，继续算路",TIONavigationModeTitle(self.voiceModeFallback)]);[self voicePickMode:self.voiceModeFallback announced:@"（超时默认）"];}
 #if TIO_DISPLAY_PHONE
     if(self.crossPixels&&NSProcessInfo.processInfo.systemUptime-self.crossReceived>12){self.crossPixels=nil;if([self.display[@"phase"] isEqual:@"navigating"])TDPPhoneNavigationOffer([self displayHUDFrame]);}
+    if(self.hudMarkerTestUntil&&NSProcessInfo.processInfo.systemUptime>=self.hudMarkerTestUntil)[self setFrame:self.display];
     TDPPhoneNavigationPump();
     [self pumpStopRetries]; // 用户反馈②：退出指令丢失时按 5s 首补、2s/次最多10次补发，镜片不再停在“导航数据已过期”
     [self refreshDisplayHUD];
@@ -375,7 +363,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     self.navigationStarted=NO;self.autoNativeHUD=NO;self.backgroundLocationEnabled=NO;[self endNavigationBackgroundTask];[self endVoiceBridgeTask];
     self.voicePipelineStage=TIONavVoiceStageIdle;self.voicePipelineStarted=0;self.voicePipelineStageAt=0;self.voiceLastSelfHealAt=0;self.voicePipelineExpired=NO;
 #if TIO_DISPLAY_PHONE
-    TDPPhoneNavigationStop();self.hudIconPixels=nil;self.hudIconType=0;self.crossPixels=nil;
+    TDPPhoneNavigationStop();self.hudIconPixels=nil;self.hudIconType=0;self.crossPixels=nil;self.hudMarkerTestUntil=0;[self.roadMap clearMarkerTest];
     // 用户反馈②：STOP 在途丢失/被挂起打断时镜片会停在最后画面（“导航数据已过期”）。
     // 这里只武装重试窗口，由 tick 每 2 秒幂等补发 TDPPhoneNavigationStop（最多10次）。
     [self armStopRetryWindow:TIONavStopRetryFirstDelay];

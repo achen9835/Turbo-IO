@@ -4,5 +4,7 @@
 @property(readonly) NSString *note;
 - (instancetype)initWithWGS84ToMap:(NSArray *(^)(double lat,double lon))convert;
 - (NSDictionary *)decorate:(NSDictionary *)frame coordinates:(NSArray *)coords;
+- (NSDictionary *)markerTestFrame:(NSDictionary *)frame;
+- (void)clearMarkerTest;
 - (void)reset;
 @end

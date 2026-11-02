@@ -101,8 +101,8 @@ static void tick(void *timer){
   * last_update, or redraws the icon/map buffers. Busy renderer is retried. */
  if(c->runtime.active&&c->view&&owns(c)&&(uint32_t)(now-c->last_clock)>=1000&&focus_screen_on())
   if(tn_view_clock(c->view,local_time(),c->eta_local,c->runtime.stale||!c->runtime.connected))c->last_clock=now;
- if(c->runtime.active&&c->view&&owns(c)&&focus_screen_on())(void)tn_view_map_tick(c->view,now);
- stream_timer_period(timer,c->runtime.active&&c->view&&owns(c)&&focus_screen_on()?33:250);
+ if(c->runtime.active&&c->view&&owns(c))(void)tn_view_map_tick(c->view,now);
+ stream_timer_period(timer,c->runtime.active&&c->view&&owns(c)?33:250);
  if(c->waiting&&(uint32_t)(now-c->waiting_since)>=60000){(void)power(c,TN_POWER_RELEASE);(void)power(c,TN_POWER_SLEEP);c->waiting_since=now;}
  flush(c);
  if(c->view&&!c->view->open){TNWidgets a=tn_lvgl_widgets();if(a.idle(a.ctx)&&tn_view_close(c->view)){TNView *v=c->view;c->view=NULL;stream_free(v);}}

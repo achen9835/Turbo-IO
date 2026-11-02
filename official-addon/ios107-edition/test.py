@@ -11,6 +11,8 @@ args=parser.parse_args()
 stock=args.stock
 subprocess.run(['python3',args.builder,'--stock',stock,'--audit',args.firmware],check=True)
 out=P/'build/tests';out.mkdir(parents=True,exist_ok=True)
+candidate_source=out/'OTACandidate.gen.m'
+subprocess.run(['python3',P/'gen_otacandidate.py',DEFAULT_FW/'candidate-release/candidate-ota.json',candidate_source],check=True)
 def run(name,cmd):
     r=subprocess.run(list(map(str,cmd)),capture_output=True,text=True,timeout=180)
     (out/(name+'.log')).write_text(r.stdout+r.stderr)
@@ -39,9 +41,9 @@ with tempfile.TemporaryDirectory(prefix='turbo-navs3-test-') as tmp:
             for member in z.namelist():
                 assert Path(member).name==member
                 (target/member).write_bytes(z.read(member))
-    test('archive',['ExperimentalOTATests.m','ExperimentalOTA.m'],[args.firmware,stock],['-lz'])
-    test('directory',['ExperimentalOTADirectoryTests.m','ExperimentalOTA.m'],[root/'candidate',root/'stock'],['-lz'])
-    gate=['ExperimentalOTA.m','ExperimentalOTAFlash.m','ExperimentalOTAGuard.m']
+    test('archive',['ExperimentalOTATests.m','ExperimentalOTA.m',candidate_source],[args.firmware,stock],['-lz'])
+    test('directory',['ExperimentalOTADirectoryTests.m','ExperimentalOTA.m',candidate_source],[root/'candidate',root/'stock'],['-lz'])
+    gate=['ExperimentalOTA.m','ExperimentalOTAFlash.m','ExperimentalOTAGuard.m',candidate_source]
     test('flash',['ExperimentalOTAFlashTests.m',*gate,'ExperimentalOTAFeed.m'],[root/'candidate',root/'stock'],['-lz'])
     test('feed',['ExperimentalOTAFeedTests.m',*gate,'ExperimentalOTAFeed.m'],[args.firmware],['-lz','-DTIO_OTA_FEED_ARMING_ENABLED=1'])
     test('feed-restart',['tests/OTAFeedRestartTests.m',*gate,'ExperimentalOTAFeed.m'],[],['-lz'])

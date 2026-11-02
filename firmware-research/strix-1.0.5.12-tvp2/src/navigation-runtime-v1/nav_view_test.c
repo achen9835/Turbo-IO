@@ -8,7 +8,7 @@ static void *create(void *p,void *parent){assert(parent);Mock *m=p;unsigned n=++
 static void *label(void *p,void *parent,unsigned size){assert(size>=16&&size<=32);Mock *m=p;void *o=create(p,parent);if(o){ptrdiff_t slot=(uintptr_t *)o-m->objects-3;assert(slot>=0&&slot<10);m->fonts[slot]=(int)size;}return o;}
 static void place(void *p,void *obj,int x,int y,int w,int h){Mock *m=p;assert(obj&&x>=0&&y>=0&&x+w<=540&&y+h<=180);ptrdiff_t slot=(uintptr_t *)obj-m->objects;assert(slot>=0&&slot<13);m->x[slot]=x;m->y[slot]=y;m->w[slot]=w;m->h[slot]=h;}
 static void buffer(void *p,void *obj,const uint8_t *bytes,unsigned w,unsigned h){assert(obj&&bytes);Mock *m=p;assert((w==64&&h==64)||(w==296&&h==148));m->pixels[m->buffers%2]=bytes;m->buffers++;}
-static void text(void *p,void *obj,const char *s){assert(obj&&s);Mock *m=p;ptrdiff_t slot=(uintptr_t *)obj-m->objects-3; /* root+icon+map precede the labels */ assert(slot>=0&&slot<10);m->strings[slot]=s;m->texts++;}
+static void text(void *p,void *obj,const char *s){assert(obj&&s);Mock *m=p;ptrdiff_t slot=(uintptr_t *)obj-m->objects-3;assert(slot>=0&&slot<10);m->strings[slot]=s;m->texts++;}
 static void visible(void *p,void *obj,bool yes){(void)p;(void)yes;assert(obj);}
 static void destroy(void *p,void *obj){assert(obj);((Mock *)p)->destroyed++;}
 static TNWidgets api(Mock *m){return (TNWidgets){m,idle,create,create,label,place,buffer,text,visible,destroy};}
@@ -44,33 +44,33 @@ int main(void){
  assert(tn_view_update(&cv,&s,true)&&cm.strings[4]==footer&&!memcmp(footer,footer_copy,64));
  assert(tn_view_clock(&cv,epoch,epoch+120,true));assert(strstr(cm.strings[4],"过期"));
  assert(tn_view_close(&cv));assert(!tn_view_clock(&cv,epoch,epoch+120,false));
- /* Vector-map overlay keeps the widget topology fixed while markers follow the
-  * route and the speed label carries its unit. */
  {
   TNScene nav=s;Mock mm={0};TNWidgets ma=api(&mm);TNView mv={0};assert(tn_view_open(&mv,&ma,&mm,&nav));
   uint8_t sc[56]={0},pose[12]={0};
-  sc[0]=1;sc[4]=0x40;sc[5]=0x01;sc[6]=2;sc[8]=6; /* gen=1, range=320, 2 paths, 6 points */
-  sc[16]=3;sc[18]=6;sc[20]=8; /* route path: 3 pts, highlighted style, top layer */
-  sc[24]=3;sc[26]=4; /* road path: 3 pts, residential style */
+  sc[0]=1;sc[4]=0x40;sc[5]=0x01;sc[6]=2;sc[8]=6;
+  sc[16]=3;sc[18]=6;sc[20]=8;
+  sc[24]=3;sc[26]=4;
   sc[34]=0x90;sc[35]=0x01;sc[38]=0x20;sc[39]=0x03;
   sc[40]=0x38;sc[41]=0xFF;sc[48]=0xC8;sc[49]=0x00;
   pose[0]=1;pose[8]=0;
-  assert(tn_view_map(&mv,7,sc,sizeof sc,1000));assert(tn_view_map(&mv,8,pose,sizeof pose,1000));
+  unsigned before=mm.buffers;
+  assert(tn_view_map(&mv,7,sc,sizeof sc,1000));assert(mm.buffers>before);
+  assert(tn_view_map(&mv,8,pose,sizeof pose,1000));assert(mv.map_state.valid&&mv.map_state.located);
   nav.camera_kind=1;nav.camera_m=60;nav.camera_limit=60;nav.event_kind=1;nav.event_m=300;
   nav.light_count=1;nav.light_m[0]=150;nav.speed_kmh=42;nav.bar_count=24;for(unsigned i=0;i<24;i++)nav.bar[i]=(uint8_t)(1+i%4);
-  assert(tn_view_update(&mv,&nav,false));assert(!strcmp(mm.strings[5],"42km/h"));
+  assert(tn_view_update(&mv,&nav,false));assert(!strcmp(mm.strings[5],"42km/h"));assert(mm.buffers==6);
   nav.camera_m=0;nav.event_m=700;nav.light_m[0]=65535;
   assert(tn_view_update(&mv,&nav,false));assert(tn_view_close(&mv));
  }
  {
   TNRState ms={.valid=true,.located=true,.pose_at=1000};ms.scenes[0].range=320;ms.scenes[0].path_count=1;ms.scenes[0].point_count=3;
   ms.scenes[0].paths[0]=(TNRPath){.count=3,.style=6};ms.scenes[0].points[0]=(TNRPoint){0,0};ms.scenes[0].points[1]=(TNRPoint){0,400};ms.scenes[0].points[2]=(TNRPoint){400,400};
-  TNRPose pose={.p={0,0},.heading=0};TNRPoint q=tnr_route_ahead(&ms,&pose,150);assert(q.x>148&&q.y<30);assert(tnr_route_base_qm(&ms,&pose,&ms.scenes[0].paths[0])==0);
+  TNRPose pose={.p={0,0},.heading=0};TNRPoint q=tnr_route_ahead(&ms,&pose,150);assert(q.x==194&&q.y==11);assert(tnr_route_base_qm(&ms,&pose,&ms.scenes[0].paths[0])==0);
   pose.p.y=200;assert(tnr_route_base_qm(&ms,&pose,&ms.scenes[0].paths[0])==-200);
   TNRPoint fallback=tnr_route_ahead(&ms,&pose,700),ray=tnr_ahead(&ms,&pose,700);assert(fallback.x==ray.x&&fallback.y==ray.y);
   ms.scenes[0].label_count=1;ms.scenes[0].labels[0].p=(TNRPoint){200,400};ms.scenes[0].labels[0].width=9;ms.scenes[0].labels[0].text[0]='A';TNRLabelView labels[TNR_MAX_LABELS];assert(tnr_labels(&ms,1000,labels)==0);
   ms.scenes[0].labels[0].p=(TNRPoint){400,0};assert(tnr_labels(&ms,1000,labels)==1);
  }
- printf("PASS bounded two-bank LVGL view, 13 allocation failures, 1000 updates, route-arc markers, label avoidance and speed/traffic overlays; view=%zu bytes. Mock widgets only.\n",sizeof(TNView));
+ printf("PASS 296x148 map-primary layout, 13 allocation failures, immediate vector present, 1000 updates, route-arc markers, label avoidance and speed/traffic overlays; view=%zu bytes. Mock widgets only.\n",sizeof(TNView));
  return 0;
 }
