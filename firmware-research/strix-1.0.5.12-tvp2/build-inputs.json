@@ -4,208 +4,208 @@
    "offset": "0x4f6ed8",
    "address": "0x10686ed8",
    "before": "90b583b0",
-   "after": "19f227bd",
+   "after": "18f2d1bc",
    "role": "Entry trampoline show",
    "targetSymbol": "m8_hook_show",
-   "targetOffset": "0x16dfa"
+   "targetOffset": "0x15d4e"
   },
   {
    "offset": "0x4f6f0c",
    "address": "0x10686f0c",
    "before": "b0b582b0",
-   "after": "19f228bd",
+   "after": "18f2d2bc",
    "role": "Entry trampoline hide",
    "targetSymbol": "m8_hook_hide",
-   "targetOffset": "0x16e30"
+   "targetOffset": "0x15d84"
   },
   {
    "offset": "0x4f5f94",
    "address": "0x10685f94",
    "before": "f0b50446",
-   "after": "1af237bd",
+   "after": "19f2e1bc",
    "role": "Entry trampoline destroy",
    "targetSymbol": "m8_hook_destroy",
-   "targetOffset": "0x16ed6"
+   "targetOffset": "0x15e2a"
   },
   {
    "offset": "0x4f6c46",
    "address": "0x10686c46",
    "before": "2de9f041",
-   "after": "19f24bbf",
+   "after": "18f2f5be",
    "role": "Entry trampoline wheel",
    "targetSymbol": "m8_hook_wheel",
-   "targetOffset": "0x16fb0"
+   "targetOffset": "0x15f04"
   },
   {
    "offset": "0x4f6fd8",
    "address": "0x10686fd8",
    "before": "b0b582b0",
-   "after": "19f202be",
+   "after": "18f2acbd",
    "role": "Entry trampoline event",
    "targetSymbol": "m8_hook_event",
-   "targetOffset": "0x170b0"
+   "targetOffset": "0x16004"
   },
   {
    "offset": "0x405aac",
    "address": "0x10595aac",
    "before": "b0b50c46",
-   "after": "0bf336ba",
+   "after": "0af3e4b9",
    "role": "Entry trampoline message",
    "targetSymbol": "m8_hook_message",
-   "targetOffset": "0x173ec"
+   "targetOffset": "0x16348"
   },
   {
    "offset": "0x5b9ea8",
    "address": "0x10749ea8",
    "before": "f0b5c3b0",
-   "after": "49f116bf",
+   "after": "49f198bb",
    "role": "Entry trampoline dc_text",
    "targetSymbol": "m8_hook_dc_text",
-   "targetOffset": "0xa1a8"
+   "targetOffset": "0x9aac"
   },
   {
    "offset": "0x4f6794",
    "address": "0x10686794",
    "before": "2de9f04f",
-   "after": "18f276be",
+   "after": "17f21dbe",
    "role": "Entry trampoline names",
    "targetSymbol": "m8_hook_names",
-   "targetOffset": "0x15954"
+   "targetOffset": "0x148a2"
   },
   {
    "offset": "0x4f6260",
    "address": "0x10686260",
    "before": "2de9f047",
-   "after": "19f292bd",
+   "after": "18f23bbd",
    "role": "Entry trampoline dots",
    "targetSymbol": "m8_hook_dots",
-   "targetOffset": "0x16258"
+   "targetOffset": "0x151aa"
   },
   {
    "offset": "0x4f623e",
    "address": "0x1068623e",
    "before": "98b50446",
-   "after": "19f277bd",
+   "after": "18f220bd",
    "role": "Entry trampoline delete_dots",
    "targetSymbol": "m8_hook_delete_dots",
-   "targetOffset": "0x16200"
+   "targetOffset": "0x15152"
   },
   {
    "offset": "0x4f6600",
    "address": "0x10686600",
    "before": "b0b584b0",
-   "after": "19f238bd",
+   "after": "18f2e1bc",
    "role": "Entry trampoline lottie",
    "targetSymbol": "m8_hook_lottie",
-   "targetOffset": "0x16544"
+   "targetOffset": "0x15496"
   },
   {
    "offset": "0x4f61e0",
    "address": "0x106861e0",
    "before": "80b500af",
-   "after": "19f244b9",
+   "after": "18f2ebb8",
    "role": "Entry trampoline app_id",
    "targetSymbol": "m8_hook_app_id",
-   "targetOffset": "0x1593c"
+   "targetOffset": "0x1488a"
   },
   {
    "offset": "0x4f65c2",
    "address": "0x106865c2",
    "before": "2de9f041",
-   "after": "19f215bb",
+   "after": "18f2bdba",
    "role": "Entry trampoline refresh_label",
    "targetSymbol": "m8_hook_refresh_label",
-   "targetOffset": "0x160c0"
+   "targetOffset": "0x15010"
   },
   {
    "offset": "0x4f5324",
    "address": "0x10685324",
    "before": "f0b585b0",
-   "after": "20f216bf",
+   "after": "1ff2eabb",
    "role": "Entry trampoline vm_event",
    "targetSymbol": "m8_hook_vm_event",
-   "targetOffset": "0x1c624"
+   "targetOffset": "0x1afcc"
   },
   {
    "offset": "0x4f5de2",
    "address": "0x10685de2",
    "before": "0628a8bf",
-   "after": "2cf231bb",
+   "after": "2af219bc",
    "role": "Menu replacement frame_start",
    "targetSymbol": "m8_hook_frame_start",
-   "targetOffset": "0x28918"
+   "targetOffset": "0x26ae8"
   },
   {
    "offset": "0x4f5df8",
    "address": "0x10685df8",
    "before": "1e22a0f10f03",
-   "after": "2cf22abb00bf",
+   "after": "2af212bc00bf",
    "role": "Menu replacement frame_index",
    "targetSymbol": "m8_hook_frame_index",
-   "targetOffset": "0x28920"
+   "targetOffset": "0x26af0"
   },
   {
    "offset": "0x4f69c4",
    "address": "0x106869c4",
    "before": "2de9f04f",
-   "after": "19f21ebe",
+   "after": "18f2c8bd",
    "role": "Menu replacement label_frame",
    "targetSymbol": "m8_hook_label_frame",
-   "targetOffset": "0x16ad4"
+   "targetOffset": "0x15a28"
   },
   {
    "offset": "0x4f6d18",
    "address": "0x10686d18",
    "before": "0629a8bf",
-   "after": "19f226bd",
+   "after": "18f2cebc",
    "role": "Menu replacement label_index",
    "targetSymbol": "m8_hook_label_index",
-   "targetOffset": "0x16c38"
+   "targetOffset": "0x15b88"
   },
   {
    "offset": "0x4f63ec",
    "address": "0x106863ec",
    "before": "2de9f04f",
-   "after": "1af2c8b9",
+   "after": "19f270b9",
    "role": "Menu replacement indicator",
    "targetSymbol": "m8_hook_indicator",
-   "targetOffset": "0x16c50"
+   "targetOffset": "0x15ba0"
   },
   {
    "offset": "0x4f66e0",
    "address": "0x106866e0",
    "before": "b0b50446",
-   "after": "18f2c2bb",
+   "after": "17f294bb",
    "role": "Menu replacement frame",
    "targetSymbol": "m8_hook_frame",
-   "targetOffset": "0x15338"
+   "targetOffset": "0x142dc"
   },
   {
    "offset": "0x4f6716",
    "address": "0x10686716",
    "before": "80b5b3ee0e7a",
-   "after": "18f284bb00bf",
+   "after": "17f256bb00bf",
    "role": "Menu replacement render_slide",
    "targetSymbol": "m8_hook_render_slide",
-   "targetOffset": "0x152f2"
+   "targetOffset": "0x14296"
   },
   {
    "offset": "0x4f3278",
    "address": "0x10683278",
    "before": "fc204ef043fe",
-   "after": "2ff29cf800bf",
+   "after": "2df284f900bf",
    "role": "284-byte menu allocation",
    "targetSymbol": "port_allocate_menu",
-   "targetOffset": "0x28884"
+   "targetOffset": "0x26a54"
   },
   {
    "offset": "0x4f32a2",
    "address": "0x106832a2",
    "before": "02f04bff",
-   "after": "1df2fdfa",
+   "after": "1cf2a7fa",
    "role": "Initialize tail after new stock constructor",
    "targetSymbol": "m8_hook_ctor",
-   "targetOffset": "0x16d70"
+   "targetOffset": "0x15cc4"
   },
   {
    "offset": "0x4f6184",
@@ -218,10 +218,10 @@
    "offset": "0x3f3be6",
    "address": "0x10583be6",
    "before": "00241f48204b84610360",
-   "after": "2ef321fc00bf00bf00bf",
+   "after": "2cf309fd00bf00bf00bf",
    "role": "File callback registration",
    "targetSymbol": "stream_register_shim",
-   "targetOffset": "0x288fc"
+   "targetOffset": "0x26acc"
   },
   {
    "offset": "0x402894",
@@ -234,139 +234,139 @@
    "offset": "0x40289e",
    "address": "0x1059289e",
    "before": "f4f7a7f9",
-   "after": "fff223fb",
+   "after": "fff229f8",
    "role": "Head state constructor",
    "targetSymbol": "ce_native_sys_construct",
-   "targetOffset": "0x83b8"
+   "targetOffset": "0x7dc4"
   },
   {
    "offset": "0x3f5ffc",
    "address": "0x10585ffc",
    "before": "98b50b4b",
-   "after": "2cf37eba",
+   "after": "2af366bb",
    "role": "ce_serial_destroy_entry",
    "targetSymbol": "ce_serial_destroy_entry",
-   "targetOffset": "0x289cc"
+   "targetOffset": "0x26b9c"
   },
   {
    "offset": "0x3f741c",
    "address": "0x1058741c",
    "before": "2de9f043",
-   "after": "2bf38ab8",
+   "after": "29f372b9",
    "role": "ce_head_notify_entry",
    "targetSymbol": "ce_head_notify_entry",
-   "targetOffset": "0x28a04"
+   "targetOffset": "0x26bd4"
   },
   {
    "offset": "0x35a134",
    "address": "0x104ea134",
    "before": "b0b5204a",
-   "after": "c8f396b9",
+   "after": "c6f37eba",
    "role": "ce_serial_start_entry",
    "targetSymbol": "ce_serial_start_entry",
-   "targetOffset": "0x28934"
+   "targetOffset": "0x26b04"
   },
   {
    "offset": "0x35a1d8",
    "address": "0x104ea1d8",
    "before": "b0b5204a",
-   "after": "c8f34ab9",
+   "after": "c6f332ba",
    "role": "ce_serial_stop_entry",
    "targetSymbol": "ce_serial_stop_entry",
-   "targetOffset": "0x28940"
+   "targetOffset": "0x26b10"
   },
   {
    "offset": "0x4028a2",
    "address": "0x105928a2",
    "before": "a069a661",
-   "after": "1ff3f7fd",
+   "after": "1df3dffe",
    "role": "ce_serial_publish_entry",
    "targetSymbol": "ce_serial_publish_entry",
-   "targetOffset": "0x28964"
+   "targetOffset": "0x26b34"
   },
   {
    "offset": "0x402364",
    "address": "0x10592364",
    "before": "a069a361",
-   "after": "20f3b0f8",
+   "after": "1ef398f9",
    "role": "ce_serial_retire_entry",
    "targetSymbol": "ce_serial_retire_entry",
-   "targetOffset": "0x28998"
+   "targetOffset": "0x26b68"
   },
   {
    "offset": "0x404eb2",
    "address": "0x10594eb2",
    "before": "eff7b7fa",
-   "after": "03f36ffd",
+   "after": "02f395ff",
    "role": "dots_link_notify",
    "targetSymbol": "dots_link_notify",
-   "targetOffset": "0xee64"
+   "targetOffset": "0xe2b0"
   },
   {
    "offset": "0x35923c",
    "address": "0x104e923c",
    "before": "b0b590b0",
-   "after": "c9f38eb8",
+   "after": "c7f376b9",
    "role": "ti_rpmsg_entry",
    "targetSymbol": "ti_rpmsg_entry",
-   "targetOffset": "0x2882c"
+   "targetOffset": "0x269fc"
   },
   {
    "offset": "0x35a29c",
    "address": "0x104ea29c",
    "before": "b0b51748",
-   "after": "c2f3babc",
+   "after": "c0f342be",
    "role": "ti_foreign_start",
    "targetSymbol": "ti_foreign_start",
-   "targetOffset": "0x230e4"
+   "targetOffset": "0x213f4"
   },
   {
    "offset": "0x35a308",
    "address": "0x104ea308",
    "before": "b0b51748",
-   "after": "c2f3d2bc",
+   "after": "c0f35abe",
    "role": "ti_foreign_stop",
    "targetSymbol": "ti_foreign_stop",
-   "targetOffset": "0x23180"
+   "targetOffset": "0x21490"
   },
   {
    "offset": "0x3f916e",
    "address": "0x1058916e",
    "before": "b0b50446",
-   "after": "24f367bc",
+   "after": "22f3a1bd",
    "role": "tdc_hook_source",
    "targetSymbol": "tdc_hook_source",
-   "targetOffset": "0x23f10"
+   "targetOffset": "0x22184"
   },
   {
    "offset": "0x57bd9c",
    "address": "0x1070bd9c",
    "before": "2de9f041",
-   "after": "a2f13cb9",
+   "after": "a0f136ba",
    "role": "tdc_hook_serialize",
    "targetSymbol": "tdc_hook_serialize",
-   "targetOffset": "0x244e8"
+   "targetOffset": "0x226dc"
   },
   {
    "offset": "0x3fa1c4",
    "address": "0x1058a1c4",
    "before": "b0b50024",
-   "after": "23f3d7bf",
+   "after": "22f3d3b8",
    "role": "tdc_hook_message",
    "targetSymbol": "tdc_hook_message",
-   "targetOffset": "0x24646"
+   "targetOffset": "0x2283e"
   }
  ],
  "moduleVA": "0x10889b30",
- "moduleBytes": 233488,
- "moduleSHA256": "69110e0885573477fbd2ad5a59d5f2508a9cb01e402af8e285b0f5089c2cdf55",
+ "moduleBytes": 225744,
+ "moduleSHA256": "2720bcc1c8a7a027bee8d3c4a618a2e08f80700dd7d294ac8f76435a8bfededb",
  "stockAP": "af701a6525fbf703854b3d63e757734546c20bdb5d50e246867dc6a0565713ae",
- "APBytes": 7547720,
+ "APBytes": 7539976,
  "archive": {
   "name": "StrixOS-1.0.5.12-TurboIO-TAP3-CANDIDATE-NOT-APPROVED.zip",
-  "sha256": "5c3385d43926e763ce089d5e202f387fd1344bcf98cf4c04fc74f27787070110"
+  "sha256": "9efa5d2e88fdca3d40a07e85677bbeac4f178edd8c2828958a24594dfc5522dc"
  },
- "APSHA256": "9722323cc741f50617aa445e6278d68d7e02967d08bfc1de7329d5c70d34a4b9",
+ "APSHA256": "5b5a282f3fc65779235767cbf86e3ecbe8927318deff19f7cde0c3df2ca13a08",
  "stockZIP": "b7bfd3cc73528e3e9995ad227dc877c8334d43dc8051436e2d2ccff2ca0b4133",
  "sources": [
   {
@@ -618,17 +618,20 @@
    "sha256": "7015172482682440cb2b390ef5c5034b8b95dd44edd253e79db429bded8b754e"
   },
   {
-   "path": "src/navigation-runtime-v1/nav_runtime.c"
+   "path": "src/navigation-runtime-v1/nav_runtime.c",
+   "sha256": "0aeb6c39e4c3fed7d8d4cc983c24fdfdfbb36688b6eec8f567fadccd361a10b9"
   },
   {
    "path": "src/navigation-runtime-v1/nav_service.c",
    "sha256": "41ff26eab0a2e0411338546a8c04c3d973f3adc7800432aee34b488207fd7685"
   },
   {
-   "path": "src/navigation-runtime-v1/nav_view.c"
+   "path": "src/navigation-runtime-v1/nav_view.c",
+   "sha256": "d663ef830c59062b97fd32f12a6180dc676fe98019f9bbd841a6bb74ac47c1b6"
   },
   {
-   "path": "src/navigation-runtime-v1/nav_visual.c"
+   "path": "src/navigation-runtime-v1/nav_visual.c",
+   "sha256": "9223a5ac695367bde0380fd56c7f3822ab70d362378c30ef21d06c869729fb14"
   },
   {
    "path": "src/weread-v1/reader.c",

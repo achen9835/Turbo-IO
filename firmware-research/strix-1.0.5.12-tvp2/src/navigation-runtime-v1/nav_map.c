@@ -154,12 +154,16 @@ static void scale_draw(uint8_t *out,unsigned range,unsigned gray){
  for(unsigned y=137;y<=143;y++){out[y*TNR_W+5]=(uint8_t)gray;out[y*TNR_W+5+pixels]=(uint8_t)gray;}
 }
 void tnr_draw(const TNRState *s,uint32_t now,uint8_t out[TNR_W*TNR_H]){
- memset(out,0,TNR_W*TNR_H);TNRPose p;if(!tnr_position(s,now,&p))return;const TNRScene *d=&s->scenes[s->bank];bool stale=tnr_stale(s,now);static const uint8_t gray[]={185,172,158,144,130,116,255};
+ memset(out,0,TNR_W*TNR_H);TNRPose p;if(!tnr_position(s,now,&p))return;const TNRScene *d=&s->scenes[s->bank];bool stale=tnr_stale(s,now);/* 背景路网灰度（2026-11 真机验收两次修正）：112 以下真机不可见（R3 拥堵条记录：
+ * "真机反馈畅通档(112)亮度不可见"，提到 168）——所以不能用压暗分层。分层改靠
+ * 虚线样式+线宽：背景全部虚线（4/4），灰度保持在可见档 160-185；路线实线 255
+ * +光晕。多车道并行时"实线=我的路线、虚线=环境"一眼可分。 */
+static const uint8_t gray[]={185,180,175,170,165,160,255};
  for(unsigned i=0;i<d->path_count;i++){const TNRPath *r=&d->paths[i];if(r->style!=6)continue;unsigned halo=4000;
   for(unsigned j=1;j<r->count;j++){TNRPoint a=screen(d->points[r->first+j-1],&p,d->range),b=screen(d->points[r->first+j],&p,d->range);line(out,a,b,0,5,false,true,&halo);}
  }
  for(unsigned i=0;i<d->path_count;i++){const TNRPath *r=&d->paths[i];if(r->style==6)continue;unsigned g=stale?gray[r->style]/3:gray[r->style],w=r->style<2?2:1,budget=8000;
-  for(unsigned j=1;j<r->count;j++){TNRPoint a=screen(d->points[r->first+j-1],&p,d->range),b=screen(d->points[r->first+j],&p,d->range);if(r->flags&1)line(out,a,b,0,w+2,false,true,&budget);line(out,a,b,g,w,!!(r->flags&2),false,&budget);}
+  for(unsigned j=1;j<r->count;j++){TNRPoint a=screen(d->points[r->first+j-1],&p,d->range),b=screen(d->points[r->first+j],&p,d->range);if(r->flags&1)line(out,a,b,0,w+2,false,true,&budget);line(out,a,b,g,w,true,false,&budget); /* 背景路一律虚线，与实线路线分层（2026-11 真机验收） */}
  }
  TNRLabelView labels[TNR_MAX_LABELS];unsigned names=tnr_labels(s,now,labels);
  for(unsigned i=0;i<names;i++){
