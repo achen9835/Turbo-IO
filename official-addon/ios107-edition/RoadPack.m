@@ -92,6 +92,7 @@ static NSArray<NSDictionary *> *ValidPacks(id object) {
   NSArray<NSString *> *names;
   double minLat, minLon, maxLat, maxLon, cellLat, cellLon;
   uint32_t gridLat, gridLon;
+  NSUInteger dataBase;                             /* 数据区在文件中的起点；索引 offset 为数据区相对坐标 */
   NSCache *cellCache;
 }
 - (NSArray *)featuresForCell:(uint32_t)cell;
@@ -152,7 +153,9 @@ static uint32_t rd32(const uint8_t *p) { return p[0] | (uint32_t)p[1] << 8 | (ui
         [nm addObject:s ?: @""];
         nat += len;
     }
-    at = stop; /* 数据区起点；entries 的 offset 已是文件绝对坐标 */
+    dataBase = stop; /* 数据区起点。打包器(roadmap-pack-builder.py)索引写数据区相对 offset，
+                        此处统一加 dataBase 换算成文件绝对坐标（2026-11 实测：不加则每格
+                        解压在索引/名字区取到垃圾，uncompress 全败，路网永远为空）。 */
     indexes = idx; entries = ent; rsizes = rs; names = nm;
     cellCache = [NSCache new];
     cellCache.countLimit = 16;
@@ -178,7 +181,8 @@ static uint32_t rd32(const uint8_t *p) { return p[0] | (uint32_t)p[1] << 8 | (ui
     NSRange r = [e rangeValue];
     uint32_t rsize = (uint32_t)[rsizes[@(cell)] unsignedIntValue];
     if (!rsize || rsize > kMaxCellRaw || r.length > kMaxCellPacked) return nil;
-    NSData *packed = [blob subdataWithRange:r];
+    if (r.location >= blob.length - dataBase || r.length > blob.length - dataBase - r.location) return nil;
+    NSData *packed = [blob subdataWithRange:NSMakeRange(dataBase + r.location, r.length)];
     uint8_t *dst = malloc(rsize);
     if (!dst) return nil;
     uLongf cap = rsize;
@@ -299,10 +303,14 @@ static uint32_t rd32(const uint8_t *p) { return p[0] | (uint32_t)p[1] << 8 | (ui
     NSMutableArray<NSDictionary *> *merged = [(_manifest ?: @[]) mutableCopy];
     for (NSString *name in names) {
         if (![name.pathExtension isEqualToString:@"pack"]) continue;
-        NSString *province = name.stringByDeletingPathExtension;
+        /* 发布资产名为 TurboRoadMap-<slug>.pack（含大写，整名过不了 SafeSlug）。
+           province 取末段 slug 并小写化，且落盘文件名必须是 <slug>.pack——
+           与 localPathFor/packDownloaded 的约定一致，否则清单注册了也永远
+           找不到文件（2026-11 实测：四川包被静默跳过，路网全黑）。 */
+        NSString *province = [[name.stringByDeletingPathExtension componentsSeparatedByString:@"-"] lastObject].lowercaseString;
         if (!SafeSlug(province, 64)) continue;
         NSString *src = [dir stringByAppendingPathComponent:name];
-        NSString *dst = [packsDir stringByAppendingPathComponent:name];
+        NSString *dst = [packsDir stringByAppendingPathComponent:[province stringByAppendingPathExtension:@"pack"]];
         NSDictionary *existing = [fm attributesOfItemAtPath:dst error:nil];
         if ([existing[NSFileSize] unsignedLongLongValue] <= 64) {
             [fm removeItemAtPath:dst error:nil];
