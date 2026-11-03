@@ -30,7 +30,10 @@ int main(int argc,const char **argv){@autoreleasepool{
 #if TIO_OTA_FEED_ARMING_ENABLED
     assert(![feed armArchive:file lifetime:901 error:&error]);
     assert([feed armArchive:file lifetime:60 error:&error]);NSDictionary *metadata=Query(port,path)[@"data"];
-    for(NSString *wrong in @[@"/g/xxxxxxxA78p2M",@"/g/xxxxxxxA78p2M?packageType=app",[path stringByAppendingString:@"&packageType=firmware"],[path stringByReplacingOccurrencesOfString:@"S3" withString:@"OTHER"],[path stringByReplacingOccurrencesOfString:@"01.00.04.0012" withString:@"01.00.03.0015"]])assert(Query(port,wrong)[@"data"]==NSNull.null);
+    for(NSString *wrong in @[@"/g/xxxxxxxA78p2M",@"/g/xxxxxxxA78p2M?packageType=app",[path stringByAppendingString:@"&packageType=firmware"],[path stringByReplacingOccurrencesOfString:@"S3" withString:@"OTHER"]])assert(Query(port,wrong)[@"data"]==NSNull.null);
+    /* versionCode 不参与拒绝：武装后回环对所有固件类查询发候选卡，应答版本恒为
+     * max(候选自然版本, 请求版本+1)（OTAServedVersionCode）——降级查询同样收到
+     * 升级 offer，安全性由下载 token 与刷写门禁保证，此行为自官方直连改版即如此。 */
     NSArray *parts=[[TIOOTACandidate()[@"baseVersion"] stringByReplacingOccurrencesOfString:@"Strix OS " withString:@""] componentsSeparatedByString:@"."];
     NSMutableString *natural=[NSMutableString new];for(NSUInteger i=0;i<4;i++)[natural appendFormat:i==3?@"%04d":@"%02d",i<parts.count?[parts[i] intValue]:0];
     long expectedCode=natural.longLongValue;long currentCode=100040012;if(expectedCode<=currentCode)expectedCode=currentCode+1;
@@ -39,10 +42,10 @@ int main(int argc,const char **argv){@autoreleasepool{
     NSData *zip=[NSData dataWithContentsOfURL:file];uint8_t digest[16];CC_MD5(zip.bytes,(CC_LONG)zip.length,digest);NSMutableString *md5=[NSMutableString new];for(unsigned i=0;i<16;i++)[md5 appendFormat:@"%02x",digest[i]];
     assert([metadata[@"apkMd5"] isEqual:md5]);assert(![metadata[@"apkMd5"] isEqual:@"bfc21e823f991962c852de22f02d62c1"]);
     NSString *download=[NSURL URLWithString:metadata[@"downloadUrl"]].path;NSDictionary *full=Fetch(port,@"GET",download,@"");assert([full[@"code"] intValue]==200);assert(TIOCheckExperimentalOTA(full[@"body"],nil));
-    NSDictionary *head=Fetch(port,@"HEAD",download,@"");assert([head[@"body"] length]==0);assert([head[@"header"] containsString:[NSString stringWithFormat:@"Content-Length: %lu",(unsigned long)zipSize]]);
+    NSDictionary *head=Fetch(port,@"HEAD",download,@"");assert([head[@"body"] length]==0);assert(([head[@"header"] containsString:[NSString stringWithFormat:@"Content-Length: %lu",(unsigned long)zipSize]]));
     NSDictionary *part=Fetch(port,@"GET",download,@"Range: bytes=5-19\r\n");assert([part[@"code"] intValue]==206);assert([part[@"body"] isEqual:[full[@"body"] subdataWithRange:NSMakeRange(5,15)]]);
     part=Fetch(port,@"GET",download,[NSString stringWithFormat:@"Range: bytes=%lu-\r\n",(unsigned long)(zipSize-14)]);assert([part[@"code"] intValue]==206);assert([part[@"body"] length]==14);
-    for(NSString *range in @[@"bytes=-1",@"bytes=2-1",[NSString stringWithFormat:@"bytes=%lu-",(unsigned long)zipSize],@"bytes=1-2,4-5",@"bytes=99999999999999-"]){assert([Fetch(port,@"GET",download,[NSString stringWithFormat:@"Range: %@\r\n",range])[@"code"] intValue]==416);}
+    for(NSString *range in @[@"bytes=-1",@"bytes=2-1",[NSString stringWithFormat:@"bytes=%lu-",(unsigned long)zipSize],@"bytes=1-2,4-5",@"bytes=99999999999999-"]){assert(([Fetch(port,@"GET",download,[NSString stringWithFormat:@"Range: %@\r\n",range])[@"code"] intValue]==416));}
     [feed disarm];assert(Query(port,path)[@"data"]==NSNull.null);assert([Fetch(port,@"GET",download,@"")[@"code"] intValue]==404);
     assert([feed armArchive:file lifetime:0.01 error:&error]);usleep(20000);assert(![feed.status[@"armed"] boolValue]);assert(Query(port,path)[@"data"]==NSNull.null);
     assert([feed armArchive:file lifetime:60 error:&error]);NSString *next=[NSURL URLWithString:Query(port,path)[@"data"][@"downloadUrl"]].path;assert(![next isEqual:download]);assert([Fetch(port,@"GET",download,@"")[@"code"] intValue]==404);

@@ -1,6 +1,7 @@
 #import "RoadMap.h"
 #import "RoadPack.h"
 #include "nav_map.h"
+#include "nav_runtime.h"
 #include <math.h>
 #include <float.h>
 #include <stdlib.h>
@@ -105,7 +106,9 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  if(!_markerScene){
   if(_generation==UINT32_MAX)return nil;
   NSArray *origin=@[@22.5,@114.0];
-  NSArray *route=@[origin,@[@(22.5-50.0/111319.49),@114.0],@[@(22.5+800.0/111319.49),@114.0]];
+  /* 路线自车位起一路向北（先 400m 再 800m）：自测标记表示"前方 20/50/90 m"，
+   * 必须落在行进方向上；早期的先南后北 U 形让标记投影到车后，失去自测意义。 */
+  NSArray *route=@[origin,@[@(22.5+400.0/111319.49),@114.0],@[@(22.5+800.0/111319.49),@114.0]];
   uint32_t generation=_generation+1;
   NSData *scene=[self minimalSceneForCoords:route origin:origin range:320 generation:generation];
   if(!scene)return nil;

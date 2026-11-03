@@ -75,7 +75,9 @@ int main(int argc,const char **argv){@autoreleasepool{
     TIOOTAFlashGate *stale=Ready(dir);assert([stale allows:start device:@"TEST_DEVICE" uptime:11]);assert([stale allows:version device:@"TEST_DEVICE" uptime:12]);assert([stale allows:info device:@"TEST_DEVICE" uptime:13]);
     [stale observe:F(1,@{@"OsVersion":candidate[@"baseVersion"],@"OtaValidationConfirmed":@YES},nil) device:@"TEST_DEVICE" uptime:14];[stale observe:F(11,@{@"Result":@YES},nil) device:@"TEST_DEVICE" uptime:14];
     NSData *first=[files[apName] subdataWithRange:NSMakeRange(0,1)];assert([stale allows:F(7,@{@"Name":apName,@"Start":@0,@"Size":@1},first) device:@"TEST_DEVICE" uptime:20]);assert(![stale.status[@"readbackFresh"] boolValue]);assert(![stale confirmRuntimeAt:20 error:nil]);
-    [stale observe:F(1,@{@"OsVersion":candidate[@"baseVersion"],@"OtaValidationConfirmed":@YES},nil) device:@"TEST_DEVICE" uptime:21];[stale observe:F(11,@{@"Result":@YES},nil) device:@"TEST_DEVICE" uptime:21];assert([stale.status[@"readbackFresh"] boolValue]);
+    /* status 的新鲜度用真实系统时钟（freshReadback(NSProcessInfo.systemUptime)），
+ * 注入的模拟 uptime 永远拿不到 fresh——新读回必须用真实时间（同 49-51 行）。 */
+ NSTimeInterval freshAt=NSProcessInfo.processInfo.systemUptime;[stale observe:F(1,@{@"OsVersion":candidate[@"baseVersion"],@"OtaValidationConfirmed":@YES},nil) device:@"TEST_DEVICE" uptime:freshAt];[stale observe:F(11,@{@"Result":@YES},nil) device:@"TEST_DEVICE" uptime:freshAt];assert([stale.status[@"readbackFresh"] boolValue]);
     NSMutableData *dup=[start mutableCopy];V(dup,16);V(dup,4);assert(!TIOOTAFrame(dup));assert(!TIOOTAFrame([NSData dataWithBytes:"\x08\x81\x00\x10\x04" length:5]));
     assert(!TIOOTAFlashBuild());assert(!TIOOTAFlashProtected());assert(!TIOOTAFlashAuthorize(nil));assert(!TIOOTAFlashConfirmRuntime(nil));
     NSLog(@"PASS: candidate-driven archive/gate checks, %lu slices (%lu bytes), per-payload coverage, 240-slice false-success rejection, fresh readback and manual lens validation; no device IO",(unsigned long)slices,(unsigned long)total);

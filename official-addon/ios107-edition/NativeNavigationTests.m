@@ -9,6 +9,9 @@ static NSDictionary *File(NSString *task){return @{@"eventType":@"fileShareSucce
 static NSDictionary *VectorFrame(NSDictionary *base,uint32_t generation,NSTimeInterval at){
  uint8_t body[548]={0},pose[12]={0};body[0]=(uint8_t)generation;body[4]=0x40;body[5]=1;body[6]=1;body[8]=128;body[16]=128;body[18]=6;body[20]=8;pose[0]=(uint8_t)generation;
  for(unsigned i=0;i<128;i++){int y=(int)i*24-200;body[26+4*i]=(uint8_t)y;body[27+4*i]=(uint8_t)(y>>8);}
+ /* SCENE2 帧尾 12 字节必须是与场景同代际的合法 TNR_POSE（固件与手机端
+  * 校验器一致要求），否则 scene2 整体被拒并退化为纯 scene。 */
+ memcpy(body+sizeof body-sizeof pose,pose,sizeof pose);
  NSData *scene=[NSData dataWithBytes:body length:sizeof body],*plain=[scene subdataWithRange:NSMakeRange(0,536)];NSMutableDictionary *out=[base mutableCopy];out[@"tnrScene"]=plain;out[@"tnrScene2"]=scene;out[@"tnrSceneMin"]=plain;out[@"tnrPose"]=[NSData dataWithBytes:pose length:sizeof pose];out[@"tnrPoseAt"]=@(at);return out;
 }
 static void Complete(TNVSession *s,NSData *packet,TNVSubmitted submit){assert([s consume:Ack(packet,TN_OK)]);(void)[s consume:File(@"vector-native")];submit(YES,@"vector-native");assert(!s.busy);}
