@@ -3,7 +3,7 @@
 #include <assert.h>
 int main(void){@autoreleasepool{
     assert(TIONavCoordinate(39.9,116.4));assert(!TIONavCoordinate(NAN,116));assert(!TIONavCoordinate(91,0));
-    assert([TIONavTurn(2) isEqual:@"前方左转"]);assert([TIONavTurn(29) isEqual:@"通过人行横道"]);assert([TIONavTurn(900) isEqual:@"请查看手机指引"]);
+    assert([TIONavTurn(2) isEqual:@"前方左转"]);assert([TIONavTurn(29) isEqual:@"通过人行横道"]);assert([TIONavTurn(900) isEqual:@"请查看手机指引"]);assert([TIONavTurn(13) isEqual:@"到达服务区"]);assert([TIONavTurn(16) isEqual:@"进入隧道"]);assert([TIONavTurn(21) isEqual:@"绕环岛左转"]);assert([TIONavTurn(24) isEqual:@"绕环岛掉头"]);assert([TIONavTurn(33) isEqual:@"通过公园"]);
     NSString *longText=[@"中文👨‍👩‍👧‍👦" stringByPaddingToLength:1500 withString:@"中文👨‍👩‍👧‍👦" startingAtIndex:0];
     NSString *clip=TIONavClip(longText,240);assert([clip lengthOfBytesUsingEncoding:NSUTF8StringEncoding]<=240);assert([longText hasPrefix:clip]);
     NSDictionary *a=TIONavDisplay(@"navigating",2,longText,129,850,720,YES),*b=TIONavDisplay(@"navigating",3,@"下一条路",40,700,600,YES);

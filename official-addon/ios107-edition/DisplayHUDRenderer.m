@@ -16,6 +16,11 @@ NSData *TDPHUDImagePixels(UIImage *image,BOOL cross){
 }
 static NSData *HUDAsset(NSInteger icon){
  // Original SDK HUD filenames, limited to known resources. Unknowns show '?'.
+ // 高德 bundle 只有 1-16/29-31 的素材；17-28（环岛系列）用现有环岛/掉头图
+ // 就近替代，避免大陆常见小环岛行驶时整段退化为 '?'。
+ static NSDictionary *alias;static dispatch_once_t aliasOnce;dispatch_once(&aliasOnce,^{
+  alias=@{@17:@11,@18:@12,@19:@8,@20:@9,@21:@11,@22:@11,@23:@11,@24:@8,@25:@11,@26:@11,@27:@11,@28:@8};});
+ icon=[alias[@(icon)] integerValue]?:icon;
  if(!((icon>=1&&icon<=16)||(icon>=29&&icon<=31)))return nil;
  static NSCache *cache;static dispatch_once_t once;dispatch_once(&once,^{cache=[NSCache new];cache.countLimit=24;cache.totalCostLimit=153600;});
  NSData *known=[cache objectForKey:@(icon)];if(known)return known;
