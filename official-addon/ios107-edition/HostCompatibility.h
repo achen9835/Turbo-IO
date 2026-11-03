@@ -15,15 +15,22 @@ static inline NSString *TIOHostExpectedUUID(NSDictionary *info) {
     if([version isEqual:@"1.0.10"]&&[build isEqual:@"258"])return @"F5EFECCA-88D9-3BB6-A53D-DF6ACDFCC928";
     return nil;
 }
+static NSArray<NSString *> *TIOHostPinnedUUIDs(void){
+    return @[@"EEEA85E5-4114-313C-B651-73C90A6B5D3C",@"261C8E78-F955-3D7D-85F7-13B9082972CF",@"748FD301-DA60-3095-A244-9BD0558FACA5",@"98A03B57-E816-3BA1-9778-E55FABE8D762",@"410DEFDB-F937-39EA-ACF2-F616ABFF9D0B",@"F5EFECCA-88D9-3BB6-A53D-DF6ACDFCC928"];
+}
 static inline BOOL TIOHostImageMatches(const struct mach_header *h,NSDictionary *info) {
-    NSString *expected=TIOHostExpectedUUID(info);
-    if(!expected||!h||h->magic!=MH_MAGIC_64||h->filetype!=MH_EXECUTE||h->ncmds>1024||h->sizeofcmds>1024*1024)return NO;
+    /* 版本/Build 只是查表键；真正的身份校验是 LC_UUID。CFBundleVersion 会因
+       重打包递增，按 (version,build) 精确查表会让同一宿主被拒（2026-11 实测：
+       258→260 后 version=0，底栏入口与语音钩子全部失效）。改为：与任一钉死的
+       官方 UUID 相等即通过。 */
+    (void)info;
+    if(!h||h->magic!=MH_MAGIC_64||h->filetype!=MH_EXECUTE||h->ncmds>1024||h->sizeofcmds>1024*1024)return NO;
     const uint8_t *p=(const uint8_t *)h+sizeof(struct mach_header_64),*end=p+h->sizeofcmds;
     for(uint32_t i=0;i<h->ncmds;i++){
         if((size_t)(end-p)<sizeof(struct load_command))return NO;
         const struct load_command *c=(const void *)p;
         if(c->cmdsize<sizeof(*c)||c->cmdsize%8||c->cmdsize>(size_t)(end-p))return NO;
-        if(c->cmd==LC_UUID){if(c->cmdsize!=sizeof(struct uuid_command))return NO;return [[[[NSUUID alloc]initWithUUIDBytes:((const struct uuid_command *)c)->uuid] UUIDString] isEqual:expected];}
+        if(c->cmd==LC_UUID){if(c->cmdsize!=sizeof(struct uuid_command))return NO;NSString *actual=[[[NSUUID alloc]initWithUUIDBytes:((const struct uuid_command *)c)->uuid] UUIDString];return [TIOHostPinnedUUIDs() containsObject:actual];}
         p+=c->cmdsize;
     }
     return NO;

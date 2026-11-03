@@ -567,6 +567,28 @@ static void AddEntry(void) {
     Entry.hidden=NO;Entry.frame=CGRectMake(window.bounds.size.width-66,window.safeAreaInsets.top+80,54,40);[window addSubview:Entry];
     if(VersionMatches())TIOStartHomeTabBridge(Entry,^{[TIOEntryTarget show];});
 }
+static void InstallVoiceHooks(void){
+    if(HooksReady)return;
+    Class voice=NSClassFromString(@"rayneo_venus_sdk_plugin.AiResultListenerBridge"),ao=NSClassFromString(@"rayneo_venus_sdk_plugin.AlwaysOnResultListenerBridge");
+    NSString *reason=nil;
+    if(!VersionMatches())reason=@"宿主版本或 UUID 校验未过";
+    else if(!voice)reason=@"官方 AiResultListenerBridge 类未注册";
+    else if(!ao)reason=@"官方 AlwaysOnResultListenerBridge 类未注册";
+    else if(!Signature(voice,@"onAsrResult:isFinish:sessionId:",5,"v",@[@"@",@"Bc",@"@"]))reason=@"onAsrResult:isFinish:sessionId: 签名不符";
+    else if(!Signature(voice,@"onNlpResult:",3,"v",@[@"@"]))reason=@"onNlpResult: 签名不符";
+    else if(!Signature(voice,@"onResponseComplete",2,"v",@[]))reason=@"onResponseComplete 签名不符";
+    else if(!Signature(ao,@"onAlwaysOnResponse:",3,"v",@[@"@"]))reason=@"onAlwaysOnResponse: 签名不符";
+    if(reason){Diagnostic=[@"版本或 ABI 不匹配：" stringByAppendingString:reason];VoiceExitReady=NO;return;}
+    OriginalAsr=(void *)method_setImplementation(class_getInstanceMethod(voice,NSSelectorFromString(@"onAsrResult:isFinish:sessionId:")),(IMP)AsrHook);OriginalNlp=(void *)method_setImplementation(class_getInstanceMethod(voice,NSSelectorFromString(@"onNlpResult:")),(IMP)NlpHook);OriginalComplete=(void *)method_setImplementation(class_getInstanceMethod(voice,NSSelectorFromString(@"onResponseComplete")),(IMP)CompleteHook);OriginalAlwaysOn=(void *)method_setImplementation(class_getInstanceMethod(ao,NSSelectorFromString(@"onAlwaysOnResponse:")),(IMP)AlwaysOnHook);HooksReady=YES;Diagnostic=@"版本和 ObjC 回调签名匹配，等待真实事件";
+    Class helper=NSClassFromString(@"rayneo_venus_sdk_plugin.VoiceAssistantHelper");
+    VoiceExitReady=Signature(object_getClass(helper),@"shared",2,"@",@[])&&Signature(helper,@"stopWorkflow",2,"v",@[])&&Signature(voice,@"onAudioRecordStart",2,"v",@[]);
+    if(VoiceExitReady)OriginalAudioStart=(void *)method_setImplementation(class_getInstanceMethod(voice,NSSelectorFromString(@"onAudioRecordStart")),(IMP)AudioStartHook);
+    TIOInstallTodoRuntime();
+}
+static void InstallVoiceHooksWithRetry(void){
+    InstallVoiceHooks();
+    for(unsigned i=1;i<=4&&!HooksReady;i++)dispatch_after(dispatch_time(DISPATCH_TIME_NOW,(int64_t)(2*i*NSEC_PER_SEC)),dispatch_get_main_queue(),^{InstallVoiceHooks();});
+}
 __attribute__((constructor)) static void Load(void) {
     // Do not message Foundation/UIKit or create an ObjC autorelease pool under
     // the remote loader lock. All setup runs on main after scheduling via C API.
@@ -618,19 +640,13 @@ __attribute__((constructor)) static void Load(void) {
             },^BOOL{return HooksReady&&!Controller.ownsTurn&&TDPPhoneAutomaticIdle();});
 
 
-            Class voice=NSClassFromString(@"rayneo_venus_sdk_plugin.AiResultListenerBridge"),ao=NSClassFromString(@"rayneo_venus_sdk_plugin.AlwaysOnResultListenerBridge");
-            BOOL valid=VersionMatches()&&Signature(voice,@"onAsrResult:isFinish:sessionId:",5,"v",@[@"@",@"Bc",@"@"])&&Signature(voice,@"onNlpResult:",3,"v",@[@"@"])&&Signature(voice,@"onResponseComplete",2,"v",@[])&&Signature(ao,@"onAlwaysOnResponse:",3,"v",@[@"@"]);
-            if(valid){OriginalAsr=(void *)method_setImplementation(class_getInstanceMethod(voice,NSSelectorFromString(@"onAsrResult:isFinish:sessionId:")),(IMP)AsrHook);OriginalNlp=(void *)method_setImplementation(class_getInstanceMethod(voice,NSSelectorFromString(@"onNlpResult:")),(IMP)NlpHook);OriginalComplete=(void *)method_setImplementation(class_getInstanceMethod(voice,NSSelectorFromString(@"onResponseComplete")),(IMP)CompleteHook);OriginalAlwaysOn=(void *)method_setImplementation(class_getInstanceMethod(ao,NSSelectorFromString(@"onAlwaysOnResponse:")),(IMP)AlwaysOnHook);HooksReady=YES;Diagnostic=@"版本和 ObjC 回调签名匹配，等待真实事件";}else Diagnostic=@"版本或 ABI 不匹配：未修改任何回调";
-            Class helper=NSClassFromString(@"rayneo_venus_sdk_plugin.VoiceAssistantHelper");
-            VoiceExitReady=valid&&Signature(object_getClass(helper),@"shared",2,"@",@[])&&Signature(helper,@"stopWorkflow",2,"v",@[])&&Signature(voice,@"onAudioRecordStart",2,"v",@[]);
-            if(VoiceExitReady)OriginalAudioStart=(void *)method_setImplementation(class_getInstanceMethod(voice,NSSelectorFromString(@"onAudioRecordStart")),(IMP)AudioStartHook);
-            if(valid)TIOInstallTodoRuntime();
+            InstallVoiceHooksWithRetry(); /* 失败时带 2/4/6/8s 重试，且 Diagnostic 写明具体子校验 */
             TIOOTAFlashDisableAutoUpdateIfRequested();
             // Explicit developer launch, not a stored preference or automatic restore.
             // armArchive additionally requires the installed preparation interlock.
             if([NSProcessInfo.processInfo.environment[@"TIO_OTA_PREPARE_ONCE"] isEqual:@"R3_DOWNLOAD_ONLY"]){NSError *prepareError=nil;TIOBeginExperimentalOTAPreparation(&prepareError);}
             TCCameraReportLoaded();
-            NSMutableString *loadInfo=[NSMutableString stringWithFormat:@"setup reached; hooks=%d; version=%d; voiceClass=%d; alwaysOnClass=%d\n",valid,VersionMatches(),voice!=Nil,ao!=Nil];
+            NSMutableString *loadInfo=[NSMutableString stringWithFormat:@"setup reached; hooks=%d; version=%d; voiceClass=%d; alwaysOnClass=%d\n",HooksReady,VersionMatches(),NSClassFromString(@"rayneo_venus_sdk_plugin.AiResultListenerBridge")!=Nil,NSClassFromString(@"rayneo_venus_sdk_plugin.AlwaysOnResultListenerBridge")!=Nil];
 #if TIO_DISPLAY_PHONE
 #if TIO_DISPLAY_FLASH
             [loadInfo appendString:@"display extension=APP107-OTA-PHONE-01; loopback restart recovery; OTA default locked\n"];
@@ -640,7 +656,7 @@ __attribute__((constructor)) static void Load(void) {
 #endif
             [loadInfo appendFormat:@"bundle=%@; version=%@; build=%@\n",NSBundle.mainBundle.bundleIdentifier,[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleShortVersionString"],[NSBundle.mainBundle objectForInfoDictionaryKey:@"CFBundleVersion"]];
             for(uint32_t i=0;i<_dyld_image_count();i++){const char *name=_dyld_get_image_name(i);if(name&&[[NSString stringWithUTF8String:name].lastPathComponent isEqual:@"Runner"]){const struct mach_header *h=_dyld_get_image_header(i);[loadInfo appendFormat:@"Runner image index=%u magic=%x\n",i,h->magic];}}
-            for(NSString *sel in @[@"onAsrResult:isFinish:sessionId:",@"onNlpResult:",@"onResponseComplete",@"onAlwaysOnResponse:"]){Method m=class_getInstanceMethod([sel isEqual:@"onAlwaysOnResponse:"]?ao:voice,NSSelectorFromString(sel));[loadInfo appendFormat:@"%@ %s\n",sel,m?method_getTypeEncoding(m):"missing"];}
+            for(NSString *sel in @[@"onAsrResult:isFinish:sessionId:",@"onNlpResult:",@"onResponseComplete",@"onAlwaysOnResponse:"]){Class lc=[sel isEqual:@"onAlwaysOnResponse:"]?NSClassFromString(@"rayneo_venus_sdk_plugin.AlwaysOnResultListenerBridge"):NSClassFromString(@"rayneo_venus_sdk_plugin.AiResultListenerBridge");Method m=class_getInstanceMethod(lc,NSSelectorFromString(sel));[loadInfo appendFormat:@"%@ %s\n",sel,m?method_getTypeEncoding(m):"missing"];}
             [loadInfo writeToFile:[NSTemporaryDirectory() stringByAppendingPathComponent:@"TurboIOPrivateAddon-load.txt"] atomically:YES encoding:NSUTF8StringEncoding error:nil];
             [NSNotificationCenter.defaultCenter addObserverForName:UIApplicationDidBecomeActiveNotification object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){AddEntry();}];
             [NSNotificationCenter.defaultCenter addObserverForName:@"TIOResearchClosed" object:nil queue:NSOperationQueue.mainQueue usingBlock:^(NSNotification *n){AddEntry();}];

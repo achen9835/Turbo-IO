@@ -289,7 +289,11 @@ void TIOStartExperimentalOTAFeedIfMarked(void){
         NSString *build=[bundle objectForInfoDictionaryKey:@"CFBundleVersion"];
         BOOL is105=[version isEqual:@"1.0.5"]&&[build isEqual:@"201"];
         BOOL is107=[version isEqual:@"1.0.7"]&&[build isEqual:@"230"];
-        BOOL is1010=[version isEqual:@"1.0.10"]&&[build isEqual:@"258"];
+        /* 1.0.10 只锁版本号：CFBundleVersion 随重打包递增（258→259/260…），按构建号
+           精确匹配会让 Feed 永不启动，官方更新检查被回环连接拒绝卡成全屏失败页
+           （2026-11 实测）。真正的身份/补丁在场证明由下方 App.framework 回环字节
+           逐字节校验保证，构建号不构成额外安全性。 */
+        BOOL is1010=[version isEqual:@"1.0.10"];
         if(!is105&&!is107&&!is1010){BootstrapFailure=@"实验升级来源的宿主版本不匹配";return;}
         // Read two fixed Dart string records (cached-hash + length + bytes, the
         // same record layout the packer wrote). Code signing is handled by
