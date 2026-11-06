@@ -43,9 +43,9 @@ static bool decode_scene(TNScene *s,const uint8_t *p,size_t n){
   s->lights=e[0];s->bar_count=e[1];s->camera_kind=e[2];s->event_kind=e[3];
   unsigned lim=u16(e+4);s->camera_limit=lim>32767?(int)(lim)-65536:(int)lim;
   s->camera_m=u16(e+6);s->event_m=u16(e+8);memcpy(s->bar,e+10,TN_BAR_MAX);s->lights_m=u16(e+34);
-  if(n==base+TN_SCENE_EXT2||n==base+TN_SCENE_EXT3){s->light_count=e[36];for(unsigned i=0;i<8;i++)s->light_m[i]=u16(e+37+2u*i);}
-  if(n==base+TN_SCENE_EXT3||n==base+TN_SCENE_EXT4||n==base+TN_SCENE_EXT5)s->speed_kmh=u16(e+53);
-  if(n==base+TN_SCENE_EXT4||n==base+TN_SCENE_EXT5)s->road_limit=e[55];
+  if(n==base+TN_SCENE_EXT2||n==base+TN_SCENE_EXT3||n==base+TN_SCENE_EXT4||n==base+TN_SCENE_EXT5||n==base+TN_SCENE_EXT6){s->light_count=e[36];for(unsigned i=0;i<8;i++)s->light_m[i]=u16(e+37+2u*i);}
+  if(n==base+TN_SCENE_EXT3||n==base+TN_SCENE_EXT4||n==base+TN_SCENE_EXT5||n==base+TN_SCENE_EXT6)s->speed_kmh=u16(e+53);
+  if(n==base+TN_SCENE_EXT4||n==base+TN_SCENE_EXT5||n==base+TN_SCENE_EXT6)s->road_limit=e[55];
   if(n==base+TN_SCENE_EXT5||n==base+TN_SCENE_EXT6){s->cam_count=e[56];for(unsigned i=0;i<TN_CAM_MAX;i++){s->cam_kind[i]=e[57+4u*i];s->cam_limit[i]=e[58+4u*i];s->cam_m[i]=u16(e+59+4u*i);}}
   if(n==base+TN_SCENE_EXT6){s->fac_count=e[122];for(unsigned i=0;i<TN_FAC_MAX;i++){s->fac_kind[i]=e[123+3u*i];s->fac_m[i]=u16(e+124+3u*i);}}}
  return valid(s);

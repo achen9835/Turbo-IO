@@ -121,28 +121,28 @@
    "offset": "0x4f5324",
    "address": "0x10685324",
    "before": "f0b585b0",
-   "after": "1ff28abc",
+   "after": "1ff294bc",
    "role": "Entry trampoline vm_event",
    "targetSymbol": "m8_hook_vm_event",
-   "targetOffset": "0x1b10c"
+   "targetOffset": "0x1b120"
   },
   {
    "offset": "0x4f5de2",
    "address": "0x10685de2",
    "before": "0628a8bf",
-   "after": "2bf299bc",
+   "after": "2bf2a3bc",
    "role": "Menu replacement frame_start",
    "targetSymbol": "m8_hook_frame_start",
-   "targetOffset": "0x27be8"
+   "targetOffset": "0x27bfc"
   },
   {
    "offset": "0x4f5df8",
    "address": "0x10685df8",
    "before": "1e22a0f10f03",
-   "after": "2bf292bc00bf",
+   "after": "2bf29cbc00bf",
    "role": "Menu replacement frame_index",
    "targetSymbol": "m8_hook_frame_index",
-   "targetOffset": "0x27bf0"
+   "targetOffset": "0x27c04"
   },
   {
    "offset": "0x4f69c4",
@@ -193,10 +193,10 @@
    "offset": "0x4f3278",
    "address": "0x10683278",
    "before": "fc204ef043fe",
-   "after": "2ef204fa00bf",
+   "after": "2ef20efa00bf",
    "role": "284-byte menu allocation",
    "targetSymbol": "port_allocate_menu",
-   "targetOffset": "0x27b54"
+   "targetOffset": "0x27b68"
   },
   {
    "offset": "0x4f32a2",
@@ -218,10 +218,10 @@
    "offset": "0x3f3be6",
    "address": "0x10583be6",
    "before": "00241f48204b84610360",
-   "after": "2df389fd00bf00bf00bf",
+   "after": "2df393fd00bf00bf00bf",
    "role": "File callback registration",
    "targetSymbol": "stream_register_shim",
-   "targetOffset": "0x27bcc"
+   "targetOffset": "0x27be0"
   },
   {
    "offset": "0x402894",
@@ -243,55 +243,55 @@
    "offset": "0x3f5ffc",
    "address": "0x10585ffc",
    "before": "98b50b4b",
-   "after": "2bf3e6bb",
+   "after": "2bf3f0bb",
    "role": "ce_serial_destroy_entry",
    "targetSymbol": "ce_serial_destroy_entry",
-   "targetOffset": "0x27c9c"
+   "targetOffset": "0x27cb0"
   },
   {
    "offset": "0x3f741c",
    "address": "0x1058741c",
    "before": "2de9f043",
-   "after": "2af3f2b9",
+   "after": "2af3fcb9",
    "role": "ce_head_notify_entry",
    "targetSymbol": "ce_head_notify_entry",
-   "targetOffset": "0x27cd4"
+   "targetOffset": "0x27ce8"
   },
   {
    "offset": "0x35a134",
    "address": "0x104ea134",
    "before": "b0b5204a",
-   "after": "c7f3feba",
+   "after": "c7f308bb",
    "role": "ce_serial_start_entry",
    "targetSymbol": "ce_serial_start_entry",
-   "targetOffset": "0x27c04"
+   "targetOffset": "0x27c18"
   },
   {
    "offset": "0x35a1d8",
    "address": "0x104ea1d8",
    "before": "b0b5204a",
-   "after": "c7f3b2ba",
+   "after": "c7f3bcba",
    "role": "ce_serial_stop_entry",
    "targetSymbol": "ce_serial_stop_entry",
-   "targetOffset": "0x27c10"
+   "targetOffset": "0x27c24"
   },
   {
    "offset": "0x4028a2",
    "address": "0x105928a2",
    "before": "a069a661",
-   "after": "1ef35fff",
+   "after": "1ef369ff",
    "role": "ce_serial_publish_entry",
    "targetSymbol": "ce_serial_publish_entry",
-   "targetOffset": "0x27c34"
+   "targetOffset": "0x27c48"
   },
   {
    "offset": "0x402364",
    "address": "0x10592364",
    "before": "a069a361",
-   "after": "1ff318fa",
+   "after": "1ff322fa",
    "role": "ce_serial_retire_entry",
    "targetSymbol": "ce_serial_retire_entry",
-   "targetOffset": "0x27c68"
+   "targetOffset": "0x27c7c"
   },
   {
    "offset": "0x404eb2",
@@ -306,67 +306,67 @@
    "offset": "0x35923c",
    "address": "0x104e923c",
    "before": "b0b590b0",
-   "after": "c8f3f6b9",
+   "after": "c8f300ba",
    "role": "ti_rpmsg_entry",
    "targetSymbol": "ti_rpmsg_entry",
-   "targetOffset": "0x27afc"
+   "targetOffset": "0x27b10"
   },
   {
    "offset": "0x35a29c",
    "address": "0x104ea29c",
    "before": "b0b51748",
-   "after": "c1f3c2be",
+   "after": "c1f3ccbe",
    "role": "ti_foreign_start",
    "targetSymbol": "ti_foreign_start",
-   "targetOffset": "0x224f4"
+   "targetOffset": "0x22508"
   },
   {
    "offset": "0x35a308",
    "address": "0x104ea308",
    "before": "b0b51748",
-   "after": "c1f3dabe",
+   "after": "c1f3e4be",
    "role": "ti_foreign_stop",
    "targetSymbol": "ti_foreign_stop",
-   "targetOffset": "0x22590"
+   "targetOffset": "0x225a4"
   },
   {
    "offset": "0x3f916e",
    "address": "0x1058916e",
    "before": "b0b50446",
-   "after": "23f321be",
+   "after": "23f32bbe",
    "role": "tdc_hook_source",
    "targetSymbol": "tdc_hook_source",
-   "targetOffset": "0x23284"
+   "targetOffset": "0x23298"
   },
   {
    "offset": "0x57bd9c",
    "address": "0x1070bd9c",
    "before": "2de9f041",
-   "after": "a1f1b6ba",
+   "after": "a1f1c0ba",
    "role": "tdc_hook_serialize",
    "targetSymbol": "tdc_hook_serialize",
-   "targetOffset": "0x237dc"
+   "targetOffset": "0x237f0"
   },
   {
    "offset": "0x3fa1c4",
    "address": "0x1058a1c4",
    "before": "b0b50024",
-   "after": "23f353b9",
+   "after": "23f35db9",
    "role": "tdc_hook_message",
    "targetSymbol": "tdc_hook_message",
-   "targetOffset": "0x2393e"
+   "targetOffset": "0x23952"
   }
  ],
  "moduleVA": "0x10889b30",
  "moduleBytes": 230672,
- "moduleSHA256": "e1a515e9c2c905d8e2b5e70dc430f76f101982a0b48e7e5cdebe1c05cf377d71",
+ "moduleSHA256": "041bb60761a9e443ae1af1c71284974c97c2a5f25daf227e3e88cc4853035535",
  "stockAP": "af701a6525fbf703854b3d63e757734546c20bdb5d50e246867dc6a0565713ae",
  "APBytes": 7544904,
  "archive": {
   "name": "StrixOS-1.0.5.12-TurboIO-TAP3-CANDIDATE-NOT-APPROVED.zip",
-  "sha256": "155655d70a4e90eebc46129015b06f0b32e213256c661898068fe92dc84f4a4d"
+  "sha256": "01f5b7bf648a005d956b0be5ee0ea860f69839e33cfebff54702de46065c8396"
  },
- "APSHA256": "0c125de56947592f5011de5554d29da55b977de40f559b4c4dc2293c40853202",
+ "APSHA256": "c83c9104b70b4e9992314f508599e9175516622404ec7a7e3fd50b4a99a30ba5",
  "stockZIP": "b7bfd3cc73528e3e9995ad227dc877c8334d43dc8051436e2d2ccff2ca0b4133",
  "sources": [
   {
@@ -619,7 +619,7 @@
   },
   {
    "path": "src/navigation-runtime-v1/nav_runtime.c",
-   "sha256": "698a05d9b49a9fefdd82184847b13c6a7b0e512fde17ed62f7aaac20904f8125"
+   "sha256": "180f10cf0339bc8af12eca079f852c985d54df302a4169e02983a456ff0e88f9"
   },
   {
    "path": "src/navigation-runtime-v1/nav_service.c",

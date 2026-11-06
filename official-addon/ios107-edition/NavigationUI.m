@@ -891,8 +891,8 @@ self.roadLocation=@[@(loc.coordinate.latitude),@(loc.coordinate.longitude)];if(l
 - (void)driveManager:(AMapNaviDriveManager *)m updateServiceAreaInfos:(NSArray<AMapNaviServiceAreaInfo *> *)infos{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active)return;
  /* 服务区/收费站/检查站（type 0/1/2 → kind 1/2/3，since 5.0.0 回调） */
  NSMutableArray *a=[NSMutableArray array];
- for(AMapNaviServiceAreaInfo *s in infos){if(s.remainDistance<0)continue;
-  [a addObject:@{@"kind":@(s.type+1),@"m":@(s.remainDistance>65534?65534:s.remainDistance)}];}
+ for(AMapNaviServiceAreaInfo *s in infos){if(s.remainDistance<0)continue;long k=s.type+1;if(k<1||k>3)continue; /* 未知类型不顶掉整帧 */
+  [a addObject:@{@"kind":@(k),@"m":@(s.remainDistance>65534?65534:s.remainDistance)}];}
  self.serviceAreas=a.count?a:nil;[self offerSceneRefresh];});}
 - (void)driveManager:(AMapNaviDriveManager *)m updateTrafficFacilities:(NSArray<AMapNaviTrafficFacilityInfo *> *)facs{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active)return;
  /* 警示类道路设施（boardcastType → kind 4..12）。相机类（4/5/28/29/92/93/94）由

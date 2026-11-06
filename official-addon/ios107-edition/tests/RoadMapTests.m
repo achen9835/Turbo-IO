@@ -12,6 +12,7 @@ static BOOL V2;
 static uint32_t U32(const uint8_t *p){uint32_t n;memcpy(&n,p,4);return n;}
 static NSDictionary *Ack(NSData *packet){const uint8_t *p=packet.bytes;uint8_t raw[32];tn_reply_encode(raw,32,(TNReply){.result=TN_OK,.sid=U32(p+8),.sequence=U32(p+12),.active=p[5]!=TN_STOP,.awake=true});if(V2&&p[5]==TN_QUERY){raw[24]=1;uint32_t crc=tn_crc(raw,28);memcpy(raw+28,&crc,4);}NSMutableString *hex=[NSMutableString new];for(int i=0;i<32;i++)[hex appendFormat:@"%02x",raw[i]];NSData *json=[NSJSONSerialization dataWithJSONObject:@{@"cmd":@"turbo_nav_v1",@"payload":@{@"data":hex}} options:0 error:nil];assert(json.length<128);uint8_t head[]={8,1,16,6,26,(uint8_t)json.length};NSMutableData *pb=[NSMutableData dataWithBytes:head length:6];[pb appendData:json];return @{@"eventType":@"messageReceived",@"message":@{@"businessId":@15,@"deviceId":@"peer",@"payload":pb}};}
 static NSDictionary *File(void){return @{@"eventType":@"fileShareSuccess",@"device":@{@"id":@"peer"},@"role":@"sender",@"fileName":@"turbo-navigation.tnv",@"taskId":@"native"};}
+static uint32_t TFixWireCRC(uint8_t *p,size_t n){uint32_t c=~0u;for(size_t i=0;i<n;i++){uint8_t b=(i>=20&&i<24)?0:p[i];c^=b;for(unsigned k=0;k<8;k++)c=(c>>1)^((0u-(c&1u))&0xedb88320u);}return ~c;}
 int main(int argc,char **argv){@autoreleasepool{
  assert(argc==4);V2=!strcmp(argv[3],"v2");Fixtures=@(argv[1]);NSString *out=@(argv[2]);NSArray *samples=[NSJSONSerialization JSONObjectWithData:[NSData dataWithContentsOfFile:[Fixtures stringByAppendingPathComponent:@"replay.json"]] options:0 error:nil];assert(samples.count==180);
  TestMap *map=[[TestMap alloc]initWithWGS84ToMap:nil];map.enabled=YES;assert(!map.allowNetwork);
@@ -41,6 +42,17 @@ int main(int argc,char **argv){@autoreleasepool{
  {uint8_t wire[512];size_t n=tn_encode(wire,sizeof wire,TN_UPDATE,7,9,&markerScene);assert(n&&tn_packet_valid(wire,n)); /* EXT6（camList+facList+road_limit）满尾巴回环：编码→校验(含解码) */
   assert(wire[32+36+53]==42&&!wire[32+36+54]&&wire[32+36+55]==60&&wire[32+36+56]==3); /* 线格式钉死：EXT5 区段 e[53]=speed42 e[55]=roadLimit60 e[56]=camCount3（2026-11-06 真机 EXT5 车速丢失根因=解码漏 EXT5 分支，字节断言防再漂移；36=空路名/空转向/3点的 base） */
   assert(wire[32+36+122]==3&&wire[32+36+123]==2&&wire[32+36+124]==40&&wire[32+36+126]==1&&wire[32+36+127]==160&&wire[32+36+129]==4); /* EXT6 区段：e[122]=facCount3，e[123+3i]=kind、e[124+3i]=m（收费站40/服务区160/隧道260） */
+  /* 解码神谕：把某字段篡改为非法值并重算线 CRC，packet_valid 必须拒帧——直接证明该偏移
+   * 被对应 EXT 分支解码并参与 valid()（2026-11-06 EXT5 车速丢失、11-07 EXT6 同类的回归网）。 */
+  {uint32_t c;
+   n=tn_encode(wire,sizeof wire,TN_UPDATE,7,15,&markerScene);assert(n);
+   wire[32+36+55]=201;c=TFixWireCRC(wire,n);wire[20]=(uint8_t)c;wire[21]=(uint8_t)(c>>8);wire[22]=(uint8_t)(c>>16);wire[23]=(uint8_t)(c>>24);assert(!tn_packet_valid(wire,n)); /* road_limit 201 非法 */
+   n=tn_encode(wire,sizeof wire,TN_UPDATE,7,16,&markerScene);
+   wire[32+36+53]=0x58;wire[32+36+54]=2;c=TFixWireCRC(wire,n);wire[20]=(uint8_t)c;wire[21]=(uint8_t)(c>>8);wire[22]=(uint8_t)(c>>16);wire[23]=(uint8_t)(c>>24);assert(!tn_packet_valid(wire,n)); /* speed 600 非法 */
+   n=tn_encode(wire,sizeof wire,TN_UPDATE,7,17,&markerScene);
+   wire[32+36+123]=13;c=TFixWireCRC(wire,n);wire[20]=(uint8_t)c;wire[21]=(uint8_t)(c>>8);wire[22]=(uint8_t)(c>>16);wire[23]=(uint8_t)(c>>24);assert(!tn_packet_valid(wire,n)); /* fac_kind 13 非法 */
+   n=tn_encode(wire,sizeof wire,TN_UPDATE,7,18,&markerScene);
+   wire[32+36+36]=9;c=TFixWireCRC(wire,n);wire[20]=(uint8_t)c;wire[21]=(uint8_t)(c>>8);wire[22]=(uint8_t)(c>>16);wire[23]=(uint8_t)(c>>24);assert(!tn_packet_valid(wire,n)); /* light_count 9>8 非法（EXT6 下 lightsList 须被解码） */}
   TNScene noCam=markerScene;noCam.cam_count=0;n=tn_encode(wire,sizeof wire,TN_UPDATE,7,10,&noCam);assert(n&&tn_packet_valid(wire,n)); /* 无 camList 降级 EXT4 */
   TNScene noLimit=noCam;noLimit.road_limit=255;n=tn_encode(wire,sizeof wire,TN_UPDATE,7,11,&noLimit);assert(n&&tn_packet_valid(wire,n)); /* 路段限速缺省再降级 EXT3 */
   TNScene bad=markerScene;bad.cam_kind[0]=9;assert(!tn_encode(wire,sizeof wire,TN_UPDATE,7,12,&bad)); /* 非法相机类型拒帧 */
