@@ -18,6 +18,8 @@
 #define TN_SCENE_EXT4 57u /* TN_SCENE_EXT3 + u8 road_limit (0 = no limit) */
 #define TN_CAM_MAX 16u
 #define TN_SCENE_EXT5 (TN_SCENE_EXT4+1u+4u*TN_CAM_MAX) /* + u8 cam_count, cam[16]: u8 kind,u8 limit,u16 m */
+#define TN_FAC_MAX 12u
+#define TN_SCENE_EXT6 (TN_SCENE_EXT5+1u+3u*TN_FAC_MAX) /* + u8 fac_count, fac[12]: u8 kind,u16 m */
 #define TN_IDLE_MS 60000u
 #define TN_LINK_MS 30000u
 enum TNOp { TN_START=1,TN_UPDATE=2,TN_HEARTBEAT=3,TN_STOP=4,TN_MODE=5,TN_QUERY=6 };
@@ -25,7 +27,8 @@ enum TNResult { TN_OK=0,TN_BAD_PACKET=1,TN_UNAUTHORIZED=2,TN_BUSY=3,TN_STALE=4,T
 enum TNPower { TN_POWER_RELEASE=0,TN_POWER_WAKE_HOLD=1,TN_POWER_SLEEP=2 };
 enum TNMode { TN_SMART=0,TN_ALWAYS=1 };
 enum TNIcon { TN_UNKNOWN=0,TN_STRAIGHT,TN_LEFT,TN_RIGHT,TN_SLIGHT_LEFT,TN_SLIGHT_RIGHT,
- TN_SHARP_LEFT,TN_SHARP_RIGHT,TN_UTURN,TN_ROUNDABOUT,TN_ARRIVE,TN_ICON_COUNT };
+ TN_SHARP_LEFT,TN_SHARP_RIGHT,TN_UTURN,TN_ROUNDABOUT,TN_ARRIVE,
+ TN_SERVICE,TN_TOLL,TN_TUNNEL,TN_ICON_COUNT};
 enum TNCamera { TN_CAMERA_NONE=0,TN_CAMERA_SPEED,TN_CAMERA_REDLIGHT,TN_CAMERA_SURVEILLANCE,
  TN_CAMERA_INTERVAL,TN_CAMERA_OTHER };
 enum TNEvent { TN_EVENT_NONE=0,TN_EVENT_ACCIDENT,TN_EVENT_CONSTRUCTION,TN_EVENT_CLOSED,TN_EVENT_CONTROL };
@@ -52,6 +55,8 @@ typedef struct {
  uint8_t road_limit; /* 255 = not reported, 0 = no speed limit, else km/h */
  uint8_t cam_count,cam_kind[TN_CAM_MAX],cam_limit[TN_CAM_MAX]; /* kind 1..5, limit 0=none km/h */
  uint16_t cam_m[TN_CAM_MAX]; /* cameras along the route, nearest first, metres */
+ uint8_t fac_count,fac_kind[TN_FAC_MAX]; /* 1服务区 2收费站 3检查站 4隧道 5渡口 6警示 7弯道 8窄路 9陡坡 10铁道 11村庄学校 12其他 */
+ uint16_t fac_m[TN_FAC_MAX]; /* road facilities along the route, nearest first, metres */
 } TNScene;
 typedef struct {
  void *ctx;

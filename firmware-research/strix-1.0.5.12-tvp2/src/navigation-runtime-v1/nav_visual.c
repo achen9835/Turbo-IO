@@ -33,6 +33,12 @@ static const TNXY sharp[]={{18,84},{18,16},{74,66},{38,66},{74,66},{74,30}};
 static const TNXY uturn[]={{78,84},{78,30},{66,16},{38,16},{24,30},{24,78},{44,58},{24,78},{8,58}};
 static const TNXY roundabout[]={{48,84},{48,65},{24,48},{24,30},{44,15},{64,30},{64,48},{48,65},{48,15},{32,30},{48,15},{64,30}};
 static const TNXY arrive[]={{22,84},{22,12},{76,12},{76,50},{22,50}};
+/* 13/14/16 设施转向：服务区=加油枪（泵体/显示屏/软管枪头）/收费站=顶棚+立柱+¥/
+ * 隧道=隧道口（外拱+内拱+路面中线）。x>=1000 为抬笔哨兵（多笔画，渲染器跳段）。
+ * 96x84 模板箱。 */
+static const TNXY service[]={{36,40},{54,40},{54,80},{36,80},{36,40},{1023,1023},{42,48},{50,48},{50,56},{42,56},{42,48},{1023,1023},{54,48},{66,54},{72,64},{70,74},{78,74}};
+static const TNXY toll[]={{26,28},{70,28},{1023,1023},{32,28},{32,44},{1023,1023},{64,28},{64,44},{1023,1023},{40,48},{48,58},{56,48},{1023,1023},{48,58},{48,78},{1023,1023},{41,62},{55,62},{1023,1023},{42,68},{54,68}};
+static const TNXY tunnel[]={{18,80},{18,52},{19,44},{22,37},{27,31},{33,26},{41,23},{48,22},{55,23},{63,26},{69,31},{74,37},{77,44},{78,52},{78,80},{18,80},{1023,1023},{29,54},{30,49},{32,45},{35,41},{39,38},{43,36},{48,35},{53,36},{57,38},{61,41},{64,45},{66,49},{67,54}};
 static const TNXY unknown[]={{28,25},{38,15},{58,15},{70,26},{70,38},{48,54},{48,66},{48,75},{48,82}};
 static TNXY map(TNPoint p){return (TNXY){406+(int32_t)p.x*112/1023,10+(int32_t)p.y*112/1023};}
 static unsigned road_glyph(const char *p,unsigned *bytes){
@@ -62,6 +68,9 @@ bool tn_visual(const TNScene *s,bool stale,TNVisual *v){
  case TN_UTURN:GLYPH(uturn);
  case TN_ROUNDABOUT:GLYPH(roundabout);
  case TN_ARRIVE:GLYPH(arrive);
+ case TN_SERVICE:GLYPH(service);
+ case TN_TOLL:GLYPH(toll);
+ case TN_TUNNEL:GLYPH(tunnel);
  default:break;
  #undef GLYPH
  }
@@ -92,6 +101,7 @@ bool tn_visual(const TNScene *s,bool stale,TNVisual *v){
  v->camera_limit=s->camera_limit;v->camera_m=s->camera_m;v->event_m=s->event_m;v->lights_m=s->lights_m;
  for(unsigned i=0;i<8;i++)v->light_m[i]=s->light_m[i];v->speed_kmh=s->speed_kmh;v->road_limit=s->road_limit;
  v->cam_count=s->cam_count;for(unsigned i=0;i<TN_CAM_MAX;i++){v->cam_kind[i]=s->cam_kind[i];v->cam_limit[i]=s->cam_limit[i];v->cam_m[i]=s->cam_m[i];}
+ v->fac_count=s->fac_count;for(unsigned i=0;i<TN_FAC_MAX;i++){v->fac_kind[i]=s->fac_kind[i];v->fac_m[i]=s->fac_m[i];}
  if(s->speed_kmh!=65535){char *p=decimal(v->speed,s->speed_kmh>999?999:s->speed_kmh);append(p,"km/h");} /* "999km/h"+NUL fills speed[8] exactly */
  else v->speed[0]=0;
  tn_clock_text(v->status,0,0,stale);return true;

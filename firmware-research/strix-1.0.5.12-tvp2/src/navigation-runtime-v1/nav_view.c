@@ -52,12 +52,15 @@ static void map_markers(TNViewFrame *f,const TNRState *s,uint32_t now){
   * 不再有固定 700m 门槛——地图可视多远就能看到多远，随地图滚动自然出现/消失。
   * kind: 0=红绿灯 255=事件 1..5=电子眼(enum TNCamera)。cam_count>0 时沿路相机
   * 全量来自 EXT5 camList，旧的单槽 camera 仅作无列表时的兜底。 */
- struct MK{uint16_t m;int16_t limit;uint8_t kind;}mk[22];unsigned n=0;
+ struct MK{uint16_t m;int16_t limit;uint8_t kind;}mk[30];unsigned n=0;
  if(f->visual.cam_count)for(unsigned i=0;i<f->visual.cam_count&&n<16;i++){if(f->visual.cam_m[i]==65535)continue;mk[n].m=f->visual.cam_m[i];mk[n].limit=f->visual.cam_limit[i];mk[n].kind=f->visual.cam_kind[i];n++;}
  else if(f->visual.camera_kind&&f->visual.camera_m!=65535){mk[n].m=f->visual.camera_m;mk[n].limit=f->visual.camera_limit;mk[n].kind=(uint8_t)f->visual.camera_kind;n++;}
- if(f->visual.event_kind&&f->visual.event_m!=65535&&n<21){mk[n].m=f->visual.event_m;mk[n].limit=0;mk[n].kind=255;n++;}
- if(!f->visual.light_count&&f->visual.lights!=255&&f->visual.lights_m!=65535&&n<21){mk[n].m=f->visual.lights_m;mk[n].limit=0;mk[n].kind=0;n++;}
- for(unsigned i=0;i<f->visual.light_count&&n<21;i++){mk[n].m=f->visual.light_m[i];mk[n].limit=0;mk[n].kind=0;n++;}
+ /* 特殊设施（EXT6 facList，kind 128+1..12）：服务区/收费站/检查站/隧道/渡口/警示/弯道/
+  * 窄路/陡坡/铁道/村庄学校/其他。与电子眼同走画布门，钉在沿路真实位置。 */
+ for(unsigned i=0;i<f->visual.fac_count&&n<26;i++){if(f->visual.fac_m[i]==65535)continue;mk[n].m=f->visual.fac_m[i];mk[n].limit=0;mk[n].kind=(uint8_t)(128u+f->visual.fac_kind[i]);n++;}
+ if(f->visual.event_kind&&f->visual.event_m!=65535&&n<28){mk[n].m=f->visual.event_m;mk[n].limit=0;mk[n].kind=255;n++;}
+ if(!f->visual.light_count&&f->visual.lights!=255&&f->visual.lights_m!=65535&&n<28){mk[n].m=f->visual.lights_m;mk[n].limit=0;mk[n].kind=0;n++;}
+ for(unsigned i=0;i<f->visual.light_count&&n<28;i++){mk[n].m=f->visual.light_m[i];mk[n].limit=0;mk[n].kind=0;n++;}
  int taken[52][4];unsigned nt=0;TNRLabelView names[TNR_MAX_LABELS];unsigned names_n=tnr_labels(s,now,names);
  for(unsigned i=0;i<names_n&&nt<48;i++){taken[nt][0]=names[i].x;taken[nt][1]=names[i].y;taken[nt][2]=names[i].x+names[i].width;taken[nt][3]=names[i].y+20;nt++;}
  for(unsigned i=0;i<n;i++){
@@ -84,6 +87,45 @@ static void map_markers(TNViewFrame *f,const TNRState *s,uint32_t now){
    radius=5;ring(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,5,mg);ring(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,3,mg);pixel(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,0,mg);
   }else if(mk[i].kind==TN_CAMERA_SURVEILLANCE){ /* 监控：小环+心点 */
    ring(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,3,mg);pixel(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,0,mg);
+  }else if(mk[i].kind>=128){ /* 特殊设施（kind-128=1..12，EXT6 facList） */
+   radius=6;
+   switch(mk[i].kind-128){
+    case 1: /* 服务区：加油枪（U 形泵体开口右侧接软管+枪头） */
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-4,q.y-2},(TNXY){q.x-4,q.y+4},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-4,q.y-2},(TNXY){q.x+1,q.y-2},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-4,q.y+4},(TNXY){q.x+1,q.y+4},0,mg);
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+1,q.y-1},(TNXY){q.x+4,q.y+1},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+4,q.y+1},(TNXY){q.x+4,q.y+3},0,mg);pixel(f->map,TN_MAP_W,TN_MAP_H,q.x+4,q.y+3,0,mg);break;
+    case 2: /* 收费站：顶棚立柱 + ¥（Y 叉+竖+横杠） */
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-5,q.y-5},(TNXY){q.x+5,q.y-5},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-4,q.y-5},(TNXY){q.x-4,q.y-3},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+4,q.y-5},(TNXY){q.x+4,q.y-3},0,mg);
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-2,q.y-1},(TNXY){q.x,q.y+1},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+2,q.y-1},(TNXY){q.x,q.y+1},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x,q.y+1},(TNXY){q.x,q.y+4},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-2,q.y+1},(TNXY){q.x+2,q.y+1},0,mg);break;
+    case 3: /* 检查站：八角停字牌轮廓+中心点 */
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-2,q.y-4},(TNXY){q.x+2,q.y-4},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+2,q.y-4},(TNXY){q.x+4,q.y-2},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+4,q.y-2},(TNXY){q.x+4,q.y+2},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+4,q.y+2},(TNXY){q.x+2,q.y+4},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+2,q.y+4},(TNXY){q.x-2,q.y+4},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-2,q.y+4},(TNXY){q.x-4,q.y+2},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-4,q.y+2},(TNXY){q.x-4,q.y-2},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-4,q.y-2},(TNXY){q.x-2,q.y-4},0,mg);
+     pixel(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,1,mg);break;
+    case 4: /* 隧道：半圆拱+内拱+双腿（tsin/tcos 为 Q14） */
+     for(int d=-90;d<=90;d+=15){int ax=q.x+5*tsin((unsigned)d)/16384,ay=q.y-5*tcos((unsigned)d)/16384;pixel(f->map,TN_MAP_W,TN_MAP_H,ax,ay,0,mg);}
+     for(int d=-80;d<=80;d+=20){int ax=q.x+3*tsin((unsigned)d)/16384,ay=q.y-3*tcos((unsigned)d)/16384+1;pixel(f->map,TN_MAP_W,TN_MAP_H,ax,ay,0,mg);}
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-5,q.y},(TNXY){q.x-5,q.y+4},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+5,q.y},(TNXY){q.x+5,q.y+4},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-5,q.y+4},(TNXY){q.x+5,q.y+4},0,mg);break;
+    case 5: /* 渡口：船体+客舱+水波纹 */
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-4,q.y+1},(TNXY){q.x+4,q.y+1},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-4,q.y+1},(TNXY){q.x,q.y+3},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x,q.y+3},(TNXY){q.x+4,q.y+1},0,mg);
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-2,q.y-3},(TNXY){q.x+2,q.y-3},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+2,q.y-3},(TNXY){q.x+2,q.y-1},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+2,q.y-1},(TNXY){q.x-2,q.y-1},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-2,q.y-1},(TNXY){q.x-2,q.y-3},0,mg);
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-5,q.y+5},(TNXY){q.x-3,q.y+5},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+3,q.y+5},(TNXY){q.x+5,q.y+5},0,mg);break;
+    case 6: /* 警示：三角牌+叹号（区别于事件的空心三角） */
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x,q.y-5},(TNXY){q.x+5,q.y+3},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+5,q.y+3},(TNXY){q.x-5,q.y+3},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-5,q.y+3},(TNXY){q.x,q.y-5},0,mg);
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x,q.y-2},(TNXY){q.x,q.y},0,mg);pixel(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y+2,0,mg);break;
+    case 7: /* 弯道：急转箭头（向上转） */
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+4,q.y+4},(TNXY){q.x-3,q.y+4},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-3,q.y+4},(TNXY){q.x-3,q.y-3},0,mg);
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-5,q.y-1},(TNXY){q.x-3,q.y-3},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-3,q.y-3},(TNXY){q.x-1,q.y-1},0,mg);break;
+    case 8: /* 窄路：内收车道线+封头 */
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-5,q.y-5},(TNXY){q.x-2,q.y+5},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+5,q.y-5},(TNXY){q.x+2,q.y+5},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-5,q.y-5},(TNXY){q.x+5,q.y-5},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-2,q.y+5},(TNXY){q.x+2,q.y+5},0,mg);break;
+    case 9: /* 陡坡：斜线+底线+顶部箭头 */
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-5,q.y+4},(TNXY){q.x+4,q.y-4},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-5,q.y+4},(TNXY){q.x-1,q.y+4},0,mg);
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+4,q.y-4},(TNXY){q.x+1,q.y-4},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+4,q.y-4},(TNXY){q.x+4,q.y-1},0,mg);break;
+    case 10: /* 铁路道口：斜交叉架+立杆 */
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-4,q.y-5},(TNXY){q.x+4,q.y-1},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-4,q.y-1},(TNXY){q.x+4,q.y-5},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x,q.y+1},(TNXY){q.x,q.y+4},0,mg);break;
+    case 11: /* 村庄：双屋天际线 */
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-5,q.y+1},(TNXY){q.x-5,q.y+4},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-5,q.y+4},(TNXY){q.x-2,q.y+4},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-2,q.y+1},(TNXY){q.x-2,q.y+4},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-5,q.y+1},(TNXY){q.x-3,q.y-1},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-3,q.y-1},(TNXY){q.x-2,q.y+1},0,mg);
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x,q.y+2},(TNXY){q.x,q.y+4},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+3,q.y+2},(TNXY){q.x+3,q.y+4},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x,q.y+4},(TNXY){q.x+3,q.y+4},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x,q.y+2},(TNXY){q.x+1,q.y},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+1,q.y},(TNXY){q.x+3,q.y+2},0,mg);break;
+    default: /* 其他：空心菱形 */
+     line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x,q.y-4},(TNXY){q.x+4,q.y},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x+4,q.y},(TNXY){q.x,q.y+4},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x,q.y+4},(TNXY){q.x-4,q.y},0,mg);line(f->map,TN_MAP_W,TN_MAP_H,(TNXY){q.x-4,q.y},(TNXY){q.x,q.y-4},0,mg);break;
+   }
   }else{ /* 其他电子眼：微环 */
    radius=2;ring(f->map,TN_MAP_W,TN_MAP_H,q.x,q.y,2,mg);
   }
@@ -170,7 +212,10 @@ static void badge_draw(TNViewFrame *f,bool invert){
  memset(f->names,0,sizeof f->names);
  memset(f->icon,0,sizeof f->icon);memset(f->map,0,sizeof f->map);
  TNVisual *v=&f->visual;uint8_t gray=v->stale?100:255;
- for(unsigned i=1;i<v->icon_count;i++)line(f->icon,TN_ICON_W,TN_ICON_H,v->icon[i-1],v->icon[i],1,gray);
+ /* icon 模板支持抬笔：相邻点任一 x>=1000 时跳过该段（多笔画 pictogram，
+  * 如加油枪的泵体/显示屏/软管、收费站的 ¥）。 */
+ for(unsigned i=1;i<v->icon_count;i++)
+  if(v->icon[i-1].x<100&&v->icon[i].x<100)line(f->icon,TN_ICON_W,TN_ICON_H,v->icon[i-1],v->icon[i],1,gray); /* 模板坐标≤56；变换后哨兵=520 */
  int cx=(v->nav_pos.x-406)*296/112,cy=(v->nav_pos.y-10)*148/112;
  int c=tcos(v->heading),s=tsin(v->heading),rm=25;
  TNXY tp[TN_POINTS_MAX];

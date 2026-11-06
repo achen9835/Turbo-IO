@@ -121,28 +121,28 @@
    "offset": "0x4f5324",
    "address": "0x10685324",
    "before": "f0b585b0",
-   "after": "1ff24cbc",
+   "after": "1ff28abc",
    "role": "Entry trampoline vm_event",
    "targetSymbol": "m8_hook_vm_event",
-   "targetOffset": "0x1b090"
+   "targetOffset": "0x1b10c"
   },
   {
    "offset": "0x4f5de2",
    "address": "0x10685de2",
    "before": "0628a8bf",
-   "after": "2af21bbf",
+   "after": "2bf299bc",
    "role": "Menu replacement frame_start",
    "targetSymbol": "m8_hook_frame_start",
-   "targetOffset": "0x270ec"
+   "targetOffset": "0x27be8"
   },
   {
    "offset": "0x4f5df8",
    "address": "0x10685df8",
    "before": "1e22a0f10f03",
-   "after": "2af214bf00bf",
+   "after": "2bf292bc00bf",
    "role": "Menu replacement frame_index",
    "targetSymbol": "m8_hook_frame_index",
-   "targetOffset": "0x270f4"
+   "targetOffset": "0x27bf0"
   },
   {
    "offset": "0x4f69c4",
@@ -193,10 +193,10 @@
    "offset": "0x4f3278",
    "address": "0x10683278",
    "before": "fc204ef043fe",
-   "after": "2df286fc00bf",
+   "after": "2ef204fa00bf",
    "role": "284-byte menu allocation",
    "targetSymbol": "port_allocate_menu",
-   "targetOffset": "0x27058"
+   "targetOffset": "0x27b54"
   },
   {
    "offset": "0x4f32a2",
@@ -218,10 +218,10 @@
    "offset": "0x3f3be6",
    "address": "0x10583be6",
    "before": "00241f48204b84610360",
-   "after": "2df30bf800bf00bf00bf",
+   "after": "2df389fd00bf00bf00bf",
    "role": "File callback registration",
    "targetSymbol": "stream_register_shim",
-   "targetOffset": "0x270d0"
+   "targetOffset": "0x27bcc"
   },
   {
    "offset": "0x402894",
@@ -243,55 +243,55 @@
    "offset": "0x3f5ffc",
    "address": "0x10585ffc",
    "before": "98b50b4b",
-   "after": "2af368be",
+   "after": "2bf3e6bb",
    "role": "ce_serial_destroy_entry",
    "targetSymbol": "ce_serial_destroy_entry",
-   "targetOffset": "0x271a0"
+   "targetOffset": "0x27c9c"
   },
   {
    "offset": "0x3f741c",
    "address": "0x1058741c",
    "before": "2de9f043",
-   "after": "29f374bc",
+   "after": "2af3f2b9",
    "role": "ce_head_notify_entry",
    "targetSymbol": "ce_head_notify_entry",
-   "targetOffset": "0x271d8"
+   "targetOffset": "0x27cd4"
   },
   {
    "offset": "0x35a134",
    "address": "0x104ea134",
    "before": "b0b5204a",
-   "after": "c6f380bd",
+   "after": "c7f3feba",
    "role": "ce_serial_start_entry",
    "targetSymbol": "ce_serial_start_entry",
-   "targetOffset": "0x27108"
+   "targetOffset": "0x27c04"
   },
   {
    "offset": "0x35a1d8",
    "address": "0x104ea1d8",
    "before": "b0b5204a",
-   "after": "c6f334bd",
+   "after": "c7f3b2ba",
    "role": "ce_serial_stop_entry",
    "targetSymbol": "ce_serial_stop_entry",
-   "targetOffset": "0x27114"
+   "targetOffset": "0x27c10"
   },
   {
    "offset": "0x4028a2",
    "address": "0x105928a2",
    "before": "a069a661",
-   "after": "1ef3e1f9",
+   "after": "1ef35fff",
    "role": "ce_serial_publish_entry",
    "targetSymbol": "ce_serial_publish_entry",
-   "targetOffset": "0x27138"
+   "targetOffset": "0x27c34"
   },
   {
    "offset": "0x402364",
    "address": "0x10592364",
    "before": "a069a361",
-   "after": "1ef39afc",
+   "after": "1ff318fa",
    "role": "ce_serial_retire_entry",
    "targetSymbol": "ce_serial_retire_entry",
-   "targetOffset": "0x2716c"
+   "targetOffset": "0x27c68"
   },
   {
    "offset": "0x404eb2",
@@ -306,67 +306,67 @@
    "offset": "0x35923c",
    "address": "0x104e923c",
    "before": "b0b590b0",
-   "after": "c7f378bc",
+   "after": "c8f3f6b9",
    "role": "ti_rpmsg_entry",
    "targetSymbol": "ti_rpmsg_entry",
-   "targetOffset": "0x27000"
+   "targetOffset": "0x27afc"
   },
   {
    "offset": "0x35a29c",
    "address": "0x104ea29c",
    "before": "b0b51748",
-   "after": "c1f344b9",
+   "after": "c1f3c2be",
    "role": "ti_foreign_start",
    "targetSymbol": "ti_foreign_start",
-   "targetOffset": "0x219f8"
+   "targetOffset": "0x224f4"
   },
   {
    "offset": "0x35a308",
    "address": "0x104ea308",
    "before": "b0b51748",
-   "after": "c1f35cb9",
+   "after": "c1f3dabe",
    "role": "ti_foreign_stop",
    "targetSymbol": "ti_foreign_stop",
-   "targetOffset": "0x21a94"
+   "targetOffset": "0x22590"
   },
   {
    "offset": "0x3f916e",
    "address": "0x1058916e",
    "before": "b0b50446",
-   "after": "23f3a3b8",
+   "after": "23f321be",
    "role": "tdc_hook_source",
    "targetSymbol": "tdc_hook_source",
-   "targetOffset": "0x22788"
+   "targetOffset": "0x23284"
   },
   {
    "offset": "0x57bd9c",
    "address": "0x1070bd9c",
    "before": "2de9f041",
-   "after": "a0f138bd",
+   "after": "a1f1b6ba",
    "role": "tdc_hook_serialize",
    "targetSymbol": "tdc_hook_serialize",
-   "targetOffset": "0x22ce0"
+   "targetOffset": "0x237dc"
   },
   {
    "offset": "0x3fa1c4",
    "address": "0x1058a1c4",
    "before": "b0b50024",
-   "after": "22f3d5bb",
+   "after": "23f353b9",
    "role": "tdc_hook_message",
    "targetSymbol": "tdc_hook_message",
-   "targetOffset": "0x22e42"
+   "targetOffset": "0x2393e"
   }
  ],
  "moduleVA": "0x10889b30",
- "moduleBytes": 227280,
- "moduleSHA256": "ea89345abf5fae381cad73cafea0db370a020952fc9112155bee98bdccf8b0d6",
+ "moduleBytes": 230672,
+ "moduleSHA256": "e1a515e9c2c905d8e2b5e70dc430f76f101982a0b48e7e5cdebe1c05cf377d71",
  "stockAP": "af701a6525fbf703854b3d63e757734546c20bdb5d50e246867dc6a0565713ae",
- "APBytes": 7541512,
+ "APBytes": 7544904,
  "archive": {
   "name": "StrixOS-1.0.5.12-TurboIO-TAP3-CANDIDATE-NOT-APPROVED.zip",
-  "sha256": "059a98e39b47903c2983ebe3ae9e4ed6cad5b011c033353c6c627e0766b95f65"
+  "sha256": "155655d70a4e90eebc46129015b06f0b32e213256c661898068fe92dc84f4a4d"
  },
- "APSHA256": "8595e2c1ff63c3d7045e022f776348a3759b0e5f439f69602137881e8da03870",
+ "APSHA256": "0c125de56947592f5011de5554d29da55b977de40f559b4c4dc2293c40853202",
  "stockZIP": "b7bfd3cc73528e3e9995ad227dc877c8334d43dc8051436e2d2ccff2ca0b4133",
  "sources": [
   {
@@ -619,7 +619,7 @@
   },
   {
    "path": "src/navigation-runtime-v1/nav_runtime.c",
-   "sha256": "a76c8b63c3a853b17bb1f7d54f14539dafef6da5e085aaf543ff7df8f163c212"
+   "sha256": "698a05d9b49a9fefdd82184847b13c6a7b0e512fde17ed62f7aaac20904f8125"
   },
   {
    "path": "src/navigation-runtime-v1/nav_service.c",
@@ -627,11 +627,11 @@
   },
   {
    "path": "src/navigation-runtime-v1/nav_view.c",
-   "sha256": "6e7b6697d68c470cbc19e7a87dc356e951fabf90a970dfffe48a5d33efdcb060"
+   "sha256": "785f917e9e84cf5bd08658e98db1f083f3d029c4cfd4438e722a599b9df8f1fb"
   },
   {
    "path": "src/navigation-runtime-v1/nav_visual.c",
-   "sha256": "c0ceb85473b8a55794584181b10e3831b3073ade61b68e4c12f7386ab88e73cb"
+   "sha256": "f763530a096852d6065c0daf38ed307d097d33567073f462ea67cb7f3a1f706b"
   },
   {
    "path": "src/weread-v1/reader.c",

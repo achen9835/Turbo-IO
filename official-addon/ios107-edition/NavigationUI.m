@@ -135,6 +135,8 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property NSInteger roadSpeedLimit; /* 路段限速 km/h；-1 = 高德尚未上报 */
 @property (copy) NSArray<NSNumber *> *lightDistances; /* 逐盏闯红灯相机距离，近→远 */
 @property (copy) NSArray<NSDictionary *> *cameraList; /* 沿路全部相机（kind/limit/m 字典），近→远 */
+@property (copy) NSArray<NSDictionary *> *serviceAreas; /* 服务区/收费站/检查站（高德 type 0/1/2） */
+@property (copy) NSArray<NSDictionary *> *trafficFacilities; /* 警示类设施（已映射为本方 kind 4..12） */
 @property NSTimeInterval lastSpeedSampleAt; /* 模拟车速差分采样时刻（systemUptime） */
 @property NSUInteger lastRemainingMetersForSpeed; /* 模拟车速差分上一次剩余里程 */
 @property double navLat,navLon;
@@ -826,7 +828,7 @@ static NSMutableArray *TIONavAheadCoords(NSArray<AMapNaviSegment *> *segments,NS
  }
  if(!any)return @[];NSMutableArray *levels=[NSMutableArray arrayWithCapacity:24];for(unsigned i=0;i<24;i++)[levels addObject:@(best[i])];return levels;
 }
-- (void)clearSceneExtensionState{self.trafficBarLevels=nil;self.cameraKind=0;self.cameraLimit=-1;self.cameraMeters=65535;self.eventKind=0;self.eventMeters=65535;self.lightMeters=65535;self.lightDistances=nil;self.cameraList=nil;self.roadSpeedLimit=-1;self.lastSpeedSampleAt=0;self.lastRemainingMetersForSpeed=0;}
+- (void)clearSceneExtensionState{self.trafficBarLevels=nil;self.cameraKind=0;self.cameraLimit=-1;self.cameraMeters=65535;self.eventKind=0;self.eventMeters=65535;self.lightMeters=65535;self.lightDistances=nil;self.cameraList=nil;self.serviceAreas=nil;self.trafficFacilities=nil;self.roadSpeedLimit=-1;self.lastSpeedSampleAt=0;self.lastRemainingMetersForSpeed=0;}
 // TNV is a full-scene replace: extension keys must ride EVERY navigating frame,
 // otherwise the 1 Hz naviInfo frame wipes the bar/alert lines between callbacks.
 - (void)applySceneExtensions:(NSMutableDictionary *)frame{
@@ -836,6 +838,10 @@ static NSMutableArray *TIONavAheadCoords(NSArray<AMapNaviSegment *> *segments,NS
  if(self.roadSpeedLimit>=0)frame[@"roadLimit"]=@(self.roadSpeedLimit); /* 0 = 高德明确回报本段无限速；常驻徽章据此隐藏 */
  else if(self.simulated&&self.cameraKind==1&&self.cameraLimit>0&&self.cameraMeters<=1000)frame[@"roadLimit"]=@(self.cameraLimit); /* 模拟导航无路段限速回调：用 1km 内测速相机限速顶位，验收时徽章/超速警报可见 */
  if(self.cameraList.count)frame[@"camList"]=self.cameraList; /* 沿路电子眼全量，钉在路网对应位置 */
+ if(self.serviceAreas.count||self.trafficFacilities.count){NSMutableArray *all=[NSMutableArray arrayWithArray:self.serviceAreas?:@[]];[all addObjectsFromArray:self.trafficFacilities?:@[]];
+  [all sortUsingComparator:^NSComparisonResult(NSDictionary *a,NSDictionary *b){return [a[@"m"] compare:b[@"m"]];}]; /* 近→远 */
+  if(all.count>12)[all removeObjectsInRange:NSMakeRange(12,all.count-12)];
+  frame[@"facList"]=all;} /* 特殊设施全量：服务区/收费站/检查站/隧道/渡口/警示… */
  if(self.cameraKind){NSMutableDictionary *camera=[@{@"kind":@(self.cameraKind),@"limit":@(self.cameraLimit)} mutableCopy];if(self.cameraMeters<65535)camera[@"m"]=@(self.cameraMeters);frame[@"camera"]=camera;}
  if(self.eventKind){NSMutableDictionary *event=[@{@"kind":@(self.eventKind)} mutableCopy];if(self.eventMeters<65535)event[@"m"]=@(self.eventMeters);frame[@"event"]=event;}}
 - (void)offerSceneRefresh{if(![self.display[@"phase"] isEqual:@"navigating"])return;NSMutableDictionary *f=[self.display mutableCopy];[self applySceneExtensions:f];[self setFrame:f];}
@@ -882,6 +888,29 @@ self.roadLocation=@[@(loc.coordinate.latitude),@(loc.coordinate.longitude)];if(l
   if(self.navLat!=0||self.navLon!=0){double dlat=it.coord.latitude-self.navLat,dlon=it.coord.longitude-self.navLon,d=hypot(dlat*111000,dlon*111000*cos(self.navLat*M_PI/180));dm=d>65534?65534:(NSUInteger)d;}
   if(!found||dm<meters){found=YES;kind=k;meters=dm;}}}
  self.eventKind=found?kind:0;self.eventMeters=meters;[self offerSceneRefresh];});}
+- (void)driveManager:(AMapNaviDriveManager *)m updateServiceAreaInfos:(NSArray<AMapNaviServiceAreaInfo *> *)infos{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active)return;
+ /* 服务区/收费站/检查站（type 0/1/2 → kind 1/2/3，since 5.0.0 回调） */
+ NSMutableArray *a=[NSMutableArray array];
+ for(AMapNaviServiceAreaInfo *s in infos){if(s.remainDistance<0)continue;
+  [a addObject:@{@"kind":@(s.type+1),@"m":@(s.remainDistance>65534?65534:s.remainDistance)}];}
+ self.serviceAreas=a.count?a:nil;[self offerSceneRefresh];});}
+- (void)driveManager:(AMapNaviDriveManager *)m updateTrafficFacilities:(NSArray<AMapNaviTrafficFacilityInfo *> *)facs{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active)return;
+ /* 警示类道路设施（boardcastType → kind 4..12）。相机类（4/5/28/29/92/93/94）由
+  * updateCameraInfos 走电子眼链路呈现，这里跳过避免双标。 */
+ NSMutableArray *a=[NSMutableArray array];
+ for(AMapNaviTrafficFacilityInfo *f in facs){if(f.distance<0)continue;long k;
+  switch(f.boardcastType){
+   case 58:k=4;break;case 59:k=5;break; /* 隧道/渡口 */
+   case 6:case 14:case 53:case 100:k=6;break; /* 事故易发/违章高发 */
+   case 22:case 23:case 24:case 25:k=7;break; /* 急弯/反向弯/连续弯 */
+   case 21:case 36:case 37:case 38:k=8;break; /* 窄路/窄桥/变窄 */
+   case 47:case 48:k=9;break; /* 陡坡 */
+   case 12:case 19:case 20:k=10;break; /* 铁路道口 */
+   case 16:case 18:k=11;break; /* 村庄/学校 */
+   case 4:case 5:case 28:case 29:case 92:case 93:case 94:continue; /* 相机类走电子眼 */
+   default:k=12;break;} /* 落石/横风/过水/绕行/慢行/限高等其他警示 */
+  [a addObject:@{@"kind":@(k),@"m":@(f.distance>65534?65534:f.distance)}];}
+ self.trafficFacilities=a.count?a:nil;[self offerSceneRefresh];});}
 #endif
 #include "NavigationDisplayHUD.inc"
 #include "NavigationWorkspace.inc"

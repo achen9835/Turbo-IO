@@ -70,7 +70,9 @@ int main(void){
    assert(tn_view_map_tick(&mv,2800));assert(mv.badge_half==0); /* 不再闪烁 */
    nav.speed_kmh=42;nav.cam_count=2;nav.cam_kind[0]=1;nav.cam_limit[0]=60;nav.cam_m[0]=60;nav.cam_kind[1]=3;nav.cam_m[1]=150;
    assert(tn_view_update(&mv,&nav,false));assert(tn_view_map_tick(&mv,3000)); /* EXT5 沿路相机全量+画布门：不崩溃即通过，像素由 host 渲染人工核对 */
-   nav.cam_count=0;}
+   nav.cam_count=0;nav.fac_count=3;nav.fac_kind[0]=1;nav.fac_m[0]=120;nav.fac_kind[1]=2;nav.fac_m[1]=200;nav.fac_kind[2]=4;nav.fac_m[2]=260; /* 服务区/收费站/隧道 */
+   assert(tn_view_update(&mv,&nav,false));assert(tn_view_map_tick(&mv,3200)); /* EXT6 特殊设施：不崩溃即通过，像素由 host 渲染人工核对 */
+   nav.fac_count=0;}
   nav.camera_m=0;nav.event_m=700;nav.light_m[0]=65535;
   assert(tn_view_update(&mv,&nav,false));assert(tn_view_close(&mv));
  }

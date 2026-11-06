@@ -121,6 +121,7 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  NSMutableArray *bars=[NSMutableArray new];for(unsigned i=0;i<24;i++)[bars addObject:@(i<8?1:(i<16?2:3))];out[@"barLevels"]=bars;
  out[@"camera"]=@{@"kind":@(TN_CAMERA_SPEED),@"limit":@60,@"m":@50};out[@"event"]=@{@"kind":@(TN_EVENT_ACCIDENT),@"m":@90};
  out[@"camList"]=@[@{@"kind":@1,@"limit":@60,@"m":@50},@{@"kind":@3,@"limit":@0,@"m":@140},@{@"kind":@4,@"limit":@80,@"m":@260}]; /* 沿路电子眼全量自测：测速/监控/区间 */
+ out[@"facList"]=@[@{@"kind":@2,@"m":@40},@{@"kind":@1,@"m":@160},@{@"kind":@4,@"m":@260}]; /* 特殊设施自测：收费站/服务区/隧道 */
  return out;
 }
 - (void)clearMarkerTest{_markerScene=nil;_markerPose=nil;_scene=nil;_scene2=nil;_sceneMin=nil;_origin=nil;_segment=nil;_sceneAt=0;}

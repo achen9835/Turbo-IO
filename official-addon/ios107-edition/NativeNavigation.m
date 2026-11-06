@@ -60,7 +60,7 @@ NSDictionary *TNVNormalizeCoordinates(NSArray *coords){
 }
 BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
  if(!s||![d isKindOfClass:NSDictionary.class]||![d[@"phase"] isEqual:@"navigating"]||!Number(d[@"meters"],1000000)||!Number(d[@"remainingMeters"],10000000)||!Number(d[@"remainingSeconds"],604800)||!Number(d[@"icon"],255))return NO;
- memset(s,0,sizeof *s);s->lights=255;s->camera_limit=-1;s->camera_m=65535;s->event_m=65535;s->lights_m=65535;s->speed_kmh=65535;s->road_limit=255; /* absent extension data must not encode as real zeros */NSInteger i=[d[@"icon"] integerValue];switch(i){case 2:s->icon=TN_LEFT;break;case 3:s->icon=TN_RIGHT;break;case 4:s->icon=TN_SLIGHT_LEFT;break;case 5:s->icon=TN_SLIGHT_RIGHT;break;case 6:s->icon=TN_SHARP_LEFT;break;case 7:s->icon=TN_SHARP_RIGHT;break;case 8:case 19:s->icon=TN_UTURN;break;case 9:case 20:s->icon=TN_STRAIGHT;break;case 11:case 12:case 17:case 18:s->icon=TN_ROUNDABOUT;break;case 15:s->icon=TN_ARRIVE;break;default:s->icon=TN_UNKNOWN;}
+ memset(s,0,sizeof *s);s->lights=255;s->camera_limit=-1;s->camera_m=65535;s->event_m=65535;s->lights_m=65535;s->speed_kmh=65535;s->road_limit=255; /* absent extension data must not encode as real zeros */NSInteger i=[d[@"icon"] integerValue];switch(i){case 2:s->icon=TN_LEFT;break;case 3:s->icon=TN_RIGHT;break;case 4:s->icon=TN_SLIGHT_LEFT;break;case 5:s->icon=TN_SLIGHT_RIGHT;break;case 6:s->icon=TN_SHARP_LEFT;break;case 7:s->icon=TN_SHARP_RIGHT;break;case 8:case 19:s->icon=TN_UTURN;break;case 9:case 20:s->icon=TN_STRAIGHT;break;case 11:case 12:case 17:case 18:s->icon=TN_ROUNDABOUT;break;case 13:s->icon=TN_SERVICE;break;case 14:s->icon=TN_TOLL;break;case 16:s->icon=TN_TUNNEL;break;case 15:s->icon=TN_ARRIVE;break;default:s->icon=TN_UNKNOWN;}
  s->mode=always?TN_ALWAYS:TN_SMART;s->distance_m=[d[@"meters"] unsignedIntValue];s->remaining_m=[d[@"remainingMeters"] unsignedIntValue];s->remaining_s=[d[@"remainingSeconds"] unsignedIntValue];Clip(s->road,sizeof s->road,d[@"road"]);Clip(s->turn,sizeof s->turn,d[@"turn"]);
  NSArray *points=d[@"navPoints"];if(points){if(![points isKindOfClass:NSArray.class]||points.count>32)return NO;for(id pair in points){if(![pair isKindOfClass:NSArray.class]||[pair count]!=2||!Number(pair[0],1023)||!Number(pair[1],1023))return NO;s->points[s->point_count++]=(TNPoint){[pair[0] unsignedIntValue],[pair[1] unsignedIntValue]};}}
  if(s->point_count)s->position=s->points[0];if(Number(d[@"navHeading"],359))s->heading=[d[@"navHeading"] unsignedIntValue];
@@ -79,6 +79,12 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
    if(m){if(![m isKindOfClass:NSNumber.class])return NO;long v=[m longValue];if(v<0||v>65534)return NO;}
    s->cam_kind[n]=(uint8_t)[k longValue];s->cam_limit[n]=(uint8_t)(lim?[lim longValue]:0);s->cam_m[n]=(uint16_t)(m?[m longValue]:65535);n++;}
   s->cam_count=(uint8_t)n;}
+ id fl=d[@"facList"];if(fl){if(![fl isKindOfClass:NSArray.class]||[fl count]>TN_FAC_MAX)return NO;unsigned n=0; /* 特殊设施全量（近→远）：服务区/收费站/检查站/隧道/渡口/警示… */
+  for(id e in fl){if(![e isKindOfClass:NSDictionary.class])return NO;id k=e[@"kind"],m=e[@"m"];
+   if(![k isKindOfClass:NSNumber.class]||[k longValue]<1||[k longValue]>12)return NO;
+   if(m){if(![m isKindOfClass:NSNumber.class])return NO;long v=[m longValue];if(v<0||v>65534)return NO;}
+   s->fac_kind[n]=(uint8_t)[k longValue];s->fac_m[n]=(uint16_t)(m?[m longValue]:65535);n++;}
+  s->fac_count=(uint8_t)n;}
  id bar=d[@"barLevels"];if(bar){if(![bar isKindOfClass:NSArray.class]||[bar count]>TN_BAR_MAX)return NO;
   unsigned n=0;for(id level in bar){if(![level isKindOfClass:NSNumber.class])return NO;long x=[level longValue];if(x<0||x>4)return NO;s->bar[n++]=(uint8_t)x;}s->bar_count=(uint8_t)n;}
  id cam=d[@"camera"];if(cam){if(![cam isKindOfClass:NSDictionary.class])return NO;id k=cam[@"kind"];id lim=cam[@"limit"];id mtr=cam[@"m"];

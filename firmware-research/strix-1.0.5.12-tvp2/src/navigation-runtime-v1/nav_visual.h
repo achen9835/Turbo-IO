@@ -5,7 +5,7 @@
  * a stack temporary. Two visual slots permit idle-checked swap by the adapter. */
 typedef struct {int32_t x,y;} TNXY;
 typedef struct {
- TNXY icon[16],route[TN_POINTS_MAX],position[4];
+ TNXY icon[32],route[TN_POINTS_MAX],position[4]; /* icon 32：设施 pictogram 多笔画+抬笔哨兵最长 30 点 */
  unsigned icon_count,route_count;
  char distance[24],turn[TN_TURN_MAX+1],road[TN_ROAD_MAX+1],summary[48],status[64];
  bool stale;
@@ -20,6 +20,7 @@ typedef struct {
  int16_t camera_limit;uint16_t camera_m,event_m,lights_m,light_m[8],speed_kmh;
  uint8_t road_limit; /* 255 = not reported, 0 = no speed limit, else km/h */
  uint8_t cam_count,cam_kind[TN_CAM_MAX],cam_limit[TN_CAM_MAX];uint16_t cam_m[TN_CAM_MAX];
+ uint8_t fac_count,fac_kind[TN_FAC_MAX];uint16_t fac_m[TN_FAC_MAX];
  char speed[8];
 } TNVisual;
 bool tn_visual(const TNScene *,bool stale,TNVisual *);
