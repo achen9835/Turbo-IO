@@ -18,6 +18,8 @@ typedef struct {
  uint8_t bar_count;uint8_t bar[TN_BAR_MAX];
  uint8_t lights,light_count,camera_kind,event_kind;
  int16_t camera_limit;uint16_t camera_m,event_m,lights_m,light_m[8],speed_kmh;
+ uint8_t road_limit; /* 255 = not reported, 0 = no speed limit, else km/h */
+ uint8_t cam_count,cam_kind[TN_CAM_MAX],cam_limit[TN_CAM_MAX];uint16_t cam_m[TN_CAM_MAX];
  char speed[8];
 } TNVisual;
 bool tn_visual(const TNScene *,bool stale,TNVisual *);

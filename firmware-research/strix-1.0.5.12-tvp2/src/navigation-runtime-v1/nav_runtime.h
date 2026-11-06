@@ -42,6 +42,9 @@ typedef struct { uint16_t x,y; } TNPoint; /* normalized 0..1023, not GPS coordin
 #define TN_SCENE_EXT 36u
 #define TN_SCENE_EXT2 53u /* + u8 light_count, u16 light_m[8]: per-light distances */
 #define TN_SCENE_EXT3 55u /* TN_SCENE_EXT2 + u16 speed_kmh */
+#define TN_SCENE_EXT4 57u /* TN_SCENE_EXT3 + u8 road_limit (0 = no limit) */
+#define TN_CAM_MAX 16u
+#define TN_SCENE_EXT5 (TN_SCENE_EXT4+1u+4u*TN_CAM_MAX) /* + u8 cam_count, cam[16]: u8 kind,u8 limit,u16 m */
 typedef struct {
  uint32_t distance_m,remaining_m,remaining_s;
  uint16_t heading;TNPoint position;
@@ -50,14 +53,18 @@ typedef struct {
  TNPoint points[TN_POINTS_MAX];
  /* Wire tail layout: u8 lights, u8 bar_count, u8 camera_kind, u8 event_kind,
   * i16 camera_limit, u16 camera_m, u16 event_m, u8 bar[24], u16 lights_m
-  * (nearest-light distance; formerly 2 reserved zero bytes). Absent tail
-  * means: lights=255, camera_limit=-1, camera_m/event_m/lights_m=65535,
-  * no bar/camera/event, speed unknown. */
+  * (nearest-light distance; formerly 2 reserved zero bytes), then EXT2
+  * u8 light_count + u16 light_m[8], EXT3 u16 speed_kmh, EXT4 u8 road_limit.
+  * Absent tail means: lights=255, camera_limit=-1, camera_m/event_m/lights_m
+  * =65535, no bar/camera/event, speed unknown, road limit unknown. */
  uint8_t bar_count;uint8_t bar[TN_BAR_MAX];
  uint8_t lights,camera_kind,event_kind;
  int16_t camera_limit;uint16_t camera_m,event_m,lights_m;
  uint8_t light_count;uint16_t light_m[8]; /* individual lights, nearest first */
  uint16_t speed_kmh; /* 65535 = not reported */
+ uint8_t road_limit; /* 255 = not reported, 0 = no speed limit, else km/h */
+ uint8_t cam_count,cam_kind[TN_CAM_MAX],cam_limit[TN_CAM_MAX]; /* kind 1..5, limit 0=none km/h */
+ uint16_t cam_m[TN_CAM_MAX]; /* cameras along the route, nearest first, metres */
 } TNScene;
 typedef struct {
  void *ctx;

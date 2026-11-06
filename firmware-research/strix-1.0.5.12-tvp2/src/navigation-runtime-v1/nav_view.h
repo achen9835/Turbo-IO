@@ -18,21 +18,26 @@ typedef struct {
 #define TN_ICON_H 64u
 #define TN_MAP_W TNR_W
 #define TN_MAP_H TNR_H
+#define TN_BADGE_W 30u /* road-speed-limit sign beside the speed readout */
+#define TN_BADGE_H 20u
 typedef struct {
  TNVisual visual;
  TNRLabelView names[TNR_MAX_LABELS];
  _Alignas(64) uint8_t icon[TN_ICON_W*TN_ICON_H];
  _Alignas(64) uint8_t map[TN_MAP_W*TN_MAP_H];
+ _Alignas(64) uint8_t badge[TN_BADGE_W*TN_BADGE_H];
 } TNViewFrame;
 typedef struct {
  TNRState map_state;uint32_t map_now;
  TNWidgets api;
- void *root,*icon,*map,*text[6],*map_text[TNR_MAX_LABELS];
+ void *root,*icon,*map,*badge,*text[6],*map_text[TNR_MAX_LABELS];
  TNViewFrame frames[2];
  char clocks[2][64];
  unsigned clock_bank;
  bool clock_shown;
  unsigned active;
+ uint8_t badge_half; /* overspeed blink: 0 = normal, else last (now/500)%2 + 1 */
+ uint8_t badge_shown; /* which frame's badge buffer the widget currently displays */
  bool open,retiring;
 } TNView;
 bool tn_view_open(TNView *,const TNWidgets *,void *parent,const TNScene *);

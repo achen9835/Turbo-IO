@@ -90,7 +90,8 @@ bool tn_visual(const TNScene *s,bool stale,TNVisual *v){
  v->bar_count=s->bar_count;memcpy(v->bar,s->bar,sizeof v->bar);
  v->lights=s->lights;v->light_count=s->light_count;v->camera_kind=s->camera_kind;v->event_kind=s->event_kind;
  v->camera_limit=s->camera_limit;v->camera_m=s->camera_m;v->event_m=s->event_m;v->lights_m=s->lights_m;
- for(unsigned i=0;i<8;i++)v->light_m[i]=s->light_m[i];v->speed_kmh=s->speed_kmh;
+ for(unsigned i=0;i<8;i++)v->light_m[i]=s->light_m[i];v->speed_kmh=s->speed_kmh;v->road_limit=s->road_limit;
+ v->cam_count=s->cam_count;for(unsigned i=0;i<TN_CAM_MAX;i++){v->cam_kind[i]=s->cam_kind[i];v->cam_limit[i]=s->cam_limit[i];v->cam_m[i]=s->cam_m[i];}
  if(s->speed_kmh!=65535){char *p=decimal(v->speed,s->speed_kmh>999?999:s->speed_kmh);append(p,"km/h");} /* "999km/h"+NUL fills speed[8] exactly */
  else v->speed[0]=0;
  tn_clock_text(v->status,0,0,stale);return true;

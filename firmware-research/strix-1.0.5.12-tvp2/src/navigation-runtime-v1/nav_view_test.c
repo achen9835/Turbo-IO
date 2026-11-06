@@ -2,29 +2,29 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
-typedef struct {bool busy;unsigned alloc,fail_at,destroyed,buffers,texts;uintptr_t objects[13];const uint8_t *pixels[2];const char *strings[10];int x[13],y[13],w[13],h[13],fonts[10];} Mock;
+typedef struct {bool busy;unsigned alloc,fail_at,destroyed,buffers,texts;uintptr_t objects[14];const uint8_t *pixels[8];const char *strings[10];int x[14],y[14],w[14],h[14],fonts[10];} Mock;
 static bool idle(void *p){return !((Mock *)p)->busy;}
-static void *create(void *p,void *parent){assert(parent);Mock *m=p;unsigned n=++m->alloc;if(n==m->fail_at)return NULL;assert(n<=13);return &m->objects[n-1];}
-static void *label(void *p,void *parent,unsigned size){assert(size>=16&&size<=32);Mock *m=p;void *o=create(p,parent);if(o){ptrdiff_t slot=(uintptr_t *)o-m->objects-3;assert(slot>=0&&slot<10);m->fonts[slot]=(int)size;}return o;}
-static void place(void *p,void *obj,int x,int y,int w,int h){Mock *m=p;assert(obj&&x>=0&&y>=0&&x+w<=540&&y+h<=180);ptrdiff_t slot=(uintptr_t *)obj-m->objects;assert(slot>=0&&slot<13);m->x[slot]=x;m->y[slot]=y;m->w[slot]=w;m->h[slot]=h;}
-static void buffer(void *p,void *obj,const uint8_t *bytes,unsigned w,unsigned h){assert(obj&&bytes);Mock *m=p;assert((w==64&&h==64)||(w==296&&h==148));m->pixels[m->buffers%2]=bytes;m->buffers++;}
-static void text(void *p,void *obj,const char *s){assert(obj&&s);Mock *m=p;ptrdiff_t slot=(uintptr_t *)obj-m->objects-3;assert(slot>=0&&slot<10);m->strings[slot]=s;m->texts++;}
+static void *create(void *p,void *parent){assert(parent);Mock *m=p;unsigned n=++m->alloc;if(n==m->fail_at)return NULL;assert(n<=14);return &m->objects[n-1];}
+static void *label(void *p,void *parent,unsigned size){assert(size>=16&&size<=32);Mock *m=p;void *o=create(p,parent);if(o){ptrdiff_t slot=(uintptr_t *)o-m->objects-4;assert(slot>=0&&slot<10);m->fonts[slot]=(int)size;}return o;}
+static void place(void *p,void *obj,int x,int y,int w,int h){Mock *m=p;assert(obj&&x>=0&&y>=0&&x+w<=540&&y+h<=180);ptrdiff_t slot=(uintptr_t *)obj-m->objects;assert(slot>=0&&slot<14);m->x[slot]=x;m->y[slot]=y;m->w[slot]=w;m->h[slot]=h;}
+static void buffer(void *p,void *obj,const uint8_t *bytes,unsigned w,unsigned h){assert(obj&&bytes);Mock *m=p;assert((w==64&&h==64)||(w==296&&h==148)||(w==TN_BADGE_W&&h==TN_BADGE_H));m->pixels[m->buffers%8]=bytes;m->buffers++;}
+static void text(void *p,void *obj,const char *s){assert(obj&&s);Mock *m=p;ptrdiff_t slot=(uintptr_t *)obj-m->objects-4;assert(slot>=0&&slot<10);m->strings[slot]=s;m->texts++;}
 static void visible(void *p,void *obj,bool yes){(void)p;(void)yes;assert(obj);}
 static void destroy(void *p,void *obj){assert(obj);((Mock *)p)->destroyed++;}
 static TNWidgets api(Mock *m){return (TNWidgets){m,idle,create,create,label,place,buffer,text,visible,destroy};}
 int main(void){
  TNScene s={.icon=TN_RIGHT,.distance_m=80,.point_count=3,.position={512,512},.heading=90};
  strcpy(s.road,"测试道路");strcpy(s.turn,"前方右转");s.points[0]=(TNPoint){512,1023};s.points[1]=(TNPoint){512,512};s.points[2]=(TNPoint){1023,512};
- for(unsigned fail=1;fail<=13;fail++){Mock m={.fail_at=fail};TNWidgets a=api(&m);TNView v={0};
+ for(unsigned fail=1;fail<=14;fail++){Mock m={.fail_at=fail};TNWidgets a=api(&m);TNView v={0};
   assert(!tn_view_open(&v,&a,&m,&s));assert(!v.open&&!v.root);assert(m.destroyed==(fail!=1));}
- Mock m={0};TNWidgets a=api(&m);TNView v={0};assert(tn_view_open(&v,&a,&m,&s));assert(m.alloc==13&&m.buffers==2&&m.texts==6);
- assert(m.fonts[0]==32&&m.fonts[1]==20&&m.fonts[5]==16);assert(m.x[3]==84&&m.w[3]==138&&m.x[7]==12&&m.y[7]==158);assert(m.x[2]==238&&m.w[2]==296);
+ Mock m={0};TNWidgets a=api(&m);TNView v={0};assert(tn_view_open(&v,&a,&m,&s));assert(m.alloc==14&&m.buffers==3&&m.texts==6);
+ assert(m.fonts[0]==32&&m.fonts[1]==20&&m.fonts[5]==16);assert(m.x[4]==84&&m.w[4]==138&&m.x[8]==12&&m.y[8]==158);assert(m.x[2]==238&&m.w[2]==296);
  assert(!strcmp(m.strings[0],"80 m"));const uint8_t *first=m.pixels[0];uint32_t original=tn_crc(first,64*64);
  assert(original!=tn_crc((const uint8_t[64*64]){0},64*64));
- m.busy=true;s.icon=TN_LEFT;s.distance_m=60;assert(!tn_view_update(&v,&s,false));assert(m.buffers==2&&tn_crc(first,64*64)==original);
- m.busy=false;assert(tn_view_update(&v,&s,false));assert(m.alloc==13&&m.pixels[0]!=first);assert(!strcmp(m.strings[0],"60 m"));
+ m.busy=true;s.icon=TN_LEFT;s.distance_m=60;assert(!tn_view_update(&v,&s,false));assert(m.buffers==3&&tn_crc(first,64*64)==original);
+ m.busy=false;assert(tn_view_update(&v,&s,false));assert(m.alloc==14&&m.pixels[(m.buffers-3)%8]!=first);assert(!strcmp(m.strings[0],"60 m"));
  for(unsigned i=0;i<1000;i++){s.icon=(uint8_t)(i%TN_ICON_COUNT);s.heading=(uint16_t)(i%360);s.distance_m=i;assert(tn_view_update(&v,&s,i%2));}
- assert(m.alloc==13);m.busy=true;assert(!tn_view_close(&v));assert(v.retiring&&m.destroyed==0);assert(!tn_view_update(&v,&s,false));
+ assert(m.alloc==14);m.busy=true;assert(!tn_view_close(&v));assert(v.retiring&&m.destroyed==0);assert(!tn_view_update(&v,&s,false));
  m.busy=false;assert(tn_view_close(&v)&&m.destroyed==1);assert(tn_view_close(&v)&&m.destroyed==1);
  Mock cm={0};TNWidgets ca=api(&cm);TNView cv={0};assert(tn_view_open(&cv,&ca,&cm,&s));
  int64_t epoch=946684800+23*3600+59*60;
@@ -33,7 +33,7 @@ int main(void){
  unsigned texts=cm.texts,buffers=cm.buffers;
  assert(tn_view_clock(&cv,epoch+1,epoch+120,false));assert(cm.texts==texts);
  cm.busy=true;assert(!tn_view_clock(&cv,epoch+60,epoch+120,false));assert(!memcmp(retained,retained_copy,64));
- cm.busy=false;assert(tn_view_clock(&cv,epoch+60,epoch+120,false));assert(cm.strings[4]!=retained&&cm.buffers==buffers&&cm.alloc==13);
+ cm.busy=false;assert(tn_view_clock(&cv,epoch+60,epoch+120,false));assert(cm.strings[4]!=retained&&cm.buffers==buffers&&cm.alloc==14);
  assert(tn_view_clock(&cv,epoch,epoch+120,true));assert(strstr(cm.strings[4],"过期"));
  const char *footer=cm.strings[4];char footer_copy[64];memcpy(footer_copy,footer,64);
  for(unsigned i=0;i<1000;i++){s.mode=i%2?TN_ALWAYS:TN_SMART;s.distance_m=i;assert(tn_view_update(&cv,&s,false));
@@ -57,8 +57,20 @@ int main(void){
   assert(tn_view_map(&mv,7,sc,sizeof sc,1000));assert(mm.buffers>before);
   assert(tn_view_map(&mv,8,pose,sizeof pose,1000));assert(mv.map_state.valid&&mv.map_state.located);
   nav.camera_kind=1;nav.camera_m=60;nav.camera_limit=60;nav.event_kind=1;nav.event_m=300;
-  nav.light_count=1;nav.light_m[0]=150;nav.speed_kmh=42;nav.bar_count=24;for(unsigned i=0;i<24;i++)nav.bar[i]=(uint8_t)(1+i%4);
-  assert(tn_view_update(&mv,&nav,false));assert(!strcmp(mm.strings[5],"42km/h"));assert(mm.buffers==6);
+  nav.light_count=1;nav.light_m[0]=150;nav.speed_kmh=42;nav.road_limit=60;nav.bar_count=24;for(unsigned i=0;i<24;i++)nav.bar[i]=(uint8_t)(1+i%4);
+  assert(tn_view_update(&mv,&nav,false));assert(!strcmp(mm.strings[5],"42km/h"));assert(mm.buffers==8);
+  {const uint8_t *badge=mm.pixels[(mm.buffers-1)%8];uint32_t ink=0;for(unsigned i=0;i<TN_BADGE_W*TN_BADGE_H;i++)ink+=badge[i];assert(ink>0); /* 常驻限速徽章：60 有墨 */
+   nav.road_limit=0;assert(tn_view_update(&mv,&nav,false));badge=mm.pixels[(mm.buffers-1)%8];ink=0;for(unsigned i=0;i<TN_BADGE_W*TN_BADGE_H;i++)ink+=badge[i];assert(ink==0); /* 0 = 本段无限速，徽章隐藏 */
+   nav.road_limit=255;assert(tn_view_update(&mv,&nav,false));badge=mm.pixels[(mm.buffers-1)%8];ink=0;for(unsigned i=0;i<TN_BADGE_W*TN_BADGE_H;i++)ink+=badge[i];assert(ink==0); /* 未上报也隐藏 */
+   nav.road_limit=60;nav.speed_kmh=80;assert(tn_view_update(&mv,&nav,false)); /* 超速 80>60 */
+   assert(tn_view_map_tick(&mv,1000));uint8_t phase_a[TN_BADGE_W*TN_BADGE_H];memcpy(phase_a,mv.frames[mv.badge_shown].badge,sizeof phase_a); /* 常显相位 */
+   assert(tn_view_map_tick(&mv,1600));assert(memcmp(mv.frames[mv.badge_shown].badge,phase_a,sizeof phase_a)!=0); /* 切到实心盘警报相位 */
+   assert(tn_view_map_tick(&mv,2100));assert(memcmp(mv.frames[mv.badge_shown].badge,phase_a,sizeof phase_a)==0); /* 闪回常显相位：双相闪烁成立 */
+   nav.speed_kmh=40;assert(tn_view_update(&mv,&nav,false)); /* 恢复常速，整帧重绘回常显 */
+   assert(tn_view_map_tick(&mv,2800));assert(mv.badge_half==0); /* 不再闪烁 */
+   nav.speed_kmh=42;nav.cam_count=2;nav.cam_kind[0]=1;nav.cam_limit[0]=60;nav.cam_m[0]=60;nav.cam_kind[1]=3;nav.cam_m[1]=150;
+   assert(tn_view_update(&mv,&nav,false));assert(tn_view_map_tick(&mv,3000)); /* EXT5 沿路相机全量+画布门：不崩溃即通过，像素由 host 渲染人工核对 */
+   nav.cam_count=0;}
   nav.camera_m=0;nav.event_m=700;nav.light_m[0]=65535;
   assert(tn_view_update(&mv,&nav,false));assert(tn_view_close(&mv));
  }
@@ -71,6 +83,6 @@ int main(void){
   ms.scenes[0].label_count=1;ms.scenes[0].labels[0].p=(TNRPoint){200,400};ms.scenes[0].labels[0].width=9;ms.scenes[0].labels[0].text[0]='A';TNRLabelView labels[TNR_MAX_LABELS];assert(tnr_labels(&ms,1000,labels)==0);
   ms.scenes[0].labels[0].p=(TNRPoint){400,0};assert(tnr_labels(&ms,1000,labels)==1);
  }
- printf("PASS 296x148 map-primary layout, 13 allocation failures, immediate vector present, 1000 updates, route-arc markers, label avoidance and speed/traffic overlays; view=%zu bytes. Mock widgets only.\n",sizeof(TNView));
+ printf("PASS 296x148 map-primary layout, 14 allocation failures, immediate vector present, 1000 updates, route-arc markers, label avoidance, road-limit badge and speed/traffic overlays; view=%zu bytes. Mock widgets only.\n",sizeof(TNView));
  return 0;
 }
