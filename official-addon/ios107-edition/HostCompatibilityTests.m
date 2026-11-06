@@ -10,7 +10,9 @@ int main(void){@autoreleasepool{
         assert(TIOHostImageMatches((const void *)&image,info));
         for(NSArray *other in pairs)if(![other isEqual:pair]){
             NSDictionary *otherInfo=@{@"CFBundleShortVersionString":other[0],@"CFBundleVersion":other[1]};
-            assert(!TIOHostImageMatches((const void *)&image,otherInfo));
+            /* 076ee87 起身份校验只看 LC_UUID∈白名单，与查询用的版本/构建号无关：
+               任一钉死 UUID 的镜像对任何 info 都算匹配。 */
+            assert(TIOHostImageMatches((const void *)&image,otherInfo));
             assert(!TIOHostExpectedUUID(@{@"CFBundleShortVersionString":pair[0],@"CFBundleVersion":other[1]}));
         }
         image.c.uuid[0]^=1;assert(!TIOHostImageMatches((const void *)&image,info));image.c.uuid[0]^=1;

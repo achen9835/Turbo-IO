@@ -117,9 +117,10 @@ static BOOL RLabelRoute(NSArray *parts,double left,double top,double right,doubl
  }
  NSMutableDictionary *out=[frame mutableCopy];out[@"tnrScene"]=_markerScene;out[@"tnrSceneMin"]=_markerScene;out[@"tnrPose"]=_markerPose;out[@"tnrPoseAt"]=@(NSProcessInfo.processInfo.systemUptime);out[@"tnrSource"]=@"hud-marker-selftest";
  out[@"navHeading"]=@0;out[@"navPoints"]=@[@[@512,@900],@[@512,@700],@[@512,@100]];out[@"speedKmh"]=@42;
- out[@"lights"]=@3;out[@"lightsMeters"]=@20;out[@"lightsList"]=@[@20];
+ out[@"lights"]=@3;out[@"lightsMeters"]=@20;out[@"lightsList"]=@[@20];out[@"roadLimit"]=@60;
  NSMutableArray *bars=[NSMutableArray new];for(unsigned i=0;i<24;i++)[bars addObject:@(i<8?1:(i<16?2:3))];out[@"barLevels"]=bars;
  out[@"camera"]=@{@"kind":@(TN_CAMERA_SPEED),@"limit":@60,@"m":@50};out[@"event"]=@{@"kind":@(TN_EVENT_ACCIDENT),@"m":@90};
+ out[@"camList"]=@[@{@"kind":@1,@"limit":@60,@"m":@50},@{@"kind":@3,@"limit":@0,@"m":@140},@{@"kind":@4,@"limit":@80,@"m":@260}]; /* 沿路电子眼全量自测：测速/监控/区间 */
  return out;
 }
 - (void)clearMarkerTest{_markerScene=nil;_markerPose=nil;_scene=nil;_scene2=nil;_sceneMin=nil;_origin=nil;_segment=nil;_sceneAt=0;}

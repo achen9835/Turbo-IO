@@ -102,8 +102,8 @@
     if(!test){[self alert:@"无法创建测试场景" message:@"请先停止当前导航，再重新开启后重试。"];return;}
     self.hudMarkerTestUntil=NSProcessInfo.processInfo.systemUptime+20;
     TDPPhoneNavigationOffer(test);
-    self.note=@"20 秒 HUD 独立测试已排队：限速 60（50m）、红绿灯 20m、事故 90m、拥堵档位。请观察右侧地图；结束后自动恢复真实导航。测试不代表高德已提供这些真实数据。";
-    TIONavDiagHUDEvent(@"HUD标记测试",@"20秒独立场景已排队；限速50m/红绿灯20m/事故90m");
+    self.note=@"20 秒 HUD 独立测试已排队：左侧车速旁常驻限速徽章（圆环 60）、限速圈 60（50m）、红绿灯 20m、事故 90m、拥堵档位。请观察左侧车速行与右侧地图；结束后自动恢复真实导航。测试不代表高德已提供这些真实数据。";
+    TIONavDiagHUDEvent(@"HUD标记测试",@"20秒独立场景已排队；限速徽章60/限速圈50m/红绿灯20m/事故90m");
     [self refresh];
 }
 - (void)toggleDisplayHUD{

@@ -132,6 +132,11 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
 @property NSArray<NSNumber *> *trafficBarLevels;
 @property NSInteger cameraKind,cameraLimit,eventKind;
 @property NSUInteger cameraMeters,eventMeters,lightMeters;
+@property NSInteger roadSpeedLimit; /* 路段限速 km/h；-1 = 高德尚未上报 */
+@property (copy) NSArray<NSNumber *> *lightDistances; /* 逐盏闯红灯相机距离，近→远 */
+@property (copy) NSArray<NSDictionary *> *cameraList; /* 沿路全部相机（kind/limit/m 字典），近→远 */
+@property NSTimeInterval lastSpeedSampleAt; /* 模拟车速差分采样时刻（systemUptime） */
+@property NSUInteger lastRemainingMetersForSpeed; /* 模拟车速差分上一次剩余里程 */
 @property double navLat,navLon;
 @property NSInteger navSpeedKmh,navHeadingDeg; /* -1=尚未从 AMapNaviLocation 读到 */
 #endif
@@ -207,7 +212,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(stopUser) name:@"TIOResearchClosed" object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(background) name:UIApplicationDidEnterBackgroundNotification object:nil];
     [NSNotificationCenter.defaultCenter addObserver:self selector:@selector(navigationForeground) name:UIApplicationDidBecomeActiveNotification object:nil];
-    self.display=TIONavDisplay(@"stopped",0,@"",-1,-1,-1,NO);[self refresh];
+    self.display=TIONavDisplay(@"stopped",0,@"",-1,-1,-1,NO);self.roadSpeedLimit=-1;[self refresh];
 }
 #if TIO_DISPLAY_PHONE
 - (void)buildRoadControls{
@@ -248,7 +253,7 @@ static void BootstrapKey(void){if(ReadNavKey().length)return;NSString *p=[NSBund
     for(NSString *e in [hudEvents reverseObjectEnumerator]){if(recentHUD.length>=200)break;[recentHUD appendFormat:@"\n· %@",e];}
     self.statusLabel.text=[NSString stringWithFormat:@"语音阶段：%@ · 后台保持%@\n退出补发：%u/%u%@\n最近HUD事件：%@\n%@",navDiag[@"voiceStage"],self.voicePipelineExpired?@"已到期(待自愈)":(self.voiceBridgeTask!=UIBackgroundTaskInvalid?@"持有中":@"未持有"),(unsigned)[navDiag[@"stopRetryAttempts"] unsignedIntegerValue],(unsigned)[navDiag[@"stopRetryMax"] unsignedIntegerValue],[navDiag[@"stopRetryPending"] boolValue]?@"（补发中）":@"（无）",recentHUD.length?recentHUD:@"（无）",self.statusLabel.text];
 #if TIO_AMAP_ENABLED
-    self.statusLabel.text=[self.statusLabel.text stringByAppendingFormat:@"\n高德扩展：相机 kind=%ld limit=%ld m=%lu · 红绿灯近=%lu · 事件 kind=%ld m=%lu",(long)self.cameraKind,(long)self.cameraLimit,(unsigned long)self.cameraMeters,(unsigned long)self.lightMeters,(long)self.eventKind,(unsigned long)self.eventMeters];
+    self.statusLabel.text=[self.statusLabel.text stringByAppendingFormat:@"\n高德扩展：相机 kind=%ld limit=%ld m=%lu · 红绿灯近=%lu · 事件 kind=%ld m=%lu · 路段限速=%ld · 合成车速=%ld",(long)self.cameraKind,(long)self.cameraLimit,(unsigned long)self.cameraMeters,(unsigned long)self.lightMeters,(long)self.eventKind,(unsigned long)self.eventMeters,(long)self.roadSpeedLimit,(long)self.navSpeedKmh];
 #endif
     if(![sub isEqual:self.lastSubtitleDiagnostic]){self.lastSubtitleDiagnostic=sub;NSString *dir=[NSHomeDirectory() stringByAppendingPathComponent:@"Documents/TurboIOResearch/subtitle-hud"];[NSFileManager.defaultManager createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:@{NSFileProtectionKey:NSFileProtectionCompleteUntilFirstUserAuthentication} error:nil];NSMutableDictionary *report=[sub mutableCopy];report[@"time"]=@(NSDate.date.timeIntervalSince1970);[[NSJSONSerialization dataWithJSONObject:report options:NSJSONWritingPrettyPrinted error:nil] writeToFile:[dir stringByAppendingPathComponent:@"navigation.json"] options:NSDataWritingAtomic error:nil];}
     self.hudLabel.text=[NSString stringWithFormat:@"%@\n\n%@  %@\n%@\n%@",self.display[@"mode"]?:@"",self.display[@"turn"]?:@"",self.display[@"distance"]?:@"",self.display[@"road"]?:@"",self.display[@"summary"]?:@""];[self refreshWorkspace];
@@ -736,7 +741,18 @@ static NSMutableArray *TIONavAheadCoords(NSArray<AMapNaviSegment *> *segments,NS
 }
 #endif
 - (void)navigationManager:(id<TIONavigationManager>)manager updateNaviInfo:(AMapNaviInfo *)info{
- if(!info)return;NSMutableDictionary *frame=[TIONavDisplay(@"navigating",info.iconType,info.nextRoadName,info.segmentRemainDistance,info.routeRemainDistance,info.routeRemainTime,self.simulated) mutableCopy];frame[@"segment"]=@(info.currentSegmentIndex);frame[@"remainingMeters"]=@(info.routeRemainDistance);frame[@"remainingSeconds"]=@(info.routeRemainTime);frame[@"lights"]=@(info.routeRemainTrafficLightCount);
+ if(!info)return;
+ /* 模拟导航合成车速：高德模拟器不下发有效的 AMapNaviLocation.speed（实测速度读数缺失），
+  * 用剩余里程差分推导（1 Hz 本回调驱动，dt 窗口过滤乱帧）。仅模拟会话启用。 */
+ if(self.simulated&&self.active&&info.routeRemainDistance>=0&&info.routeRemainTime>=0){
+  NSTimeInterval now=NSProcessInfo.processInfo.systemUptime;
+  if(self.lastSpeedSampleAt>0){
+   double dt=now-self.lastSpeedSampleAt;long dm=(long)self.lastRemainingMetersForSpeed-(long)info.routeRemainDistance;
+   if(dt>=0.8&&dt<=3.0&&dm>=0&&dm<2000){NSInteger derived=(NSInteger)(dm/dt*3.6+0.5);if(derived>=0&&derived<=511)self.navSpeedKmh=derived;}
+  }
+  self.lastSpeedSampleAt=now;self.lastRemainingMetersForSpeed=info.routeRemainDistance;
+ }
+ NSMutableDictionary *frame=[TIONavDisplay(@"navigating",info.iconType,info.nextRoadName,info.segmentRemainDistance,info.routeRemainDistance,info.routeRemainTime,self.simulated) mutableCopy];frame[@"segment"]=@(info.currentSegmentIndex);frame[@"remainingMeters"]=@(info.routeRemainDistance);frame[@"remainingSeconds"]=@(info.routeRemainTime);frame[@"lights"]=@(info.routeRemainTrafficLightCount);
  if(self.navSpeedKmh>=0)frame[@"speedKmh"]=@(self.navSpeedKmh); /* AMapNaviLocation.speed 单位 km/h；喂给 TNV EXT3 尾巴驱动 HUD 限速旁车速读数 */
  if(self.navHeadingDeg>=0)frame[@"navHeading"]=@(self.navHeadingDeg); /* 车头朝上旋转角；不喂则 HUD 旋转 0 度=假北向 */
  NSInteger segment=info.currentSegmentIndex,link=info.currentLinkIndex,point=info.currentPointIndex;
@@ -810,16 +826,20 @@ static NSMutableArray *TIONavAheadCoords(NSArray<AMapNaviSegment *> *segments,NS
  }
  if(!any)return @[];NSMutableArray *levels=[NSMutableArray arrayWithCapacity:24];for(unsigned i=0;i<24;i++)[levels addObject:@(best[i])];return levels;
 }
-- (void)clearSceneExtensionState{self.trafficBarLevels=nil;self.cameraKind=0;self.cameraLimit=-1;self.cameraMeters=65535;self.eventKind=0;self.eventMeters=65535;self.lightMeters=65535;}
+- (void)clearSceneExtensionState{self.trafficBarLevels=nil;self.cameraKind=0;self.cameraLimit=-1;self.cameraMeters=65535;self.eventKind=0;self.eventMeters=65535;self.lightMeters=65535;self.lightDistances=nil;self.cameraList=nil;self.roadSpeedLimit=-1;self.lastSpeedSampleAt=0;self.lastRemainingMetersForSpeed=0;}
 // TNV is a full-scene replace: extension keys must ride EVERY navigating frame,
 // otherwise the 1 Hz naviInfo frame wipes the bar/alert lines between callbacks.
 - (void)applySceneExtensions:(NSMutableDictionary *)frame{
  if(self.trafficBarLevels)frame[@"barLevels"]=self.trafficBarLevels;
  if(self.lightMeters<65535)frame[@"lightsMeters"]=@(self.lightMeters); /* nearest red-light camera = real distance to a light-controlled junction */
+ if(self.lightDistances.count)frame[@"lightsList"]=self.lightDistances; /* per-light glyphs, EXT2 */
+ if(self.roadSpeedLimit>=0)frame[@"roadLimit"]=@(self.roadSpeedLimit); /* 0 = 高德明确回报本段无限速；常驻徽章据此隐藏 */
+ else if(self.simulated&&self.cameraKind==1&&self.cameraLimit>0&&self.cameraMeters<=1000)frame[@"roadLimit"]=@(self.cameraLimit); /* 模拟导航无路段限速回调：用 1km 内测速相机限速顶位，验收时徽章/超速警报可见 */
+ if(self.cameraList.count)frame[@"camList"]=self.cameraList; /* 沿路电子眼全量，钉在路网对应位置 */
  if(self.cameraKind){NSMutableDictionary *camera=[@{@"kind":@(self.cameraKind),@"limit":@(self.cameraLimit)} mutableCopy];if(self.cameraMeters<65535)camera[@"m"]=@(self.cameraMeters);frame[@"camera"]=camera;}
  if(self.eventKind){NSMutableDictionary *event=[@{@"kind":@(self.eventKind)} mutableCopy];if(self.eventMeters<65535)event[@"m"]=@(self.eventMeters);frame[@"event"]=event;}}
 - (void)offerSceneRefresh{if(![self.display[@"phase"] isEqual:@"navigating"])return;NSMutableDictionary *f=[self.display mutableCopy];[self applySceneExtensions:f];[self setFrame:f];}
-- (void)driveManager:(AMapNaviDriveManager *)m updateNaviLocation:(AMapNaviLocation *)loc{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active||!loc)return;self.navLat=loc.coordinate.latitude;self.navLon=loc.coordinate.longitude;if(loc.speed>=0&&loc.speed<=511)self.navSpeedKmh=(NSInteger)loc.speed;if(loc.heading>=0&&loc.heading<360)self.navHeadingDeg=(NSInteger)loc.heading;
+- (void)driveManager:(AMapNaviDriveManager *)m updateNaviLocation:(AMapNaviLocation *)loc{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active||!loc)return;self.navLat=loc.coordinate.latitude;self.navLon=loc.coordinate.longitude;if(loc.speed>0&&loc.speed<=511)self.navSpeedKmh=(NSInteger)loc.speed;else if(!self.simulated&&loc.speed==0)self.navSpeedKmh=0; /* 模拟器高频下发 speed=0 的无效值，清零会盖掉 updateNaviInfo 差分合成的车速；真实导航静止才置 0 */if(loc.heading>=0&&loc.heading<360)self.navHeadingDeg=(NSInteger)loc.heading;
 #if TIO_DISPLAY_PHONE
 self.roadLocation=@[@(loc.coordinate.latitude),@(loc.coordinate.longitude)];if(loc.heading>=0&&loc.heading<360)self.roadHeading=fmod(loc.heading+720,360);self.roadLocationAt=NSProcessInfo.processInfo.systemUptime;
 #endif
@@ -828,12 +848,32 @@ self.roadLocation=@[@(loc.coordinate.latitude),@(loc.coordinate.longitude)];if(l
 - (void)rideManager:(AMapNaviRideManager *)m updateNaviLocation:(AMapNaviLocation *)loc{[self driveManager:(AMapNaviDriveManager *)m updateNaviLocation:loc];}
 - (void)driveManager:(AMapNaviDriveManager *)m updateTrafficStatus:(NSArray<AMapNaviTrafficStatus *> *)status{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active)return;self.trafficBarLevels=[self levelsFromTrafficStatus:status];[self offerSceneRefresh];});}
 - (void)driveManager:(AMapNaviDriveManager *)m updateCameraInfos:(NSArray<AMapNaviCameraInfo *> *)cams{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active)return;
- AMapNaviCameraInfo *best=nil;NSInteger lightM=65535;for(AMapNaviCameraInfo *c in cams)if(c.distance>=0){if(!best||c.distance<best.distance)best=c;
-  if(c.cameraType==AMapNaviCameraTypeTrafficLight&&c.distance<lightM)lightM=c.distance>65534?65534:(NSInteger)c.distance;} /* red-light cameras sit on light-controlled junctions: nearest one approximates lights_m with real data */
+ /* 测速类（含流动测速）单独跟踪：城市道路闯红灯/监控相机密集，"最近通吃"
+  * 会让限速相机永远排不上槽，限速圈因此从不出现。测速相机 1km 内优先占槽，
+  * 以外让给其他相机；限速值另有路段限速回调常驻显示，不依赖相机槽。 */
+ AMapNaviCameraInfo *speedCam=nil,*nearCam=nil;NSMutableArray<NSNumber *> *lights=[NSMutableArray array];NSInteger lightM=65535;
+ for(AMapNaviCameraInfo *c in cams){if(c.distance<0)continue;
+  if(c.cameraType==AMapNaviCameraTypeSpeed||c.cameraType==AMapNaviCameraTypeFlowSpeed){if(!speedCam||c.distance<speedCam.distance)speedCam=c;}
+  else if(!nearCam||c.distance<nearCam.distance)nearCam=c;
+  if(c.cameraType==AMapNaviCameraTypeTrafficLight){if(c.distance<lightM)lightM=c.distance>65534?65534:(NSInteger)c.distance;if(lights.count<8)[lights addObject:@(c.distance>65534?65534:c.distance)];}} /* red-light cameras sit on light-controlled junctions: nearest one approximates lights_m with real data */
+ [lights sortUsingSelector:@selector(compare:)]; /* nearest first, matching the wire contract */
+ /* 全量相机列表（EXT5 camList）：像真导航一样把每个电子眼钉在路网对应位置，
+  * 不再只画"最近一个"。按距离排序，上限 16 个；与单槽 alert 优先级互不干扰。 */
+ NSMutableArray *all=[NSMutableArray array];for(AMapNaviCameraInfo *c in cams)if(c.distance>=0)[all addObject:c];
+ [all sortUsingComparator:^NSComparisonResult(AMapNaviCameraInfo *a,AMapNaviCameraInfo *b){return a.distance<b.distance?NSOrderedAscending:a.distance>b.distance?NSOrderedDescending:NSOrderedSame;}];
+ NSMutableArray *cl=[NSMutableArray array];
+ for(AMapNaviCameraInfo *c in all){if(cl.count>=16)break;long k;
+  switch(c.cameraType){case AMapNaviCameraTypeSpeed:case AMapNaviCameraTypeFlowSpeed:k=1;break;
+  case AMapNaviCameraTypeTrafficLight:continue; /* 红灯相机已由 lightsList 以红绿灯 glyph 呈现，不重复占标 */
+  case AMapNaviCameraTypeSurveillance:k=3;break;case AMapNaviCameraTypeIntervalVelocityStart:case AMapNaviCameraTypeIntervalVelocityEnd:k=4;break;default:k=5;}
+  [cl addObject:@{@"kind":@(k),@"limit":@(c.cameraSpeed>0?MIN((NSInteger)c.cameraSpeed,200):0),@"m":@(c.distance>65534?65534:c.distance)}];}
+ self.cameraList=cl.count?cl:nil;
+ AMapNaviCameraInfo *best=(speedCam&&speedCam.distance<=1000)?speedCam:(nearCam?:speedCam);
  NSInteger kind=0,limit=-1;NSUInteger meters=65535;
- if(best){switch(best.cameraType){case AMapNaviCameraTypeSpeed:kind=1;break;case AMapNaviCameraTypeTrafficLight:kind=2;break;case AMapNaviCameraTypeSurveillance:kind=3;break;case AMapNaviCameraTypeIntervalVelocityStart:case AMapNaviCameraTypeIntervalVelocityEnd:kind=4;break;default:kind=5;}
+ if(best){switch(best.cameraType){case AMapNaviCameraTypeSpeed:case AMapNaviCameraTypeFlowSpeed:kind=1;break;case AMapNaviCameraTypeTrafficLight:kind=2;break;case AMapNaviCameraTypeSurveillance:kind=3;break;case AMapNaviCameraTypeIntervalVelocityStart:case AMapNaviCameraTypeIntervalVelocityEnd:kind=4;break;default:kind=5;}
   limit=best.cameraSpeed>0?(NSInteger)best.cameraSpeed:-1;meters=best.distance>65534?65534:(NSUInteger)best.distance;}
- self.cameraKind=kind;self.cameraLimit=limit;self.cameraMeters=meters;self.lightMeters=(NSUInteger)lightM;[self offerSceneRefresh];});}
+ self.cameraKind=kind;self.cameraLimit=limit;self.cameraMeters=meters;self.lightMeters=(NSUInteger)lightM;self.lightDistances=lights.count?lights:nil;[self offerSceneRefresh];});}
+- (void)driveManager:(AMapNaviDriveManager *)m onUpdateNaviSpeedLimitSection:(NSInteger)speed{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active)return;self.roadSpeedLimit=speed<0?0:speed;[self offerSceneRefresh];});} /* SDK 9.6+：进入新路段回调限速，无限速路段回 0；常驻徽章的数据源 */
 - (void)driveManager:(AMapNaviDriveManager *)m updateTrafficEvents:(NSArray<AMapNaviRouteTrafficEventInfo *> *)events{dispatch_async(dispatch_get_main_queue(),^{if((id)m!=self.manager||!self.active)return;
  NSInteger kind=0;NSUInteger meters=65535;BOOL found=NO; /* nearest event wins, matching the camera rule */
  for(AMapNaviRouteTrafficEventInfo *route in events){for(AMapNaviTrafficEventItem *it in route.infoList){

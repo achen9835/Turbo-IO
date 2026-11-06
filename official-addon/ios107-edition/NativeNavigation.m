@@ -60,17 +60,25 @@ NSDictionary *TNVNormalizeCoordinates(NSArray *coords){
 }
 BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
  if(!s||![d isKindOfClass:NSDictionary.class]||![d[@"phase"] isEqual:@"navigating"]||!Number(d[@"meters"],1000000)||!Number(d[@"remainingMeters"],10000000)||!Number(d[@"remainingSeconds"],604800)||!Number(d[@"icon"],255))return NO;
- memset(s,0,sizeof *s);s->lights=255;s->camera_limit=-1;s->camera_m=65535;s->event_m=65535;s->lights_m=65535;s->speed_kmh=65535; /* absent extension data must not encode as real zeros */NSInteger i=[d[@"icon"] integerValue];switch(i){case 2:s->icon=TN_LEFT;break;case 3:s->icon=TN_RIGHT;break;case 4:s->icon=TN_SLIGHT_LEFT;break;case 5:s->icon=TN_SLIGHT_RIGHT;break;case 6:s->icon=TN_SHARP_LEFT;break;case 7:s->icon=TN_SHARP_RIGHT;break;case 8:case 19:s->icon=TN_UTURN;break;case 9:case 20:s->icon=TN_STRAIGHT;break;case 11:case 12:case 17:case 18:s->icon=TN_ROUNDABOUT;break;case 15:s->icon=TN_ARRIVE;break;default:s->icon=TN_UNKNOWN;}
+ memset(s,0,sizeof *s);s->lights=255;s->camera_limit=-1;s->camera_m=65535;s->event_m=65535;s->lights_m=65535;s->speed_kmh=65535;s->road_limit=255; /* absent extension data must not encode as real zeros */NSInteger i=[d[@"icon"] integerValue];switch(i){case 2:s->icon=TN_LEFT;break;case 3:s->icon=TN_RIGHT;break;case 4:s->icon=TN_SLIGHT_LEFT;break;case 5:s->icon=TN_SLIGHT_RIGHT;break;case 6:s->icon=TN_SHARP_LEFT;break;case 7:s->icon=TN_SHARP_RIGHT;break;case 8:case 19:s->icon=TN_UTURN;break;case 9:case 20:s->icon=TN_STRAIGHT;break;case 11:case 12:case 17:case 18:s->icon=TN_ROUNDABOUT;break;case 15:s->icon=TN_ARRIVE;break;default:s->icon=TN_UNKNOWN;}
  s->mode=always?TN_ALWAYS:TN_SMART;s->distance_m=[d[@"meters"] unsignedIntValue];s->remaining_m=[d[@"remainingMeters"] unsignedIntValue];s->remaining_s=[d[@"remainingSeconds"] unsignedIntValue];Clip(s->road,sizeof s->road,d[@"road"]);Clip(s->turn,sizeof s->turn,d[@"turn"]);
  NSArray *points=d[@"navPoints"];if(points){if(![points isKindOfClass:NSArray.class]||points.count>32)return NO;for(id pair in points){if(![pair isKindOfClass:NSArray.class]||[pair count]!=2||!Number(pair[0],1023)||!Number(pair[1],1023))return NO;s->points[s->point_count++]=(TNPoint){[pair[0] unsignedIntValue],[pair[1] unsignedIntValue]};}}
  if(s->point_count)s->position=s->points[0];if(Number(d[@"navHeading"],359))s->heading=[d[@"navHeading"] unsignedIntValue];
  /* Extension fields default to documented unknowns; malformed values reject
   * the frame, which the session treats as transient and keeps rendering. */
- s->lights=255;s->camera_limit=-1;s->camera_m=65535;s->event_m=65535;s->lights_m=65535;
+ s->lights=255;s->camera_limit=-1;s->camera_m=65535;s->event_m=65535;s->lights_m=65535;s->road_limit=255;
  id lights=d[@"lights"];if(lights){if(![lights isKindOfClass:NSNumber.class])return NO;long v=[lights longValue];if(v<0||v>255)v=255;s->lights=(uint8_t)v;} /* clamp: an SDK unknown must never reject the whole turn frame */
  id lm=d[@"lightsMeters"];if(lm){if(![lm isKindOfClass:NSNumber.class])return NO;long v=[lm longValue];if(v<0||v>65534)return NO;s->lights_m=(uint16_t)v;}
  id sp=d[@"speedKmh"];if(sp){if(![sp isKindOfClass:NSNumber.class])return NO;long v=[sp longValue];if(v<0||v>511)return NO;s->speed_kmh=(uint16_t)v;}
  id ll=d[@"lightsList"];if(ll){if(![ll isKindOfClass:NSArray.class]||[ll count]>8)return NO;unsigned n=0;for(id m in ll){if(![m isKindOfClass:NSNumber.class])return NO;long v=[m longValue];if(v<0||v>65534)return NO;s->light_m[n++]=(uint16_t)v;}s->light_count=(uint8_t)n;}
+ id rl=d[@"roadLimit"];if(rl){if(![rl isKindOfClass:NSNumber.class])return NO;long v=[rl longValue];if(v<0||v>200)return NO;s->road_limit=(uint8_t)v;} /* 0 = 高德回报本段无限速；255 = 未上报 */
+ id cl=d[@"camList"];if(cl){if(![cl isKindOfClass:NSArray.class]||[cl count]>TN_CAM_MAX)return NO;unsigned n=0; /* 沿路电子眼全量（近→远），替代单槽标记 */
+  for(id e in cl){if(![e isKindOfClass:NSDictionary.class])return NO;id k=e[@"kind"],lim=e[@"limit"],m=e[@"m"];
+   if(![k isKindOfClass:NSNumber.class]||[k longValue]<1||[k longValue]>TN_CAMERA_OTHER)return NO;
+   if(lim){if(![lim isKindOfClass:NSNumber.class])return NO;long v=[lim longValue];if(v<0||v>200)return NO;}
+   if(m){if(![m isKindOfClass:NSNumber.class])return NO;long v=[m longValue];if(v<0||v>65534)return NO;}
+   s->cam_kind[n]=(uint8_t)[k longValue];s->cam_limit[n]=(uint8_t)(lim?[lim longValue]:0);s->cam_m[n]=(uint16_t)(m?[m longValue]:65535);n++;}
+  s->cam_count=(uint8_t)n;}
  id bar=d[@"barLevels"];if(bar){if(![bar isKindOfClass:NSArray.class]||[bar count]>TN_BAR_MAX)return NO;
   unsigned n=0;for(id level in bar){if(![level isKindOfClass:NSNumber.class])return NO;long x=[level longValue];if(x<0||x>4)return NO;s->bar[n++]=(uint8_t)x;}s->bar_count=(uint8_t)n;}
  id cam=d[@"camera"];if(cam){if(![cam isKindOfClass:NSDictionary.class])return NO;id k=cam[@"kind"];id lim=cam[@"limit"];id mtr=cam[@"m"];
@@ -88,6 +96,7 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
  NSData *_mapLatest,*_map2Latest,*_mapCommitted,*_mapSending,*_mapMin,*_poseLatest,*_poseCommitted;NSTimeInterval _poseAt,_lastPose;NSUInteger _maps,_poses;BOOL _extended,_probed,_mapV2,_minSent;NSString *_mapReason;
  NSString *_source;NSUInteger _wireBytes;
  NSTimeInterval _deadline,_lastOffer,_lastCommit,_lastWire,_next;NSUInteger _count;unsigned _op;
+ unsigned _dbgSpeed,_dbgLimit,_dbgCam;BOOL _dbgSim; /* 诊断：最后一帧上镜值（65535=缺省） */
  /* 2026-11-01: transient recovery. A single TN_BUSY/TN_UI_FAILED used to kill the
   * whole session while the lens kept its last frame and the firmware kept the
   * session active -- later STARTs were answered TN_BUSY forever (frozen lens).
@@ -100,7 +109,7 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
 }
 - (instancetype)initWithDevice:(NSString *)device session:(uint32_t)sid clock:(NSTimeInterval(^)(void))clock sender:(void(^)(NSData *,NSString *,TNVSubmitted))sender cleanup:(void(^)(NSString *))cleanup{if(!device.length||!sid||!clock||!sender)return nil;if((self=[super init])){_device=[device copy];_sid=sid;_clock=[clock copy];_sender=[sender copy];_cleanup=[cleanup copy];_note=@"尚未开始";}return self;}
 - (BOOL)active{return _active;}- (BOOL)busy{return _packet||_fileBusy;}
-- (NSDictionary *)status{return @{@"active":@(_active),@"busy":@(self.busy),@"note":_note?:@"",@"snapshots":@(_count),@"session":@(_sid),@"sequence":@(_seq),@"always":@(_always),@"failed":@(_failed),@"maps":@(_maps),@"poses":@(_poses),@"mapBytes":@(_mapV2?_map2Latest.length:_mapLatest.length),@"mapPaths":@(_mapLatest.length>=16?U16((const uint8_t *)_mapLatest.bytes+6):0),@"mapLabels":@(_map2Latest.length>=16?U16((const uint8_t *)_map2Latest.bytes+10):0),@"mapMode":@(_extended),@"roadLabels":@(_mapV2),@"source":_source?:@"unknown",@"wireBytes":@(_wireBytes),@"acks":@(_acks),@"transients":@(_transients),@"mapSends":@(_mapSends),@"mapDrops":@(_mapDrops),@"mapMin":@(_mapMin!=nil),@"minSent":@(_minSent),@"mapReason":_mapReason?:@"",@"tries":@(_tries),@"stopTries":@(_stopTries),@"stopped":@(_stopped),@"lastEvent":_lastEvent?:@""};}
+- (NSDictionary *)status{return @{@"active":@(_active),@"busy":@(self.busy),@"note":_note?:@"",@"snapshots":@(_count),@"session":@(_sid),@"sequence":@(_seq),@"always":@(_always),@"failed":@(_failed),@"maps":@(_maps),@"poses":@(_poses),@"mapBytes":@(_mapV2?_map2Latest.length:_mapLatest.length),@"mapPaths":@(_mapLatest.length>=16?U16((const uint8_t *)_mapLatest.bytes+6):0),@"mapLabels":@(_map2Latest.length>=16?U16((const uint8_t *)_map2Latest.bytes+10):0),@"mapMode":@(_extended),@"roadLabels":@(_mapV2),@"source":_source?:@"unknown",@"wireBytes":@(_wireBytes),@"acks":@(_acks),@"transients":@(_transients),@"mapSends":@(_mapSends),@"mapDrops":@(_mapDrops),@"mapMin":@(_mapMin!=nil),@"minSent":@(_minSent),@"mapReason":_mapReason?:@"",@"tries":@(_tries),@"stopTries":@(_stopTries),@"stopped":@(_stopped),@"lastEvent":_lastEvent?:@"",@"dbgSpeed":@(_dbgSpeed),@"dbgLimit":@(_dbgLimit),@"dbgCam":@(_dbgCam),@"dbgSim":@(_dbgSim)};}
 // Breadcrumb kept in the status JSON so a frozen lens has a readable cause.
 - (void)note:(NSString *)text{_note=text;_lastEvent=[NSString stringWithFormat:@"%.0f %@",_clock(),text?:@""];}
 // Drop the current in-flight file bookkeeping. Ownership of an uncertain native
@@ -155,7 +164,7 @@ BOOL TNVScene(NSDictionary *d,BOOL always,TNScene *s){
  _mapReason=nil;_mapMin=minOK;_extended=YES;_mapLatest=[map copy];_poseLatest=[pose copy];_poseAt=[at doubleValue];
 }
 - (BOOL)start:(NSDictionary *)frame always:(BOOL)always{if(_seq||_active||self.busy||_failed)return NO;TNScene s;if(!TNVScene(frame,always,&s))return NO;[self mapOffer:frame];_source=[frame[@"tnrSource"] isKindOfClass:NSString.class]?frame[@"tnrSource"]:@"unknown";_always=always;_latest=[NSData dataWithBytes:&s length:sizeof s];_lastOffer=_clock();_active=YES;_note=@"正在请求自动打开原生导航";if(![self send:TN_START scene:_latest]){_active=NO;return NO;}return YES;}
-- (void)offer:(NSDictionary *)frame{if(!_active||_stopping)return;[self mapOffer:frame];TNScene s;if(!TNVScene(frame,_always,&s)){/* Only terminal phases stop the session; transient non-navigating frames (planning/reroute transitions) must not kill a live render. */if([frame[@"phase"] isEqual:@"arrived"]||[frame[@"phase"] isEqual:@"stopped"])[self stop];return;}_latest=[NSData dataWithBytes:&s length:sizeof s];_lastOffer=_clock();}
+- (void)offer:(NSDictionary *)frame{if(!_active||_stopping)return;[self mapOffer:frame];TNScene s;if(!TNVScene(frame,_always,&s)){/* Only terminal phases stop the session; transient non-navigating frames (planning/reroute transitions) must not kill a live render. */if([frame[@"phase"] isEqual:@"arrived"]||[frame[@"phase"] isEqual:@"stopped"])[self stop];return;}_dbgSpeed=s.speed_kmh;_dbgLimit=s.road_limit;_dbgCam=s.cam_count;_dbgSim=[frame[@"simulated"] boolValue];_latest=[NSData dataWithBytes:&s length:sizeof s];_lastOffer=_clock();}
 - (void)setAlways:(BOOL)always{_always=always;if(_latest){NSMutableData *d=[_latest mutableCopy];((TNScene *)d.mutableBytes)->mode=always?TN_ALWAYS:TN_SMART;_latest=d;}}
 // Bounded, confirmed terminal stop. A dead or wedged session still has to remove
 // the lens page: the firmware only leaves navigation on TN_STOP, so a lost STOP
