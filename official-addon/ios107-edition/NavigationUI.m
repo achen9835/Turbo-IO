@@ -838,7 +838,7 @@ static NSMutableArray *TIONavAheadCoords(NSArray<AMapNaviSegment *> *segments,NS
  if(self.lightDistances.count)frame[@"lightsList"]=self.lightDistances; /* per-light glyphs, EXT2 */
  if(self.roadSpeedLimit>=0)frame[@"roadLimit"]=@(self.roadSpeedLimit); /* 0 = 高德明确回报本段无限速；常驻徽章据此隐藏 */
  else if(self.facilityRoadLimit>0)frame[@"roadLimit"]=@(self.facilityRoadLimit); /* 路段限速回调缺位（真机 2026-11-08 实测未触发）：用沿途限速标志设施顶位 */
- else if(self.simulated&&self.cameraKind==1&&self.cameraLimit>0&&self.cameraMeters<=1000)frame[@"roadLimit"]=@(self.cameraLimit); /* 模拟导航无路段限速回调：用 1km 内测速相机限速顶位，验收时徽章/超速警报可见 */
+ else if(self.cameraKind==1&&self.cameraLimit>0&&self.cameraMeters<=1000)frame[@"roadLimit"]=@(self.cameraLimit); /* 前方 1km 内测速相机带限速值：真实导航同样兜底（高德无路段数据的路，接近测速点即显示其限速） */
  if(self.cameraList.count)frame[@"camList"]=self.cameraList; /* 沿路电子眼全量，钉在路网对应位置 */
  if(self.serviceAreas.count||self.trafficFacilities.count){NSMutableArray *all=[NSMutableArray arrayWithArray:self.serviceAreas?:@[]];[all addObjectsFromArray:self.trafficFacilities?:@[]];
   [all sortUsingComparator:^NSComparisonResult(NSDictionary *a,NSDictionary *b){return [a[@"m"] compare:b[@"m"]];}]; /* 近→远 */
